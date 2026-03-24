@@ -1,6 +1,9 @@
-"""Tests for AI session tool handling and slash commands."""
+"""Tests for AI session tool handling, commands, and conversation flow."""
 
-from clickbait.ai.session import handle_tool_call, _format_lyrics_result
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+from clickbait.ai.session import ChatSession, handle_tool_call, _format_lyrics_result
 from clickbait.models import Section, Song
 
 
@@ -32,7 +35,7 @@ class TestHandleToolCall:
         self.song.bpm = 100
         handle_tool_call(self.song, "set_song_metadata", {"title": "Existing", "bpm": 140})
         assert self.song.bpm == 140
-        assert self.song.artist is None  # unchanged
+        assert self.song.artist is None
 
     def test_set_song_structure(self):
         result = handle_tool_call(self.song, "set_song_structure", {
@@ -100,5 +103,127 @@ class TestFormatLyricsResult:
         assert "Hello" in formatted
         assert "[Chorus]" in formatted
         assert "World" in formatted
-        # Should contain actual newlines, not \n literals
         assert "\\n" not in formatted
+
+
+class TestHandleCommand:
+    def setup_method(self):
+        self.session = ChatSession(client=MagicMock())
+
+    def test_verbose_toggle(self):
+        assert self.session.verbose is False
+        result = self.session.handle_command("/verbose")
+        assert self.session.verbose is True
+        assert "on" in result
+        result = self.session.handle_command("/verbose")
+        assert self.session.verbose is False
+        assert "off" in result
+
+    def test_song_empty(self):
+        result = self.session.handle_command("/song")
+        assert "Untitled" in result
+        assert "Sections: 0" in result
+
+    def test_song_with_data(self):
+        self.session.song.title = "Test"
+        self.session.song.artist = "Band"
+        self.session.song.bpm = 120
+        self.session.song.sections = [Section("Verse", 8, lyrics="Hello")]
+        result = self.session.handle_command("/song")
+        assert "Test" in result
+        assert "120" in result
+        assert "Verse" in result
+        assert "[lyrics]" in result
+
+    def test_help(self):
+        result = self.session.handle_command("/help")
+        assert "/verbose" in result
+        assert "/song" in result
+
+    def test_unknown_command(self):
+        result = self.session.handle_command("/bogus")
+        assert result is None
+
+
+def _make_text_block(text):
+    return SimpleNamespace(type="text", text=text)
+
+
+def _make_tool_use_block(name, input_args, tool_id="tool-1"):
+    return SimpleNamespace(type="tool_use", name=name, input=input_args, id=tool_id)
+
+
+class TestProcessTurn:
+    def test_text_only_response(self):
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = SimpleNamespace(
+            content=[_make_text_block("Hello! How can I help?")]
+        )
+        session = ChatSession(client=mock_client)
+        outputs = session.process_turn("hi")
+        assert len(outputs) == 1
+        assert outputs[0]["type"] == "text"
+        assert "Hello" in outputs[0]["content"]
+        assert len(session.messages) == 2  # user + assistant
+
+    def test_tool_call_then_text(self):
+        mock_client = MagicMock()
+        # First response: tool call
+        tool_response = SimpleNamespace(
+            content=[_make_tool_use_block("set_song_metadata", {"title": "Test Song"})]
+        )
+        # Second response: text after tool result
+        text_response = SimpleNamespace(
+            content=[_make_text_block("I've set the title to Test Song.")]
+        )
+        mock_client.messages.create.side_effect = [tool_response, text_response]
+
+        session = ChatSession(client=mock_client)
+        outputs = session.process_turn("let's work on Test Song")
+
+        assert len(outputs) == 2
+        assert outputs[0]["type"] == "tool_call"
+        assert outputs[0]["name"] == "set_song_metadata"
+        assert "Test Song" in outputs[0]["result"]
+        assert outputs[1]["type"] == "text"
+        assert session.song.title == "Test Song"
+        # user + assistant(tool) + user(tool_result) + assistant(text)
+        assert len(session.messages) == 4
+
+    def test_multiple_tool_calls_in_one_response(self):
+        mock_client = MagicMock()
+        # Response with two tool calls
+        tool_response = SimpleNamespace(
+            content=[
+                _make_tool_use_block("set_song_metadata", {"title": "Test", "bpm": 120}, "tool-1"),
+                _make_tool_use_block("set_song_structure", {
+                    "sections": [{"name": "Verse", "measures": 8}]
+                }, "tool-2"),
+            ]
+        )
+        text_response = SimpleNamespace(
+            content=[_make_text_block("All set!")]
+        )
+        mock_client.messages.create.side_effect = [tool_response, text_response]
+
+        session = ChatSession(client=mock_client)
+        outputs = session.process_turn("set up Test at 120 bpm with a verse")
+
+        tool_outputs = [o for o in outputs if o["type"] == "tool_call"]
+        assert len(tool_outputs) == 2
+        assert session.song.title == "Test"
+        assert session.song.bpm == 120
+        assert len(session.song.sections) == 1
+
+    def test_messages_accumulate_across_turns(self):
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = SimpleNamespace(
+            content=[_make_text_block("Response")]
+        )
+        session = ChatSession(client=mock_client)
+        session.process_turn("first message")
+        session.process_turn("second message")
+        # 2 turns × (user + assistant) = 4 messages
+        assert len(session.messages) == 4
+        assert session.messages[0]["content"] == "first message"
+        assert session.messages[2]["content"] == "second message"

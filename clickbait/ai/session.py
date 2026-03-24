@@ -1,12 +1,14 @@
 """Interactive AI session for designing song projects."""
 
 import json
+from dataclasses import dataclass, field
 
 from anthropic import Anthropic
 from prompt_toolkit import PromptSession
-from prompt_toolkit.key_binding import KeyBindings
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.spinner import Spinner
+from rich.live import Live
 
 from clickbait.ai.prompts import load_system_prompt
 from clickbait.ai.tools import TOOLS
@@ -14,6 +16,9 @@ from clickbait.models import Section, Song
 from clickbait.sources import genius
 
 console = Console()
+
+MUSIC_SPINNER = Spinner("dots", text="", style="dim")
+MUSIC_SPINNER.frames = ["♩", "♪", "♫", "♬", "♪", "♫"]
 
 
 def _format_lyrics_result(result: dict) -> str:
@@ -59,13 +64,95 @@ def handle_tool_call(song: Song, name: str, args: dict) -> str:
     return f"Unknown tool: {name}"
 
 
+@dataclass
+class ChatSession:
+    """Manages conversation state and Claude API interaction."""
+
+    client: Anthropic
+    song: Song = field(default_factory=lambda: Song(title="Untitled"))
+    messages: list = field(default_factory=list)
+    system_prompt: str = ""
+    verbose: bool = False
+    model: str = "claude-sonnet-4-20250514"
+
+    def process_turn(self, user_input: str) -> list[dict]:
+        """Process one user turn. Returns list of {type, content} output blocks.
+
+        Output block types:
+        - {"type": "text", "content": "..."} — text to display
+        - {"type": "tool_call", "name": "...", "input": {...}, "result": "..."} — tool call info
+        """
+        self.messages.append({"role": "user", "content": user_input})
+        outputs = []
+
+        while True:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=4096,
+                system=self.system_prompt,
+                tools=TOOLS,
+                messages=self.messages,
+            )
+
+            assistant_content = response.content
+            self.messages.append({"role": "assistant", "content": assistant_content})
+
+            tool_results = []
+            for block in assistant_content:
+                if block.type == "text" and block.text:
+                    outputs.append({"type": "text", "content": block.text})
+                elif block.type == "tool_use":
+                    result = handle_tool_call(self.song, block.name, block.input)
+                    outputs.append({
+                        "type": "tool_call",
+                        "name": block.name,
+                        "input": block.input,
+                        "result": result,
+                    })
+                    tool_results.append(
+                        {"type": "tool_result", "tool_use_id": block.id, "content": result}
+                    )
+
+            if tool_results:
+                self.messages.append({"role": "user", "content": tool_results})
+                continue
+
+            break
+
+        return outputs
+
+    def handle_command(self, cmd: str) -> str | None:
+        """Handle a slash command. Returns output text, or None for unknown."""
+        cmd = cmd.strip().lower()
+        if cmd == "/verbose":
+            self.verbose = not self.verbose
+            return f"Verbose mode {'on' if self.verbose else 'off'}"
+        if cmd == "/song":
+            lines = [
+                f"  Title: {self.song.title}",
+                f"  Artist: {self.song.artist}",
+                f"  BPM: {self.song.bpm}",
+                f"  Key: {self.song.key}",
+                f"  Time Sig: {self.song.time_signature[0]}/{self.song.time_signature[1]}",
+                f"  Sections: {len(self.song.sections)}",
+            ]
+            for i, s in enumerate(self.song.sections):
+                has_lyrics = " [lyrics]" if s.lyrics else ""
+                lines.append(f"    {self.song.numbered_section_name(i)}: {s.measures} measures{has_lyrics}")
+            return "\n".join(lines)
+        if cmd == "/help":
+            return "  /verbose  — toggle verbose mode (show tool calls)\n  /song     — show current song state\n  /help     — show this help"
+        return None
+
+
 def run_session(verbose: bool = False):
     """Run the interactive chat session."""
-    client = Anthropic()
+    session = ChatSession(
+        client=Anthropic(),
+        system_prompt=load_system_prompt(),
+        verbose=verbose,
+    )
     prompt_session = PromptSession()
-    messages = []
-    song = Song(title="Untitled")
-    system_prompt = load_system_prompt()
 
     console.print("[bold]clickbAIt[/bold] — AI song project builder")
     console.print("Type a song name or describe what you want to build. Ctrl-D to exit.\n")
@@ -81,69 +168,23 @@ def run_session(verbose: bool = False):
         if not user_input.strip():
             continue
 
-        # Handle slash commands and exit aliases
         if user_input.strip().lower() in ("exit", "quit", "q"):
             console.print("Bye!")
             break
 
         if user_input.startswith("/"):
-            cmd = user_input.strip().lower()
-            if cmd == "/verbose":
-                verbose = not verbose
-                console.print(f"Verbose mode [bold]{'on' if verbose else 'off'}[/bold]")
-            elif cmd == "/song":
-                console.print(f"  Title: {song.title}")
-                console.print(f"  Artist: {song.artist}")
-                console.print(f"  BPM: {song.bpm}")
-                console.print(f"  Key: {song.key}")
-                console.print(f"  Time Sig: {song.time_signature[0]}/{song.time_signature[1]}")
-                console.print(f"  Sections: {len(song.sections)}")
-                for i, s in enumerate(song.sections):
-                    has_lyrics = " [lyrics]" if s.lyrics else ""
-                    console.print(f"    {song.numbered_section_name(i)}: {s.measures} measures{has_lyrics}")
-            elif cmd == "/help":
-                console.print("  /verbose  — toggle verbose mode (show tool calls)")
-                console.print("  /song     — show current song state")
-                console.print("  /help     — show this help")
+            result = session.handle_command(user_input)
+            if result is not None:
+                console.print(result)
             else:
-                console.print(f"  Unknown command: {cmd}. Type /help for commands.")
+                console.print(f"  Unknown command: {user_input.strip()}. Type /help for commands.")
             continue
 
-        messages.append({"role": "user", "content": user_input})
-
-        # Claude may make multiple tool calls in a loop before giving a text response
-        while True:
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=4096,
-                system=system_prompt,
-                tools=TOOLS,
-                messages=messages,
-            )
-
-            # Process response content
-            assistant_content = response.content
-            messages.append({"role": "assistant", "content": assistant_content})
-
-            # Handle tool use blocks
-            tool_results = []
-            for block in assistant_content:
-                if block.type == "text" and block.text:
-                    console.print(Markdown(block.text))
-                elif block.type == "tool_use":
-                    if verbose:
-                        console.print(f"  [dim]tool: {block.name}({json.dumps(block.input)})[/dim]")
-                    result = handle_tool_call(song, block.name, block.input)
-                    if verbose:
-                        console.print(f"  [dim]→ {result}[/dim]")
-                    tool_results.append(
-                        {"type": "tool_result", "tool_use_id": block.id, "content": result}
-                    )
-
-            # If there were tool calls, send results back and let Claude continue
-            if tool_results:
-                messages.append({"role": "user", "content": tool_results})
-                continue
-
-            # No tool calls — Claude gave a final text response, back to user
-            break
+        with Live(MUSIC_SPINNER, console=console, transient=True):
+            outputs = session.process_turn(user_input)
+        for output in outputs:
+            if output["type"] == "text":
+                console.print(Markdown(output["content"]))
+            elif output["type"] == "tool_call" and session.verbose:
+                console.print(f"  [dim]tool: {output['name']}({json.dumps(output['input'])})[/dim]")
+                console.print(f"  [dim]→ {output['result']}[/dim]")

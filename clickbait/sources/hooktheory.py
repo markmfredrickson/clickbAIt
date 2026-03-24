@@ -1,69 +1,70 @@
-"""Hooktheory API — song structure and chord progressions."""
+"""Hooktheory TheoryTab — key and song section data via page scraping.
 
-import os
+No API key required. Scrapes the public TheoryTab page for key signatures
+and section structure. Coverage depends on community contributions (~72k songs).
+"""
+
+import re
 
 import requests
+from bs4 import BeautifulSoup
 
 
-API_BASE = "https://api.hooktheory.com/v1"
+THEORYTAB_BASE = "https://www.hooktheory.com/theorytab/view"
 
 
-def _get_headers() -> dict | None:
-    """Get auth headers for Hooktheory API."""
-    bearer = os.environ.get("HOOKTHEORY_BEARER_TOKEN")
-    if bearer:
-        return {"Authorization": f"Bearer {bearer}"}
-    return None
+def _slugify(text: str) -> str:
+    """Convert text to URL slug format matching TheoryTab conventions."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-def search_song(title: str, artist: str | None = None) -> dict | None:
-    """Search Hooktheory for song structure and chords.
+def lookup_song(title: str, artist: str) -> dict | None:
+    """Look up a song on TheoryTab for key and section data.
 
-    Requires HOOKTHEORY_BEARER_TOKEN in environment.
-    Returns labeled sections with chord progressions.
+    Requires both title and artist to construct the URL slug.
+    Returns None if the song isn't in the database.
     """
-    headers = _get_headers()
-    if headers is None:
-        return {"error": "HOOKTHEORY_BEARER_TOKEN not set in .env"}
+    artist_slug = _slugify(artist)
+    song_slug = _slugify(title)
+    url = f"{THEORYTAB_BASE}/{artist_slug}/{song_slug}"
 
-    params = {"term": title}
-    resp = requests.get(f"{API_BASE}/trends/songs", headers=headers, params=params)
+    resp = requests.get(url, timeout=10)
     if resp.status_code != 200:
-        return {"error": f"Hooktheory API returned {resp.status_code}"}
-
-    songs = resp.json()
-    if not songs:
         return None
 
-    # Find best match (optionally filter by artist)
-    match = songs[0]
-    for song in songs:
-        if artist and artist.lower() in song.get("artist", "").lower():
-            match = song
-            break
+    soup = BeautifulSoup(resp.text, "html.parser")
 
-    # Fetch sections for the matched song
-    song_id = match.get("ID")
-    if not song_id:
-        return {
-            "title": match.get("song"),
-            "artist": match.get("artist"),
-            "sections": [],
-        }
+    # Extract keys
+    keys = []
+    key_text = soup.find(string=re.compile("analyzed in the following keys"))
+    if key_text:
+        parent = key_text.find_parent("p")
+        if parent:
+            keys = [
+                a.text.strip()
+                for a in parent.find_all("a")
+                if "cheat-sheet/key" in a.get("href", "")
+            ]
 
-    sections_resp = requests.get(
-        f"{API_BASE}/trends/songs/{song_id}", headers=headers
-    )
-    sections = sections_resp.json() if sections_resp.status_code == 200 else []
+    # Extract sections from anchor links to #section-name
+    section_links = soup.find_all("a", href=re.compile(f"{song_slug}#"))
+    seen = set()
+    sections = []
+    for link in section_links:
+        span = link.find("span")
+        if span:
+            name = span.text.strip()
+            if name and name not in seen:
+                sections.append(name)
+                seen.add(name)
+
+    if not keys and not sections:
+        return None
 
     return {
-        "title": match.get("song"),
-        "artist": match.get("artist"),
-        "sections": [
-            {
-                "name": s.get("section"),
-                "chords": s.get("chord_IDs", []),
-            }
-            for s in sections
-        ],
+        "title": title,
+        "artist": artist,
+        "keys": keys,
+        "sections": sections,
+        "url": url,
     }

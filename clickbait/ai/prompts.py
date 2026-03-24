@@ -29,6 +29,7 @@ a starting point, but always confirm with the user before finalizing.
 You have lookup tools that search external services:
 - lookup_lyrics: Fetch lyrics with section markers from Genius
 - lookup_bpm: Get accurate BPM from Deezer (no API key needed)
+- lookup_key: Get musical key and section names from Hooktheory TheoryTab
 - lookup_song_info: Get canonical metadata from MusicBrainz
 
 Use these proactively when the user mentions a song. Always use lookup_bpm \

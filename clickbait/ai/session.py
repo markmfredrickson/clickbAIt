@@ -13,7 +13,7 @@ from rich.spinner import Spinner
 from clickbait.ai.prompts import load_system_prompt
 from clickbait.ai.tools import TOOLS
 from clickbait.models import Section, Song
-from clickbait.sources import deezer, genius, musicbrainz
+from clickbait.sources import deezer, genius, hooktheory, musicbrainz
 
 console = Console()
 
@@ -67,6 +67,14 @@ def handle_tool_call(song: Song, name: str, args: dict) -> str:
             return "No results found on Deezer."
         if "error" in result:
             return result["error"]
+        return str(result)
+
+    if name == "lookup_key":
+        if not args.get("artist"):
+            return "Error: artist is required for TheoryTab lookup"
+        result = hooktheory.lookup_song(args["title"], args["artist"])
+        if result is None:
+            return "Song not found on TheoryTab."
         return str(result)
 
     if name == "lookup_song_info":

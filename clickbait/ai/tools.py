@@ -120,4 +120,20 @@ TOOLS = [
             "required": ["title"],
         },
     },
+    {
+        "name": "lookup_key",
+        "description": (
+            "Look up a song's musical key and section names from Hooktheory TheoryTab. "
+            "No API key needed. Requires both title and artist. Coverage is ~72k songs. "
+            "Use this to get accurate key information instead of guessing."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Song title"},
+                "artist": {"type": "string", "description": "Artist name (required)"},
+            },
+            "required": ["title", "artist"],
+        },
+    },
 ]

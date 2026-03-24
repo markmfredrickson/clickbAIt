@@ -38,3 +38,7 @@ line-length = 99
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "live: tests that hit real external APIs (run with -m live)",
+]
+addopts = "-m 'not live'"

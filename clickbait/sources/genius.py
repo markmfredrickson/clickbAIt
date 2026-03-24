@@ -44,7 +44,7 @@ def search_lyrics(title: str, artist: str | None = None) -> dict | None:
     if not token:
         return {"error": "GENIUS_API_TOKEN not set in .env"}
 
-    genius = lyricsgenius.Genius(token, verbose=False, remove_section_headers=False)
+    genius = lyricsgenius.Genius(token, remove_section_headers=False)
     song = genius.search_song(title, artist=artist or "")
     if song is None:
         return None

@@ -10,13 +10,15 @@ dependencies = [
     "rich",
     "rpp",
     "deezer-python",
+    "musicbrainzngs",
+    "requests",
+    "beautifulsoup4",
     "python-dotenv",
 ]
 
 [project.optional-dependencies]
 sources = [
     "lyricsgenius",
-    "musicbrainzngs",
 ]
 dev = [
     "pytest",

@@ -12,7 +12,9 @@ AI-powered tools for creating click, cue, and backing tracks for cover bands.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[sources,dev]"
+.venv/bin/pip install -e ".[dev]"
+# For lyrics lookup (requires Genius API token):
+.venv/bin/pip install -e ".[sources]"
 ```
 
 ### API Keys

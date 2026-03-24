@@ -13,7 +13,7 @@ from rich.spinner import Spinner
 from clickbait.ai.prompts import load_system_prompt
 from clickbait.ai.tools import TOOLS
 from clickbait.models import Section, Song
-from clickbait.sources import genius, musicbrainz
+from clickbait.sources import deezer, genius, musicbrainz
 
 console = Console()
 
@@ -60,6 +60,14 @@ def handle_tool_call(song: Song, name: str, args: dict) -> str:
         if "error" in result:
             return result["error"]
         return _format_lyrics_result(result)
+
+    if name == "lookup_bpm":
+        result = deezer.search_track(args["title"], args.get("artist"))
+        if result is None:
+            return "No results found on Deezer."
+        if "error" in result:
+            return result["error"]
+        return str(result)
 
     if name == "lookup_song_info":
         result = musicbrainz.search_recording(args["title"], args.get("artist"))

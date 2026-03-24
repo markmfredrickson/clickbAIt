@@ -9,6 +9,7 @@ dependencies = [
     "prompt-toolkit",
     "rich",
     "rpp",
+    "deezer-python",
     "python-dotenv",
 ]
 

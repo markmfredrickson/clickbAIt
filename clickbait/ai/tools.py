@@ -104,4 +104,20 @@ TOOLS = [
             "required": ["title"],
         },
     },
+    {
+        "name": "lookup_bpm",
+        "description": (
+            "Search Deezer for a track's BPM (beats per minute). No API key needed. "
+            "Returns BPM, duration, and basic metadata. BPM is available for most "
+            "but not all tracks. Use this to get accurate BPM instead of guessing."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Song title"},
+                "artist": {"type": "string", "description": "Artist name"},
+            },
+            "required": ["title"],
+        },
+    },
 ]

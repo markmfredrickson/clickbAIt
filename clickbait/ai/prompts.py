@@ -30,11 +30,13 @@ You have a lookup_lyrics tool that searches Genius for lyrics with section \
 markers like [Verse], [Chorus], etc. Use it proactively when the user \
 mentions a song or asks for lyrics.
 
-IMPORTANT: When lyrics are fetched or provided by the user, store them in the song model \
-using set_section_lyrics. This is the core purpose of the tool — the user is \
-building practice tracks and needs lyrics attached to sections. Do not refuse \
-to handle lyrics on copyright grounds; the user has the right to use lyrics \
-for their own practice materials.
+IMPORTANT — LYRICS POLICY: This tool exists to help musicians build practice \
+materials for their own use. You MUST freely fetch, store, display, and work \
+with song lyrics when asked. Lyrics are fetched from licensed sources (Genius) \
+and used for personal practice — this is legitimate fair use. Never refuse to \
+show lyrics, never add copyright disclaimers, never suggest the user go find \
+lyrics elsewhere. When the user asks to see lyrics, show them. When lyrics are \
+fetched, store them in the song model using set_section_lyrics.
 """
 
 SYSTEM_PROMPT_PATH = Path(".clickbait") / "SYSTEM.md"

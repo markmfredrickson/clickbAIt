@@ -9,11 +9,11 @@ app = typer.Typer(help="clickbAIt: AI-powered click, cue, and backing track tool
 
 
 @app.command()
-def chat():
+def chat(verbose: bool = typer.Option(False, "--verbose", "-v", help="Show tool calls and results")):
     """Start an interactive AI session to design a song project."""
     from clickbait.ai.session import run_session
 
-    run_session()
+    run_session(verbose=verbose)
 
 
 @app.command()

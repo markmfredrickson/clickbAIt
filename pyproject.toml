@@ -16,7 +16,6 @@ dependencies = [
 sources = [
     "lyricsgenius",
     "musicbrainzngs",
-    "spotipy",
 ]
 dev = [
     "pytest",

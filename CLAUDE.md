@@ -40,6 +40,14 @@ This project follows the **Last Will and Attestament** workflow for AI-generated
 
 **Why:** Ensures a verifiable human-in-the-loop for all AI-generated code. The goal is transparency and accountability, not bureaucracy.
 
+## Development Approach
+
+**Test-Driven Development (TDD):** Write tests first, then implement. Every new module or feature should start with tests that define the expected behavior before writing the implementation code.
+
+- `pytest` for testing: ``.venv/bin/pytest tests/ -v``
+- `ruff` for linting: ``.venv/bin/ruff check .``
+- Tests live in `tests/` mirroring the package structure
+
 ## Prior Art
 
 - **`../Band/cue_maker/`** — Earlier R-based version. Useful for understanding the domain (structure.csv format, section numbering, dual REAPER markers) but not a code model to follow. The RPP format knowledge there is partial; a purpose-built REAPER example project will be the authoritative format reference.

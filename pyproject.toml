@@ -1,0 +1,40 @@
+[project]
+name = "clickbait"
+version = "0.1.0"
+description = "AI-powered tools for creating click, cue, and backing tracks"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic",
+    "typer",
+    "prompt-toolkit",
+    "rich",
+    "rpp",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+sources = [
+    "lyricsgenius",
+    "musicbrainzngs",
+    "spotipy",
+]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+clickbait = "clickbait.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["clickbait*"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 99
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

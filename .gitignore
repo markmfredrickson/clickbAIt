@@ -33,5 +33,9 @@ Thumbs.db
 # Local working notes (not for repo)
 local/
 
+# Coverage
+.coverage
+htmlcov/
+
 # Audio output (generated)
 output/

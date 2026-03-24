@@ -13,7 +13,7 @@ from rich.spinner import Spinner
 from clickbait.ai.prompts import load_system_prompt
 from clickbait.ai.tools import TOOLS
 from clickbait.models import Section, Song
-from clickbait.sources import deezer, genius, hooktheory, musicbrainz
+from clickbait.sources.lookup import lookup_song, format_lookup_results
 
 console = Console()
 
@@ -21,17 +21,12 @@ MUSIC_SPINNER = Spinner("dots", text="", style="dim")
 MUSIC_SPINNER.frames = ["♩ ", "♪ ", "♫ ", "♬ "]
 
 
-def _format_lyrics_result(result: dict) -> str:
-    """Format a Genius lyrics result as readable text for Claude."""
-    lines = [f"Title: {result['title']}", f"Artist: {result['artist']}", "", "Lyrics by section:"]
-    for section in result["sections"]:
-        lines.append(f"\n[{section['name']}]")
-        lines.append(section["lyrics"])
-    return "\n".join(lines)
-
-
 def handle_tool_call(song: Song, name: str, args: dict) -> str:
     """Execute a tool call and return a result message."""
+    if name == "lookup_song":
+        results = lookup_song(args["title"], args.get("artist"))
+        return format_lookup_results(results)
+
     if name == "set_song_metadata":
         song.title = args.get("title", song.title)
         song.artist = args.get("artist", song.artist)
@@ -53,36 +48,6 @@ def handle_tool_call(song: Song, name: str, args: dict) -> str:
             return f"Set lyrics for section {idx} ({song.numbered_section_name(idx)})"
         return f"Error: section index {idx} out of range"
 
-    if name == "lookup_lyrics":
-        result = genius.search_lyrics(args["title"], args.get("artist"))
-        if result is None:
-            return "No lyrics found on Genius."
-        if "error" in result:
-            return result["error"]
-        return _format_lyrics_result(result)
-
-    if name == "lookup_bpm":
-        result = deezer.search_track(args["title"], args.get("artist"))
-        if result is None:
-            return "No results found on Deezer."
-        if "error" in result:
-            return result["error"]
-        return str(result)
-
-    if name == "lookup_key":
-        if not args.get("artist"):
-            return "Error: artist is required for TheoryTab lookup"
-        result = hooktheory.lookup_song(args["title"], args["artist"])
-        if result is None:
-            return "Song not found on TheoryTab."
-        return str(result)
-
-    if name == "lookup_song_info":
-        result = musicbrainz.search_recording(args["title"], args.get("artist"))
-        if result is None:
-            return "No results found on MusicBrainz."
-        return str(result)
-
     return f"Unknown tool: {name}"
 
 
@@ -96,6 +61,8 @@ class ChatSession:
     system_prompt: str = ""
     verbose: bool = False
     model: str = "claude-sonnet-4-20250514"
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
 
     def process_turn(self, user_input: str) -> list[dict]:
         """Process one user turn. Returns list of {type, content} output blocks.
@@ -115,6 +82,16 @@ class ChatSession:
                 tools=TOOLS,
                 messages=self.messages,
             )
+
+            # Track token usage
+            usage = response.usage
+            self.total_input_tokens += usage.input_tokens
+            self.total_output_tokens += usage.output_tokens
+            outputs.append({
+                "type": "usage",
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+            })
 
             assistant_content = response.content
             self.messages.append({"role": "assistant", "content": assistant_content})
@@ -162,8 +139,22 @@ class ChatSession:
                 has_lyrics = " [lyrics]" if s.lyrics else ""
                 lines.append(f"    {self.song.numbered_section_name(i)}: {s.measures} measures{has_lyrics}")
             return "\n".join(lines)
+        if cmd == "/cost":
+            # Sonnet pricing: $3/MTok input, $15/MTok output
+            input_cost = self.total_input_tokens * 3.0 / 1_000_000
+            output_cost = self.total_output_tokens * 15.0 / 1_000_000
+            total = input_cost + output_cost
+            return (
+                f"  Tokens: {self.total_input_tokens:,} in / {self.total_output_tokens:,} out\n"
+                f"  Cost:   ${input_cost:.4f} in + ${output_cost:.4f} out = ${total:.4f} total"
+            )
         if cmd == "/help":
-            return "  /verbose  — toggle verbose mode (show tool calls)\n  /song     — show current song state\n  /help     — show this help"
+            return (
+                "  /verbose  — toggle verbose mode (show tool calls)\n"
+                "  /song     — show current song state\n"
+                "  /cost     — show token usage and estimated cost\n"
+                "  /help     — show this help"
+            )
         return None
 
 
@@ -209,10 +200,11 @@ def run_session(verbose: bool = False):
         for output in outputs:
             if output["type"] == "text":
                 text_parts.append(output["content"])
-            elif output["type"] == "tool_call":
-                if session.verbose:
-                    console.print(f"  [dim]tool: {output['name']}({json.dumps(output['input'])})[/dim]")
-                    console.print(f"  [dim]→ {output['result']}[/dim]")
+            elif output["type"] == "tool_call" and session.verbose:
+                console.print(f"  [dim]tool: {output['name']}({json.dumps(output['input'])})[/dim]")
+                console.print(f"  [dim]→ {output['result'][:200]}...[/dim]" if len(output['result']) > 200 else f"  [dim]→ {output['result']}[/dim]")
+            elif output["type"] == "usage" and session.verbose:
+                console.print(f"  [dim]tokens: {output['input_tokens']} in / {output['output_tokens']} out[/dim]")
 
         # Render all text as one markdown block in a panel
         if text_parts:

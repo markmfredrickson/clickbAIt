@@ -2,6 +2,24 @@
 
 TOOLS = [
     {
+        "name": "lookup_song",
+        "description": (
+            "Look up a song across multiple sources in parallel: "
+            "Deezer (BPM, duration), Hooktheory (key, section names), "
+            "Genius (lyrics with section markers), MusicBrainz (metadata). "
+            "Use this FIRST when the user mentions a song, before setting metadata. "
+            "Returns combined results from all sources in one call."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Song title"},
+                "artist": {"type": "string", "description": "Artist name (improves accuracy)"},
+            },
+            "required": ["title"],
+        },
+    },
+    {
         "name": "set_song_metadata",
         "description": (
             "Set or update the song's basic metadata: title, artist, BPM, key, "
@@ -71,69 +89,6 @@ TOOLS = [
                 "lyrics": {"type": "string", "description": "Lyrics text for this section"},
             },
             "required": ["section_index", "lyrics"],
-        },
-    },
-    {
-        "name": "lookup_lyrics",
-        "description": (
-            "Search Genius for song lyrics. Returns lyrics text with section markers "
-            "like [Verse], [Chorus], etc. Use this when the user asks to find or add lyrics."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "description": "Song title"},
-                "artist": {"type": "string", "description": "Artist name (improves accuracy)"},
-            },
-            "required": ["title"],
-        },
-    },
-    {
-        "name": "lookup_song_info",
-        "description": (
-            "Search MusicBrainz for song metadata: canonical title, artist, album, "
-            "and duration. No API key needed. Use this to confirm song identity "
-            "and get accurate duration (useful for validating structure)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "description": "Song title"},
-                "artist": {"type": "string", "description": "Artist name"},
-            },
-            "required": ["title"],
-        },
-    },
-    {
-        "name": "lookup_bpm",
-        "description": (
-            "Search Deezer for a track's BPM (beats per minute). No API key needed. "
-            "Returns BPM, duration, and basic metadata. BPM is available for most "
-            "but not all tracks. Use this to get accurate BPM instead of guessing."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "description": "Song title"},
-                "artist": {"type": "string", "description": "Artist name"},
-            },
-            "required": ["title"],
-        },
-    },
-    {
-        "name": "lookup_key",
-        "description": (
-            "Look up a song's musical key and section names from Hooktheory TheoryTab. "
-            "No API key needed. Requires both title and artist. Coverage is ~72k songs. "
-            "Use this to get accurate key information instead of guessing."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "description": "Song title"},
-                "artist": {"type": "string", "description": "Artist name (required)"},
-            },
-            "required": ["title", "artist"],
         },
     },
 ]

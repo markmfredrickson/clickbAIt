@@ -3,7 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from clickbait.ai.session import ChatSession, handle_tool_call, _format_lyrics_result
+from clickbait.ai.session import ChatSession, handle_tool_call
+from clickbait.sources.lookup import format_lookup_results
 from clickbait.models import Section, Song
 
 
@@ -79,31 +80,27 @@ class TestHandleToolCall:
         result = handle_tool_call(self.song, "bogus_tool", {})
         assert "Unknown tool" in result
 
-    def test_lookup_lyrics_missing_token(self, monkeypatch):
-        monkeypatch.delenv("GENIUS_API_TOKEN", raising=False)
-        result = handle_tool_call(self.song, "lookup_lyrics", {"title": "Test"})
-        assert "GENIUS_API_TOKEN" in result
-
-
-class TestFormatLyricsResult:
-    def test_basic_format(self):
-        result = {
-            "title": "Test Song",
-            "artist": "Test Artist",
-            "lyrics": "[Verse]\nHello\n[Chorus]\nWorld",
-            "sections": [
-                {"name": "Verse", "lyrics": "Hello"},
-                {"name": "Chorus", "lyrics": "World"},
-            ],
+class TestFormatLookupResults:
+    def test_with_deezer_and_genius(self):
+        results = {
+            "deezer": {"title": "Test", "artist": "Artist", "bpm": 120.0, "duration_sec": 200},
+            "genius": {
+                "title": "Test",
+                "artist": "Artist",
+                "sections": [{"name": "Verse", "lyrics": "Hello"}],
+            },
+            "hooktheory": None,
+            "musicbrainz": None,
         }
-        formatted = _format_lyrics_result(result)
-        assert "Title: Test Song" in formatted
-        assert "Artist: Test Artist" in formatted
+        formatted = format_lookup_results(results)
+        assert "BPM: 120.0" in formatted
         assert "[Verse]" in formatted
         assert "Hello" in formatted
-        assert "[Chorus]" in formatted
-        assert "World" in formatted
-        assert "\\n" not in formatted
+
+    def test_all_none(self):
+        results = {"deezer": None, "genius": None, "hooktheory": None, "musicbrainz": None}
+        formatted = format_lookup_results(results)
+        assert "No results found" in formatted
 
 
 class TestHandleCommand:
@@ -145,6 +142,9 @@ class TestHandleCommand:
         assert result is None
 
 
+MOCK_USAGE = SimpleNamespace(input_tokens=100, output_tokens=50)
+
+
 def _make_text_block(text):
     return SimpleNamespace(type="text", text=text)
 
@@ -157,35 +157,36 @@ class TestProcessTurn:
     def test_text_only_response(self):
         mock_client = MagicMock()
         mock_client.messages.create.return_value = SimpleNamespace(
-            content=[_make_text_block("Hello! How can I help?")]
+            usage=MOCK_USAGE, content=[_make_text_block("Hello! How can I help?")]
         )
         session = ChatSession(client=mock_client)
         outputs = session.process_turn("hi")
-        assert len(outputs) == 1
-        assert outputs[0]["type"] == "text"
-        assert "Hello" in outputs[0]["content"]
+        text_outputs = [o for o in outputs if o["type"] == "text"]
+        assert len(text_outputs) == 1
+        assert "Hello" in text_outputs[0]["content"]
         assert len(session.messages) == 2  # user + assistant
 
     def test_tool_call_then_text(self):
         mock_client = MagicMock()
         # First response: tool call
         tool_response = SimpleNamespace(
-            content=[_make_tool_use_block("set_song_metadata", {"title": "Test Song"})]
+            usage=MOCK_USAGE, content=[_make_tool_use_block("set_song_metadata", {"title": "Test Song"})]
         )
         # Second response: text after tool result
         text_response = SimpleNamespace(
-            content=[_make_text_block("I've set the title to Test Song.")]
+            usage=MOCK_USAGE, content=[_make_text_block("I've set the title to Test Song.")]
         )
         mock_client.messages.create.side_effect = [tool_response, text_response]
 
         session = ChatSession(client=mock_client)
         outputs = session.process_turn("let's work on Test Song")
 
-        assert len(outputs) == 2
-        assert outputs[0]["type"] == "tool_call"
-        assert outputs[0]["name"] == "set_song_metadata"
-        assert "Test Song" in outputs[0]["result"]
-        assert outputs[1]["type"] == "text"
+        tool_outputs = [o for o in outputs if o["type"] == "tool_call"]
+        text_outputs = [o for o in outputs if o["type"] == "text"]
+        assert len(tool_outputs) == 1
+        assert tool_outputs[0]["name"] == "set_song_metadata"
+        assert "Test Song" in tool_outputs[0]["result"]
+        assert len(text_outputs) == 1
         assert session.song.title == "Test Song"
         # user + assistant(tool) + user(tool_result) + assistant(text)
         assert len(session.messages) == 4
@@ -194,7 +195,7 @@ class TestProcessTurn:
         mock_client = MagicMock()
         # Response with two tool calls
         tool_response = SimpleNamespace(
-            content=[
+            usage=MOCK_USAGE, content=[
                 _make_tool_use_block("set_song_metadata", {"title": "Test", "bpm": 120}, "tool-1"),
                 _make_tool_use_block("set_song_structure", {
                     "sections": [{"name": "Verse", "measures": 8}]
@@ -202,7 +203,7 @@ class TestProcessTurn:
             ]
         )
         text_response = SimpleNamespace(
-            content=[_make_text_block("All set!")]
+            usage=MOCK_USAGE, content=[_make_text_block("All set!")]
         )
         mock_client.messages.create.side_effect = [tool_response, text_response]
 
@@ -218,7 +219,7 @@ class TestProcessTurn:
     def test_messages_accumulate_across_turns(self):
         mock_client = MagicMock()
         mock_client.messages.create.return_value = SimpleNamespace(
-            content=[_make_text_block("Response")]
+            usage=MOCK_USAGE, content=[_make_text_block("Response")]
         )
         session = ChatSession(client=mock_client)
         session.process_turn("first message")

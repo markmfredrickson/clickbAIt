@@ -88,4 +88,20 @@ TOOLS = [
             "required": ["title"],
         },
     },
+    {
+        "name": "lookup_song_info",
+        "description": (
+            "Search MusicBrainz for song metadata: canonical title, artist, album, "
+            "and duration. No API key needed. Use this to confirm song identity "
+            "and get accurate duration (useful for validating structure)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Song title"},
+                "artist": {"type": "string", "description": "Artist name"},
+            },
+            "required": ["title"],
+        },
+    },
 ]

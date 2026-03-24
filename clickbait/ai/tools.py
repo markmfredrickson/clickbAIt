@@ -73,4 +73,19 @@ TOOLS = [
             "required": ["section_index", "lyrics"],
         },
     },
+    {
+        "name": "lookup_lyrics",
+        "description": (
+            "Search Genius for song lyrics. Returns lyrics text with section markers "
+            "like [Verse], [Chorus], etc. Use this when the user asks to find or add lyrics."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Song title"},
+                "artist": {"type": "string", "description": "Artist name (improves accuracy)"},
+            },
+            "required": ["title"],
+        },
+    },
 ]

@@ -12,8 +12,33 @@ AI-powered tools for creating click, cue, and backing tracks for cover bands.
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install -e ".[sources,dev]"
 ```
+
+### API Keys
+
+Create a `.env` file in the project root. Keys are loaded automatically at startup.
+Features degrade gracefully when optional keys are missing.
+
+#### Anthropic (required for AI chat)
+1. Go to https://console.anthropic.com/
+2. Create an account and add billing
+3. Go to API Keys → Create Key
+4. Add to `.env`:
+   ```
+   ANTHROPIC_API_KEY=your-key-here
+   ```
+
+#### Genius (lyrics lookup)
+1. Go to https://genius.com/api-clients
+2. Sign in or create a Genius account
+3. Click "New API Client"
+4. Fill in app name (e.g. "clickbAIt"), app website URL and redirect URI (can be `http://localhost`)
+5. After creating, click "Generate Access Token"
+6. Add to `.env`:
+   ```
+   GENIUS_API_TOKEN=your-token-here
+   ```
 
 ### API Keys
 

@@ -8,6 +8,7 @@ from rich.markdown import Markdown
 from clickbait.ai.prompts import load_system_prompt
 from clickbait.ai.tools import TOOLS
 from clickbait.models import Section, Song
+from clickbait.sources import genius
 
 console = Console()
 
@@ -34,6 +35,14 @@ def handle_tool_call(song: Song, name: str, args: dict) -> str:
             song.sections[idx].lyrics = args["lyrics"]
             return f"Set lyrics for section {idx} ({song.numbered_section_name(idx)})"
         return f"Error: section index {idx} out of range"
+
+    if name == "lookup_lyrics":
+        result = genius.search_lyrics(args["title"], args.get("artist"))
+        if result is None:
+            return "No lyrics found on Genius."
+        if "error" in result:
+            return result["error"]
+        return str(result)
 
     return f"Unknown tool: {name}"
 

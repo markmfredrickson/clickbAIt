@@ -7,8 +7,8 @@ from anthropic import Anthropic
 from prompt_toolkit import PromptSession
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.panel import Panel
 from rich.spinner import Spinner
-from rich.live import Live
 
 from clickbait.ai.prompts import load_system_prompt
 from clickbait.ai.tools import TOOLS
@@ -18,7 +18,7 @@ from clickbait.sources import genius
 console = Console()
 
 MUSIC_SPINNER = Spinner("dots", text="", style="dim")
-MUSIC_SPINNER.frames = ["♩", "♪", "♫", "♬", "♪", "♫"]
+MUSIC_SPINNER.frames = ["♩ ", "♪ ", "♫ ", "♬ "]
 
 
 def _format_lyrics_result(result: dict) -> str:
@@ -159,7 +159,6 @@ def run_session(verbose: bool = False):
 
     while True:
         try:
-            console.print()
             user_input = prompt_session.prompt("> ")
         except (EOFError, KeyboardInterrupt):
             console.print("\nBye!")
@@ -180,11 +179,20 @@ def run_session(verbose: bool = False):
                 console.print(f"  Unknown command: {user_input.strip()}. Type /help for commands.")
             continue
 
-        with Live(MUSIC_SPINNER, console=console, transient=True):
+        with console.status(MUSIC_SPINNER):
             outputs = session.process_turn(user_input)
+
+        # Collect text blocks and show tool calls if verbose
+        text_parts = []
         for output in outputs:
             if output["type"] == "text":
-                console.print(Markdown(output["content"]))
-            elif output["type"] == "tool_call" and session.verbose:
-                console.print(f"  [dim]tool: {output['name']}({json.dumps(output['input'])})[/dim]")
-                console.print(f"  [dim]→ {output['result']}[/dim]")
+                text_parts.append(output["content"])
+            elif output["type"] == "tool_call":
+                if session.verbose:
+                    console.print(f"  [dim]tool: {output['name']}({json.dumps(output['input'])})[/dim]")
+                    console.print(f"  [dim]→ {output['result']}[/dim]")
+
+        # Render all text as one markdown block in a panel
+        if text_parts:
+            combined = "\n\n".join(text_parts)
+            console.print(Panel(Markdown(combined), border_style="dim", padding=(1, 2)))

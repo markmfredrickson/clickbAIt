@@ -44,9 +44,12 @@ This project follows the **Last Will and Attestament** workflow for AI-generated
 
 **Test-Driven Development (TDD):** Write tests first, then implement. Every new module or feature should start with tests that define the expected behavior before writing the implementation code.
 
+**Human in the loop on tests:** Before writing tests, discuss the test plan with the user. The user should review and agree on what's being tested and why — don't just generate tests and run them. TDD is a thinking tool, not just a code generation pattern. The user's involvement in test design is what keeps the AI-assisted development deliberate rather than reactive.
+
 - `pytest` for testing: ``.venv/bin/pytest tests/ -v``
 - `ruff` for linting: ``.venv/bin/ruff check .``
 - Tests live in `tests/` mirroring the package structure
+- Coverage: ``.venv/bin/pytest tests/ --cov=clickbait --cov-report=term-missing``
 
 ## Prior Art
 

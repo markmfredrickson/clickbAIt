@@ -47,6 +47,9 @@ node_modules/
 examples/all_the_small_things/
 songs/
 
+# Rust
+target/
+
 # Build/working artifacts
 .cache
 clickbait-workspace/

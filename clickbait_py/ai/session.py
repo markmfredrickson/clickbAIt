@@ -10,10 +10,10 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.spinner import Spinner
 
-from clickbait.ai.prompts import load_system_prompt
-from clickbait.ai.tools import TOOLS
-from clickbait.models import Section, Song
-from clickbait.sources.lookup import lookup_song, format_lookup_results
+from clickbait_py.ai.prompts import load_system_prompt
+from clickbait_py.ai.tools import TOOLS
+from clickbait_py.models import Section, Song
+from clickbait_py.sources.lookup import lookup_song, format_lookup_results
 
 console = Console()
 

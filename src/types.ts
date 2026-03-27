@@ -1,28 +1,58 @@
+/** Duration expressed in beats or bars (bars resolved via time signature). */
+export type Duration = { beats: number } | { bars: number };
+
+/** An instantaneous event at a beat offset. */
 export interface Event {
-  at: number; // 1-indexed beat within the bar
+  kind: "event";
+  offset?: number;  // beats relative to parent; default 0; can be negative
   type: "chord" | "lyric" | "cue" | "marker";
-  value: string | string[];
+  value: string;
+  tag?: string;     // grouping label — could map to a track, person, instrument, whatever
 }
 
-export interface Bar {
-  beats?: number;         // beats in this bar; defaults to song.defaultBeats
-  repeat?: number;        // how many times this bar repeats; defaults to 1
-  bpmMultiplier?: number; // tempo relative to master BPM; defaults to 1.0
-  events?: Event[];
+/**
+ * A span of musical time. Contains a set of children (Events or nested Spans)
+ * with beat offsets relative to this Span's start.
+ *
+ * BPM and timeSignature are inherited from parent if not specified.
+ * Duration is derived from children if not explicit.
+ */
+export interface Span {
+  kind: "span";
+  name?: string;
+  offset?: number;            // beats relative to parent; default 0; can be negative
+  bpm?: number;
+  timeSignature?: [number, number];
+  duration?: Duration;
+  tag?: string;               // inherited by children unless overridden
+  children?: Node[];
 }
 
-export interface Section {
-  name: string;
-  bars: Bar[];
-  color?: number;    // REAPER region color; defaults to 1
-  endBeat?: number;  // explicit region end in beats from section start; defaults to sum of bar beats
+/**
+ * A Span whose children are placed end-to-end in list order.
+ * Child offsets are derived from sequential placement (explicit offset still allowed
+ * for children that need to break out, e.g. a cue at -4).
+ */
+export interface Sequence {
+  kind: "sequence";
+  name?: string;
+  offset?: number;
+  bpm?: number;
+  timeSignature?: [number, number];
+  duration?: Duration;
+  tag?: string;
+  children?: Node[];
 }
 
+/** Root of the tree. BPM and timeSignature are required (no parent to inherit from). */
 export interface Song {
+  kind: "song";
   title: string;
   artist?: string;
-  masterBpm: number;
-  defaultBeats?: number;  // default beats per bar; defaults to 4
-  leadInBars?: number;    // silent click-only bars before first section; defaults to 0
-  sections: Section[];
+  bpm: number;
+  timeSignature: [number, number];
+  children: Node[];
 }
+
+/** Any node in the tree. */
+export type Node = Event | Span | Sequence | Song;

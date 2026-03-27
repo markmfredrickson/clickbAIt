@@ -4,10 +4,14 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:skill": "node scripts/inject-dsongl-api.mjs"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "nodejs-whisper": "^0.2.9"
   }
 }

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from clickbait.models import Song
+from clickbait_py.models import Song
 
 
 def measures_to_seconds(measure: int, bpm: float, beats_per_measure: int = 4) -> float:

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from clickbait.models import Song
+from clickbait_py.models import Song
 
 
 def read_rpp(rpp_path: Path) -> Song:

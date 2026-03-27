@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from clickbait.sources.lookup import lookup_song, format_lookup_results
+from clickbait_py.sources.lookup import lookup_song, format_lookup_results
 
 
 def main():

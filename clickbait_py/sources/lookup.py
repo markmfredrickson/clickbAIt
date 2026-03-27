@@ -2,7 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from clickbait.sources import deezer, genius, hooktheory, musicbrainz
+from clickbait_py.sources import deezer, genius, hooktheory, musicbrainz
 
 
 def lookup_song(title: str, artist: str | None = None) -> dict:

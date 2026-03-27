@@ -1,13 +1,13 @@
 ---
 name: clickbait
-description: Build REAPER DAW projects with click tracks, vocal cues, and backing tracks for cover bands. Looks up BPM, key, lyrics, and song structure from multiple sources, then helps design the project.
+description: Build REAPER DAW projects with click tracks, vocal cues, and backing tracks for cover bands. Looks up BPM, key, lyrics, and song structure from multiple sources, then helps design the project. Use this skill whenever the user mentions building click tracks, cue tracks, backing tracks, song charts, or wants to set up a song for their band, even if they don't explicitly say "clickbait."
 argument-hint: <song-title> [artist]
-allowed-tools: Bash(.venv/bin/python3 *), Read, Write, Glob
+allowed-tools: Bash(.venv/bin/python3 *), Bash(npm run build:skill), Read, Write, Glob
 ---
 
 # clickbAIt — Song Project Builder
 
-Help the user build a click/cue/backing track project for a song.
+Help the user build a click/cue/backing track project for a song. This is a conversation — you're a musical collaborator helping a musician think through their song, not a tool running a pipeline.
 
 ## Arguments
 
@@ -18,7 +18,7 @@ The user provides a song title and optionally an artist: `$ARGUMENTS`
 Run the batch lookup to get BPM, key, lyrics, and metadata from all sources at once:
 
 ```bash
-.venv/bin/python3 -m clickbait.lookup_cli $ARGUMENTS
+.venv/bin/python3 -m clickbait_py.lookup_cli $ARGUMENTS
 ```
 
 This searches Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel.
@@ -35,33 +35,86 @@ If BPM or key data is missing from the sources, use your musical knowledge but f
 
 Ask the user to confirm or adjust before proceeding.
 
-## Step 3: Design the structure
+## DS(ong)L API Reference
 
-Work with the user to define:
-- Section names and order (Intro, Verse, Chorus, Bridge, etc.)
-- Measure counts for each section
-- Verify total duration matches the known song length
+<!-- DSONGL-API-START -->
+### Types
 
-Write the song definition to a JSON file at `songs/<artist-slug>/<song-slug>.json` using this format:
+```typescript
+export type Duration = { beats: number } | { bars: number };
 
-```json
-{
-  "title": "Song Title",
-  "artist": "Artist Name",
-  "bpm": 120.0,
-  "key": "E minor",
-  "time_signature": [4, 4],
-  "sections": [
-    {"name": "Intro", "measures": 4, "lyrics": null},
-    {"name": "Verse", "measures": 16, "lyrics": "First verse lyrics..."},
-    {"name": "Chorus", "measures": 8, "lyrics": "Chorus lyrics..."}
-  ]
+export interface Event {
+  kind: "event";
+  offset?: number;  // beats relative to parent; default 0; can be negative
+  type: "chord" | "lyric" | "cue" | "marker";
+  value: string;
+  tag?: string;     // grouping label — could map to a track, person, instrument, whatever
 }
+
+export interface Span {
+  kind: "span";
+  name?: string;
+  offset?: number;            // beats relative to parent; default 0; can be negative
+  bpm?: number;
+  timeSignature?: [number, number];
+  duration?: Duration;
+  tag?: string;               // inherited by children unless overridden
+  children?: Node[];
+}
+
+export interface Sequence {
+  kind: "sequence";
+  name?: string;
+  offset?: number;
+  bpm?: number;
+  timeSignature?: [number, number];
+  duration?: Duration;
+  tag?: string;
+  children?: Node[];
+}
+
+export interface Song {
+  kind: "song";
+  title: string;
+  artist?: string;
+  bpm: number;
+  timeSignature: [number, number];
+  children: Node[];
+}
+
+export type Node = Event | Span | Sequence | Song;
 ```
 
-## Step 4: Attach lyrics
+### Builder functions (from `dsongl.ts`)
 
-Map the lyrics from Genius to the song sections. Store them in the JSON.
+```typescript
+export function bars(n: number): Duration;
+export function beats(n: number): Duration;
+export function cue(value: string, offset?: number, tag?: string): Event;
+export function chord(value: string, offset?: number, tag?: string): Event;
+export function lyric(value: string, offset?: number, tag?: string): Event;
+export function marker(value: string, offset?: number, tag?: string): Event;
+export function span(name: string, duration: Duration, children?: Node[]): Span;
+export function span(name: string, duration: Duration, opts: SpanOptions, children?: Node[]): Span;
+export function span(name: string, duration: Duration, third?: Node[] | SpanOptions, fourth?: Node[]): Span;
+export function seq(...children: Node[]): Sequence;
+export function song(title: string, bpm: number, ...children: Node[]): Song;
+```
+<!-- DSONGL-API-END -->
+
+## Step 3: Write the DS(ong)L file
+
+Once the user confirms the structure, write the song as a TypeScript file at `songs/<artist-slug>/<song-slug>.ts` using the DS(ong)L API above.
+
+In this step, do all of the following together as one output:
+- Define the section structure (Intro, Verse, Chorus, Bridge, etc.) as a sequence of spans
+- Set measure counts for each section
+- Place `cue()` events with negative offsets for section transitions (e.g. `cue("Chorus", -4)`)
+- Map lyrics from Genius into `lyric()` events at appropriate beat offsets within sections, typically one per bar or per phrase, tagged with the vocalist role (e.g. "Lead Vocal")
+- Place `chord()` events where chord changes are known
+- Handle any tempo or time signature changes with span options
+
+The goal is a complete, reviewable dsongl file in one shot. The user will read the code and tell you what to adjust.
 
 ## Lyrics policy
 
@@ -69,6 +122,6 @@ This tool helps musicians build practice materials for their own use. Freely fet
 
 ## What NOT to do yet
 
-- RPP generation is not yet implemented — just build the song JSON
+- RPP generation from the new model is not yet implemented — just build the dsongl file
 - TTS cue generation is not yet implemented
 - Don't try to generate audio files

@@ -56,3 +56,14 @@ export interface Song {
 
 /** Any node in the tree. */
 export type Node = Event | Span | Sequence | Song;
+
+/** A single word with timing (milliseconds) and optional confidence (0–1). */
+export interface Word {
+  text: string;
+  startMs: number;
+  endMs: number;
+  confidence?: number;
+}
+
+/** A group of words that belong together as a lyric line. */
+export type Phrase = Word[];

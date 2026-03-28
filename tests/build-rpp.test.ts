@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildRpp } from "../src/build-rpp.js";
+import { linearize } from "../src/linearize.js";
 import { song, seq, span, bars, cue, marker } from "../src/dsongl.js";
 
 const defaultOpts = {
@@ -48,19 +49,17 @@ describe("buildRpp", () => {
     expect(rpp).toContain("MARKER");
   });
 
-  it("creates Cues track with items 2 bars before sections", () => {
+  it("places DSL cue events as audio items", () => {
     const s = song("Test", 120,
       seq(
         span("Intro", bars(4)),  // 16 beats
-        span("Verse", bars(4)),  // starts beat 16
-        span("Chorus", bars(4)), // starts beat 32
+        span("Verse", bars(4), [cue("Verse", -8)]),  // cue 2 bars before
+        span("Chorus", bars(4), [cue("Chorus", -8)]), // cue 2 bars before
       ),
     );
     const { rpp } = buildRpp(s, defaultOpts);
     expect(rpp).toContain('"Cues & Counts"');
-    // Cue for Verse at beat 8 (16 - 2*4), at 120bpm = 4 seconds
     expect(rpp).toContain("/tmp/cues/verse.wav");
-    // Cue for Chorus at beat 24 (32 - 2*4), at 120bpm = 12 seconds
     expect(rpp).toContain("/tmp/cues/chorus.wav");
   });
 
@@ -92,18 +91,17 @@ describe("buildRpp", () => {
     expect(rpp).toContain("/tmp/counts/5.wav");
   });
 
-  it("reports unique cue WAVs needed", () => {
+  it("reports unique cue WAVs needed from DSL cue events", () => {
     const s = song("Test", 120,
       seq(
-        span("Intro", bars(2)),
-        span("Verse", bars(4)),
-        span("Chorus", bars(4)),
-        span("Verse", bars(4)),  // repeat
-        span("Chorus", bars(4)), // repeat
+        span("Intro", bars(4)),
+        span("Verse", bars(4), [cue("Verse", -4)]),
+        span("Chorus", bars(4), [cue("Chorus", -4)]),
+        span("Verse", bars(4), [cue("Verse", -4)]),   // repeat
+        span("Chorus", bars(4), [cue("Chorus", -4)]),  // repeat
       ),
     );
     const { cueWavsNeeded } = buildRpp(s, defaultOpts);
-    // Intro skipped (cue would go before beat 0), so only Verse and Chorus
     expect(cueWavsNeeded.sort()).toEqual(["Chorus", "Verse"]);
   });
 
@@ -118,6 +116,28 @@ describe("buildRpp", () => {
     // Should still have tracks but no items for Intro
     expect(rpp).toContain('"Cues & Counts"');
     expect(rpp).not.toContain("/tmp/cues/intro.wav");
+  });
+
+  it("cue with negative offset on first section pads and appears in RPP", () => {
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(4), [cue("Title", -12), cue("Intro", -4), marker("start", 0)]),
+        span("Verse", bars(4), [cue("Verse", -4)]),
+      ),
+    );
+    const { rpp, cueWavsNeeded } = buildRpp(s, defaultOpts);
+    expect(cueWavsNeeded).toContain("Title");
+    expect(cueWavsNeeded).toContain("Intro");
+    expect(rpp).toContain("/tmp/cues/title.wav");
+    expect(rpp).toContain("/tmp/cues/intro.wav");
+    // Verify they're at different seconds by checking linearize directly
+    const events = linearize(s);
+    const titleCue = events.find(e => e.type === "cue" && e.value === "Title")!;
+    const introCue = events.find(e => e.type === "cue" && e.value === "Intro")!;
+    expect(titleCue.beat).toBe(0);
+    expect(introCue.beat).toBe(8);
+    expect(titleCue.seconds).toBe(0);
+    expect(introCue.seconds).toBeGreaterThan(0);
   });
 
   it("includes click track with SOURCE CLICK", () => {

@@ -48,32 +48,23 @@ function generateWav(text: string, wavPath: string): void {
   execSync(`${audioBin} speak "${text}" -o "${wavPath}"`, { stdio: "pipe" });
 }
 
-// Announce WAVs: title, then key
-console.log(`\nGenerating announce WAVs...`);
-generateWav(song.title, resolve(cueDir, "announce-title.wav"));
-if (song.key) {
-  generateWav(`in ${song.key}`, resolve(cueDir, "announce-key.wav"));
-}
-
-// Extract sections and generate cue WAVs
-const sections = extractSections(song);
-const uniqueNames = [...new Set(sections.map(s => s.name))];
-
-console.log(`\nSections: ${sections.map(s => s.name).join(" → ")}`);
-console.log(`\nGenerating ${uniqueNames.length} cue WAVs...`);
-
-for (const name of uniqueNames) {
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
-  generateWav(name, resolve(cueDir, `${slug}.wav`));
-}
-
-// Build RPP
+// Build RPP first to discover what cue WAVs are needed
 console.log(`\nBuilding RPP...`);
-const { rpp } = buildRpp(song, {
+const { rpp, cueWavsNeeded } = buildRpp(song, {
   cueDir,
   countDir,
   clickDir,
 });
+
+// Generate cue WAVs for each unique cue value
+const sections = extractSections(song);
+console.log(`\nSections: ${sections.map(s => s.name).join(" → ")}`);
+console.log(`\nGenerating ${cueWavsNeeded.length} cue WAVs...`);
+
+for (const name of cueWavsNeeded) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+  generateWav(name, resolve(cueDir, `${slug}.wav`));
+}
 
 const rppPath = resolve(outDir, `${song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.rpp`);
 writeFileSync(rppPath, rpp);

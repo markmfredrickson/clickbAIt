@@ -187,6 +187,25 @@ describe("linearize", () => {
     expect(markers[0].beat).toBe(4);
   });
 
+  it("negative offset on first span in sequence pads and shifts all sections", () => {
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(4), [cue("Intro", -8), marker("intro start", 0)]),
+        span("Verse", bars(4), [cue("Verse", -4), marker("verse start", 0)]),
+      ),
+    );
+    const events = linearize(s);
+    const cues = ofType(events, "cue");
+    const markers = ofType(events, "marker");
+    // Intro at beat 0, cue at -8 → pad 2 bars (8 beats in 4/4)
+    // After padding: cue "Intro" at beat 0, intro start at beat 8, verse start at beat 24
+    expect(cues.find((e) => e.value === "Intro")?.beat).toBe(0);
+    expect(markers.find((e) => e.value === "intro start")?.beat).toBe(8);
+    expect(markers.find((e) => e.value === "verse start")?.beat).toBe(24);
+    // Verse cue at -4 relative to verse start (beat 24) = beat 20, no extra padding needed
+    expect(cues.find((e) => e.value === "Verse")?.beat).toBe(20);
+  });
+
   it("tag inheritance — span tag flows to events, child tag wins", () => {
     const s = song("Test", 120,
       span("A", bars(1), { tag: "drums" }, [

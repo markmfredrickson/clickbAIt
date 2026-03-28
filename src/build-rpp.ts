@@ -10,7 +10,7 @@
 
 import { readFileSync } from "fs";
 import type { Song } from "./types.js";
-import { linearize, type LinearEvent } from "./linearize.js";
+import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.js";
 import { extractSections, type Section } from "./sections.js";
 
 export interface AudioItem {
@@ -21,9 +21,7 @@ export interface AudioItem {
 
 export interface RppProject {
   rpp: string;
-  cueWavsNeeded: string[];  // unique section names that need TTS
-  titleText: string;        // spoken at position 0
-  keyText?: string;         // spoken after title pause
+  cueWavsNeeded: string[];  // unique cue values that need TTS WAVs
 }
 
 /** Read WAV duration in seconds from file header. Returns fallback if file can't be read. */
@@ -107,8 +105,10 @@ export interface BuildOptions {
 }
 
 export function buildRpp(song: Song, opts: BuildOptions): RppProject {
-  const events = linearize(song);
-  const sections = extractSections(song);
+  const { events, paddingBeats } = linearize(song, { withPadding: true });
+  const rawSections = extractSections(song);
+  // Apply the same padding shift to sections
+  const sections = rawSections.map(s => ({ ...s, beat: s.beat + paddingBeats }));
 
   // Build tempo map from events
   const tempoMap: { beat: number; bpm: number }[] = [];
@@ -177,47 +177,36 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   const trackItems: AudioItem[] = [];
   const cueNames = new Set<string>();
 
-  // Song announcement at position 0: title, then key
-  const titleFile = `${opts.cueDir}/announce-title.wav`;
-  const titleLen = wavDuration(titleFile, 1.5);
-  trackItems.push({ position: 0, length: titleLen, file: titleFile });
 
-  if (song.key) {
-    const keyFile = `${opts.cueDir}/announce-key.wav`;
-    const keyPosition = titleLen + 0.3; // brief pause after title
-    trackItems.push({ position: keyPosition, length: wavDuration(keyFile, 1.5), file: keyFile });
-  }
-
-  for (const sec of sections) {
-    const beatsPerBar = sec.timeSignature[0];
-
-    // Cue: 2 bars before section
-    const cueBeat = sec.beat - (beatsPerBar * 2);
-    if (cueBeat >= 0) {
-      const cueSec = beatToSeconds(cueBeat, tempoMap);
-      const slug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+  // Cues: use linearized cue events (already padded)
+  for (const e of events) {
+    if (e.type === "cue") {
+      const slug = e.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
       const file = `${opts.cueDir}/${slug}.wav`;
-      cueNames.add(sec.name);
+      cueNames.add(e.value);
       trackItems.push({
-        position: cueSec,
+        position: e.seconds,
         length: wavDuration(file, cueFallback),
         file,
       });
     }
+  }
 
-    // Count: 1 bar before section
+  // Counts: 1 bar before each section (sections already padded)
+  for (const sec of sections) {
+    const beatsPerBar = sec.timeSignature[0];
     const barStartBeat = sec.beat - beatsPerBar;
-    if (barStartBeat >= 0) {
-      for (let i = 0; i < beatsPerBar; i++) {
-        const beatPos = barStartBeat + i;
-        const beatSec = beatToSeconds(beatPos, tempoMap);
-        const file = `${opts.countDir}/${i + 1}.wav`;
-        trackItems.push({
-          position: beatSec,
-          length: wavDuration(file, countFallback),
-          file,
-        });
-      }
+    if (barStartBeat < 0) continue;
+
+    for (let i = 0; i < beatsPerBar; i++) {
+      const beatPos = barStartBeat + i;
+      const beatSec = beatToSeconds(beatPos, tempoMap);
+      const file = `${opts.countDir}/${i + 1}.wav`;
+      trackItems.push({
+        position: beatSec,
+        length: wavDuration(file, countFallback),
+        file,
+      });
     }
   }
 
@@ -284,8 +273,6 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   return {
     rpp: rppLines.join("\n"),
     cueWavsNeeded: [...cueNames],
-    titleText: song.title,
-    keyText: song.key ? `in ${song.key}` : undefined,
   };
 }
 

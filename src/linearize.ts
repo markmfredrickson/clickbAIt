@@ -164,7 +164,15 @@ function computePadding(events: LinearEvent[], ts: [number, number]): number {
   return barsNeeded * beatsPerBar;
 }
 
-export function linearize(root: Song): LinearEvent[] {
+export interface LinearizeResult {
+  events: LinearEvent[];
+  /** Number of beats added at the start to accommodate negative offsets. */
+  paddingBeats: number;
+}
+
+export function linearize(root: Song): LinearEvent[];
+export function linearize(root: Song, opts: { withPadding: true }): LinearizeResult;
+export function linearize(root: Song, opts?: { withPadding: true }): LinearEvent[] | LinearizeResult {
   const events: LinearEvent[] = [];
   walk(root, { beatOffset: 0, bpm: root.bpm, timeSignature: root.timeSignature }, events);
 
@@ -174,6 +182,9 @@ export function linearize(root: Song): LinearEvent[] {
     for (const e of events) {
       e.beat += shift;
     }
+    // Ensure tempo and timesig events exist at beat 0 so the padded region has valid timing
+    events.push({ beat: 0, seconds: 0, type: "tempo", value: String(root.bpm) });
+    events.push({ beat: 0, seconds: 0, type: "timesig", value: `${root.timeSignature[0]}/${root.timeSignature[1]}` });
   }
 
   // Deduplicate tempo/timesig restore events that match the initial state
@@ -181,6 +192,10 @@ export function linearize(root: Song): LinearEvent[] {
   dedupeMetaEvents(events);
 
   assignSeconds(events);
+
+  if (opts?.withPadding) {
+    return { events, paddingBeats: shift };
+  }
   return events;
 }
 

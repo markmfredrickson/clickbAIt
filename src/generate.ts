@@ -19,13 +19,15 @@ if (!songPath) {
 
 const outDir = process.argv[3] ?? "/tmp/clickbait-output";
 const cueDir = resolve(outDir, "cues");
-const countDir = resolve(dirname(new URL(import.meta.url).pathname), "..", "assets", "counts");
+const assetsDir = resolve(dirname(new URL(import.meta.url).pathname), "..", "assets");
+const countDir = resolve(assetsDir, "counts");
+const clickDir = resolve(assetsDir, "clicks");
 
 // Load the song module
 const songModule = await import(resolve(songPath));
 const song: Song = songModule.default;
 
-console.log(`Song: ${song.title} (${song.bpm} BPM, ${song.timeSignature.join("/")})`);
+console.log(`Song: ${song.title} (${song.bpm} BPM, ${song.timeSignature.join("/")}${song.key ? `, ${song.key}` : ""})`);
 
 // Ensure output dirs exist
 mkdirSync(cueDir, { recursive: true });
@@ -37,6 +39,22 @@ if (!existsSync(audioBin)) {
   process.exit(1);
 }
 
+function generateWav(text: string, wavPath: string): void {
+  if (existsSync(wavPath)) {
+    console.log(`  "${text}" → ${wavPath.split("/").pop()} (cached)`);
+    return;
+  }
+  console.log(`  "${text}" → ${wavPath.split("/").pop()}`);
+  execSync(`${audioBin} speak "${text}" -o "${wavPath}"`, { stdio: "pipe" });
+}
+
+// Announce WAVs: title, then key
+console.log(`\nGenerating announce WAVs...`);
+generateWav(song.title, resolve(cueDir, "announce-title.wav"));
+if (song.key) {
+  generateWav(`in ${song.key}`, resolve(cueDir, "announce-key.wav"));
+}
+
 // Extract sections and generate cue WAVs
 const sections = extractSections(song);
 const uniqueNames = [...new Set(sections.map(s => s.name))];
@@ -46,22 +64,15 @@ console.log(`\nGenerating ${uniqueNames.length} cue WAVs...`);
 
 for (const name of uniqueNames) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
-  const wavPath = resolve(cueDir, `${slug}.wav`);
-  if (existsSync(wavPath)) {
-    console.log(`  ${name} → ${slug}.wav (cached)`);
-    continue;
-  }
-  console.log(`  ${name} → ${slug}.wav`);
-  execSync(`${audioBin} speak "${name}" -o "${wavPath}"`, { stdio: "pipe" });
+  generateWav(name, resolve(cueDir, `${slug}.wav`));
 }
 
 // Build RPP
 console.log(`\nBuilding RPP...`);
-const { rpp, cueWavsNeeded } = buildRpp(song, {
+const { rpp } = buildRpp(song, {
   cueDir,
   countDir,
-  cueDuration: 0.8,
-  countDuration: 0.4,
+  clickDir,
 });
 
 const rppPath = resolve(outDir, `${song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.rpp`);

@@ -22,6 +22,8 @@ export interface AudioItem {
 export interface RppProject {
   rpp: string;
   cueWavsNeeded: string[];  // unique section names that need TTS
+  titleText: string;        // spoken at position 0
+  keyText?: string;         // spoken after title pause
 }
 
 /** Read WAV duration in seconds from file header. Returns fallback if file can't be read. */
@@ -96,6 +98,8 @@ export interface BuildOptions {
   cueDir: string;
   /** Directory containing count WAVs named `1.wav`, `2.wav`, etc. */
   countDir: string;
+  /** Directory containing click samples: accent.wav, beat.wav */
+  clickDir: string;
   /** Fallback duration of a cue WAV in seconds if file can't be read (default 0.8) */
   cueDuration?: number;
   /** Fallback duration of a count WAV in seconds if file can't be read (default 0.4) */
@@ -172,6 +176,17 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   const countFallback = opts.countDuration ?? 0.4;
   const trackItems: AudioItem[] = [];
   const cueNames = new Set<string>();
+
+  // Song announcement at position 0: title, then key
+  const titleFile = `${opts.cueDir}/announce-title.wav`;
+  const titleLen = wavDuration(titleFile, 1.5);
+  trackItems.push({ position: 0, length: titleLen, file: titleFile });
+
+  if (song.key) {
+    const keyFile = `${opts.cueDir}/announce-key.wav`;
+    const keyPosition = titleLen + 0.3; // brief pause after title
+    trackItems.push({ position: keyPosition, length: wavDuration(keyFile, 1.5), file: keyFile });
+  }
 
   for (const sec of sections) {
     const beatsPerBar = sec.timeSignature[0];
@@ -255,31 +270,107 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     rppLines.push(`  ${line}`);
   }
 
+  // Click track (SOURCE CLICK — follows tempo map automatically)
+  const clickItemContent = buildClickItem(song, sections, tempoMap, opts);
+  rppLines.push(buildTrack("Click", 1, clickItemContent, {
+    beat: -1, playoffs: "0 1", nchan: 2, mainsend: "1 0",
+  }));
+
   // Cues & Counts track
-  rppLines.push(buildTrack("Cues & Counts", trackItems, 0.8));
+  rppLines.push(buildTrack("Cues & Counts", 0.8, buildWaveItems(trackItems)));
 
   rppLines.push(`>`);
 
   return {
     rpp: rppLines.join("\n"),
     cueWavsNeeded: [...cueNames],
+    titleText: song.title,
+    keyText: song.key ? `in ${song.key}` : undefined,
   };
 }
 
-function buildTrack(name: string, items: AudioItem[], volume: number): string {
+function buildClickItem(
+  song: Song,
+  sections: Section[],
+  tempoMap: { beat: number; bpm: number }[],
+  opts: BuildOptions,
+): string {
+  const masterTs = song.timeSignature;
+  const masterBpm = tempoMap[0]?.bpm ?? song.bpm;
+
+  const lastSection = sections[sections.length - 1];
+  const totalSeconds = lastSection
+    ? beatToSeconds(lastSection.beat + lastSection.durationBeats, tempoMap)
+    : 0;
+
+  const accentFile = `${opts.clickDir}/accent.wav`;
+  const beatFile = `${opts.clickDir}/beat.wav`;
+
+  const lines: string[] = [];
+  lines.push(`    <ITEM`);
+  lines.push(`      POSITION 0`);
+  lines.push(`      SNAPOFFS 0`);
+  lines.push(`      LENGTH ${fmt(totalSeconds)}`);
+  lines.push(`      LOOP 1`);
+  lines.push(`      ALLTAKES 0`);
+  lines.push(`      FADEIN 1 0 0 1 0 0 0`);
+  lines.push(`      FADEOUT 1 0 0 1 0 0 0`);
+  lines.push(`      MUTE 0 0`);
+  lines.push(`      NAME "Click source"`);
+  lines.push(`      VOLPAN 1 0 1 -1`);
+  lines.push(`      SOFFS 0`);
+  lines.push(`      PLAYRATE 1 1 0 -1 0 0.0025`);
+  lines.push(`      CHANMODE 0`);
+  lines.push(`      GUID ${newGuid()}`);
+  lines.push(`      <SOURCE CLICK`);
+  lines.push(`        AUTO 1 0`);
+  lines.push(`        BPM ${fmt(masterBpm)}`);
+  lines.push(`        BPI ${masterTs[0]} ${masterTs[1]}`);
+  lines.push(`        VOL 0.5 0.25`);
+  lines.push(`        BEATLEN 4`);
+  lines.push(`        FREQ 1760 880 1`);
+  lines.push(`        SAMPLES ${rppStr(accentFile)} ${rppStr(beatFile)} "" ""`);
+  lines.push(`        SPLIGNORE 0 0`);
+  lines.push(`        SPLDEF 2 660 "" 0 ""`);
+  lines.push(`        SPLDEF 3 440 "" 0 ""`);
+  lines.push(`        PATTERN 0 ${patternNum(masterTs[0])}`);
+  lines.push(`        PATTERNSTR ${patternStr(masterTs[0])}`);
+  lines.push(`        MULT 1`);
+  lines.push(`      >`);
+  lines.push(`    >`);
+  return lines.join("\n");
+}
+
+interface TrackOptions {
+  beat?: number;
+  playoffs?: string;
+  nchan?: number;
+  mainsend?: string;
+}
+
+function buildTrack(name: string, volume: number, itemContent: string, trackOpts?: TrackOptions): string {
   const lines: string[] = [];
   lines.push(`  <TRACK ${newGuid()}`);
   lines.push(`    NAME ${rppStr(name)}`);
+  if (trackOpts?.beat !== undefined) lines.push(`    BEAT ${trackOpts.beat}`);
   lines.push(`    VOLPAN ${fmt(volume)} 0 -1 -1 1`);
   lines.push(`    MUTESOLO 0 0 0`);
   lines.push(`    IPHASE 0`);
+  if (trackOpts?.playoffs) lines.push(`    PLAYOFFS ${trackOpts.playoffs}`);
   lines.push(`    ISBUS 0 0`);
   lines.push(`    BUSCOMP 0 0 0 0 0`);
   lines.push(`    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0`);
-  lines.push(`    FREEMODE 0`);
   lines.push(`    REC 0 0 1 0 0 0 0 0`);
+  if (trackOpts?.nchan) lines.push(`    NCHAN ${trackOpts.nchan}`);
   lines.push(`    TRACKID ${newGuid()}`);
+  if (trackOpts?.mainsend) lines.push(`    MAINSEND ${trackOpts.mainsend}`);
+  lines.push(itemContent);
+  lines.push(`  >`);
+  return lines.join("\n");
+}
 
+function buildWaveItems(items: AudioItem[]): string {
+  const lines: string[] = [];
   for (const item of items) {
     lines.push(`    <ITEM`);
     lines.push(`      POSITION ${fmtPos(item.position)}`);
@@ -297,7 +388,5 @@ function buildTrack(name: string, items: AudioItem[], volume: number): string {
     lines.push(`      >`);
     lines.push(`    >`);
   }
-
-  lines.push(`  >`);
   return lines.join("\n");
 }

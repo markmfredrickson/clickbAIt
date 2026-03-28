@@ -5,6 +5,7 @@ import { song, seq, span, bars, cue, marker } from "../src/dsongl.js";
 const defaultOpts = {
   cueDir: "/tmp/cues",
   countDir: "/tmp/counts",
+  clickDir: "/tmp/clicks",
   cueDuration: 0.8,
   countDuration: 0.4,
 };
@@ -117,6 +118,21 @@ describe("buildRpp", () => {
     // Should still have tracks but no items for Intro
     expect(rpp).toContain('"Cues & Counts"');
     expect(rpp).not.toContain("/tmp/cues/intro.wav");
+  });
+
+  it("includes click track with SOURCE CLICK", () => {
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(4)),
+        span("Verse", bars(4)),
+      ),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).toContain("NAME Click");
+    expect(rpp).toContain("<SOURCE CLICK");
+    expect(rpp).toContain("AUTO 1 0");
+    expect(rpp).toContain("/tmp/clicks/accent.wav");
+    expect(rpp).toContain("/tmp/clicks/beat.wav");
   });
 
   it("works with Bohemian Rhapsody eval output", async () => {

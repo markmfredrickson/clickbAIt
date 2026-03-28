@@ -24,3 +24,9 @@ anyhow = "1"
 # Text-to-speech (spoken cues)
 piper-rs = { git = "https://github.com/thewh1teagle/piper-rs", rev = "6715e32" }
 hound = "3"
+
+# Song lookup (HTTP APIs)
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+scraper = "0.22"
+dotenvy = "0.15"

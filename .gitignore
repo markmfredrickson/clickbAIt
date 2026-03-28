@@ -32,6 +32,7 @@ Thumbs.db
 
 # Local working notes (not for repo)
 local/
+notes/
 
 # Coverage
 .coverage

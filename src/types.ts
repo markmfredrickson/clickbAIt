@@ -49,6 +49,7 @@ export interface Song {
   kind: "song";
   title: string;
   artist?: string;
+  key?: string;
   bpm: number;
   timeSignature: [number, number];
   children: Node[];

@@ -54,6 +54,7 @@ export function seq(...children: Node[]): Sequence {
 interface SongOptions {
   timeSignature?: [number, number];
   artist?: string;
+  key?: string;
 }
 
 export function song(title: string, bpm: number, ...children: Node[]): Song;
@@ -67,6 +68,7 @@ export function song(title: string, bpm: number, ...args: (Node | SongOptions)[]
     kind: "song",
     title,
     ...opts.artist !== undefined && { artist: opts.artist },
+    ...opts.key !== undefined && { key: opts.key },
     bpm,
     timeSignature: opts.timeSignature ?? [4, 4],
     children,

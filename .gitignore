@@ -29,6 +29,7 @@ Thumbs.db
 
 # REAPER working files
 *.reapeaks
+**/Backups/
 
 # Local working notes (not for repo)
 local/

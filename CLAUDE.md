@@ -4,14 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**clickbAIt** — AI-powered tools for creating click, cue, and backing tracks for cover bands.
-
-The tool automates the workflow of producing DAW projects containing:
+**clickbAIt** uses an AI-driven interface, audio processing, and a web-based lyrics display to create **show tracks** for cover bands:
 - **Click tracks** for timekeeping
-- **Vocal cues** signaling section changes (verse, chorus, bridge, etc.)
-- **Backing tracks** for practice or filling missing parts during performance
-
-The traditional manual process involves: finding BPM, mapping song structure by ear, creating a DAW project, generating cue audio, importing/time-aligning backing tracks (possibly from stem-split sources), and exporting for band use.
+- **Spoken section cues** and count-ins ("Verse 2... 1, 2, 3, 4")
+- **Backing tracks** from stems, aligned to the click
+- **Live lyrics teleprompter** synced to REAPER via OSC
 
 ## Technical Direction
 

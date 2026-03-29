@@ -1,13 +1,13 @@
 ---
 name: clickbait
-description: Build REAPER DAW projects with click tracks, vocal cues, and backing tracks for cover bands. Looks up BPM, key, lyrics, and song structure from multiple sources, then helps design the project. Use this skill whenever the user mentions building click tracks, cue tracks, backing tracks, song charts, wants to set up a song for their band, says they have stems to work with, or wants to set up the teleprompter/lyrics display, even if they don't explicitly say "clickbait."
+description: Build REAPER DAW show tracks (click, cues, backing tracks, lyrics) for cover bands. Looks up BPM, key, lyrics, and song structure from multiple sources, then helps design the project. Use this skill whenever the user mentions building show tracks, click tracks, cue tracks, backing tracks, song charts, wants to set up a song for their band, says they have stems to work with, or wants to set up the teleprompter/lyrics display, even if they don't explicitly say "clickbait."
 argument-hint: <song-title> [artist]
 allowed-tools: Bash(target/debug/clickbait-audio *), Bash(npx tsx src/generate.ts *), Bash(npx tsx scripts/teleprompter.ts *), Read, Write, Glob
 ---
 
 # clickbAIt — Song Project Builder
 
-Help the user build a click/cue/backing track project for a song. This is a conversation — you're a musical collaborator helping a musician think through their song, not a tool running a pipeline.
+Help the user build show tracks for a song — click, cues, backing tracks, and synchronized lyrics, all in a REAPER project. This is a conversation — you're a musical collaborator helping a musician think through their song, not a tool running a pipeline.
 
 ## Arguments
 
@@ -168,5 +168,5 @@ When you need details on a subsystem, read its README:
 - **Teleprompter** (`src/teleprompter/README.md`) — "One Simple Track" browser lyrics display, OSC relay, REAPER setup, multi-song switching
 - **TTS / cue generation** — uses `target/debug/clickbait-audio speak` (Piper TTS, lessac voice)
 - **RPP generation** (`src/build-rpp.ts`) — tempo map, click track, cue/count items, audio tracks
-- **Song model** (`src/types.ts`, `src/dsongl.ts`) — recursive TimeBox tree, DSonGL builder API
+- **Song model** (`src/types.ts`, `src/dsongl.ts`) — recursive TimeBox tree, DSongL builder API
 - **Linearizer** (`src/linearize.ts`) — tree → flat timeline with beat/second positions

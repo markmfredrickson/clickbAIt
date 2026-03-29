@@ -1,6 +1,6 @@
 # clickbAIt
 
-AI-powered click tracks, cue sheets, and live lyrics for cover bands. The only clickbait you'll actually be happy to see.
+We asked AI to build our cover band's click tracks. You won't believe what happened next.
 
 > **Warning — AI-Assisted Code, Beta Quality**
 >
@@ -10,8 +10,11 @@ AI-powered click tracks, cue sheets, and live lyrics for cover bands. The only c
 
 ## What it does
 
-- **Click tracks** with section cues and count-ins — hear "Verse 2... 1, 2, 3, 4" in your in-ears
-- **Song structure** defined in TypeScript (DSonGL) — sections, lyrics, chords, tempo changes
+clickbAIt builds **show tracks** — everything a band needs alongside their live playing: click tracks, spoken section cues, count-ins, backing tracks, and synchronized lyrics. Think of it as a stage manager in a REAPER project.
+
+- **Click + cues** — hear "Verse 2... 1, 2, 3, 4" in your in-ears before each section
+- **Song structure** defined in DSongL, a TypeScript domain-specific language for show tracks — sections, lyrics, chords, tempo changes
+- **Backing tracks** — place stems or audio files on the timeline, aligned to the click
 - **Live lyrics teleprompter** — REAPER drives a browser via OSC. Band scans a QR code, audience does karaoke
 
 ## Requirements (macOS only for now)
@@ -59,7 +62,7 @@ The fastest way is with [Claude Code](https://claude.ai/code) or [Claude Cowork]
 /clickbait Valerie Amy Winehouse
 ```
 
-Claude looks up BPM, key, lyrics, and structure, then writes a DSonGL file and generates the REAPER project. You review and adjust.
+Claude looks up BPM, key, lyrics, and structure, then writes a DSongL file and generates the REAPER project. You review and adjust.
 
 Example conversation:
 
@@ -74,7 +77,7 @@ You:    Yes. I have a 78rpm recording at tests/fixtures/audio/saints-78rpm.mp3.
         There's a spoken intro from 5-18 seconds, then instrumental until
         about 40 seconds, then vocals with call-and-response.
 
-Claude: [analyzes onsets, writes DSonGL file with audio() node, soffs=18]
+Claude: [analyzes onsets, writes DSongL file with audio() node, soffs=18]
         Here's the structure — 4-bar intro, 12-bar instrumental, then
         3 verses with call-and-response lyrics. Ready to generate?
 
@@ -124,7 +127,7 @@ Song definition (.ts)  →  linearize  →  buildRpp  →  REAPER project (.rpp)
                           REAPER → OSC → relay → WebSocket → browser
 ```
 
-### Song files (DSonGL)
+### Song files (DSongL)
 
 Songs are TypeScript files using a builder DSL:
 

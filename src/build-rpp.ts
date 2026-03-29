@@ -414,9 +414,11 @@ function buildAudioFileItems(
     const soffs = e.soffs ?? 0;
     const absFile = resolve(e.file!);
     const srcType = sourceType(absFile);
+    const totalDur = audioDuration(absFile);
+    const length = totalDur - soffs;
     lines.push(`    <ITEM`);
     lines.push(`      POSITION ${fmtPos(position)}`);
-    lines.push(`      LENGTH 0`);
+    lines.push(`      LENGTH ${fmtPos(length)}`);
     lines.push(`      LOOP 1`);
     lines.push(`      ALLTAKES 0`);
     lines.push(`      FADEIN 1 0 0 1 0 0 0`);

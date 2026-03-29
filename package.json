@@ -1,10 +1,12 @@
 {
   "name": "clickbait",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "type": "module",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "generate": "npx tsx src/generate.ts",
+    "teleprompter": "npx tsx scripts/teleprompter.ts",
     "build:skill": "node scripts/inject-dsongl-api.mjs",
     "demo": "./demo/render.sh --all",
     "demo:browser": "./demo/render.sh --browser-only",

@@ -1,79 +1,189 @@
 # clickbAIt
 
-AI-powered tools for creating click, cue, and backing tracks for cover bands.
+AI-powered click tracks, cue sheets, and live lyrics for cover bands. The only clickbait you'll actually be happy to see.
 
-## Setup
+> **Warning — AI-Assisted Code, Beta Quality**
+>
+> This software was developed with substantial AI assistance (Claude by Anthropic). While a human reviews and attests all code before it reaches `main`, this is early-stage software that has not been extensively tested in production. **Use at your own risk.**
+>
+> All AI-authored commits include a `Co-Authored-By` trailer for transparency. See [CLAUDE.md](CLAUDE.md) for the attestation workflow.
 
-### Prerequisites
-- Python 3.12+
-- A REAPER installation (for project playback — not needed for generation)
+## What it does
 
-### Install
+- **Click tracks** with section cues and count-ins — hear "Verse 2... 1, 2, 3, 4" in your in-ears
+- **Song structure** defined in TypeScript (DSonGL) — sections, lyrics, chords, tempo changes
+- **Live lyrics teleprompter** — REAPER drives a browser via OSC. Band scans a QR code, audience does karaoke
 
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-# For lyrics lookup (requires Genius API token):
-.venv/bin/pip install -e ".[sources]"
-```
+## Requirements (macOS only for now)
 
-### API Keys
+- **Node.js** 18+ and npm
+- **Rust** toolchain (for the audio binary)
+- **REAPER** (for playback — not needed for generation)
+- **Anthropic API key** (for AI-assisted song building via Claude Code / Cowork)
+- **Genius API token** (optional, for lyrics lookup)
 
-Create a `.env` file in the project root. Keys are loaded automatically at startup.
-Features degrade gracefully when optional keys are missing.
-
-#### Anthropic (required for AI chat)
-1. Go to https://console.anthropic.com/
-2. Create an account and add billing
-3. Go to API Keys → Create Key
-4. Add to `.env`:
-   ```
-   ANTHROPIC_API_KEY=your-key-here
-   ```
-
-#### Genius (lyrics lookup)
-1. Go to https://genius.com/api-clients
-2. Sign in or create a Genius account
-3. Click "New API Client"
-4. Fill in app name (e.g. "clickbAIt"), app website URL and redirect URI (can be `http://localhost`)
-5. After creating, click "Generate Access Token"
-6. Add to `.env`:
-   ```
-   GENIUS_API_TOKEN=your-token-here
-   ```
-
-### API Keys
-
-Create a `.env` file in the project root. Keys are loaded automatically at startup.
-
-#### Anthropic (required for AI chat)
-1. Go to https://console.anthropic.com/
-2. Create an account and add billing
-3. Go to API Keys → Create Key
-4. Add to `.env`:
-   ```
-   ANTHROPIC_API_KEY=your-key-here
-   ```
-
-### Custom System Prompt
-
-The AI assistant's behavior can be customized per project by creating `.clickbait/SYSTEM.md`. If absent, the built-in default is used.
-
-## Usage
+## Install
 
 ```bash
-# Start an interactive AI session to design a song project
-clickbait chat
+git clone <repo-url> && cd clickbAIt
 
-# Run tests
-.venv/bin/pytest tests/ -v
+# Install Node dependencies
+npm install
 
-# Lint
-.venv/bin/ruff check .
+# Build the Rust audio binary
+cargo build
+
+# Download the Piper TTS voice model
+mkdir -p ~/.local/share/clickbait/voices
+curl -L -o ~/.local/share/clickbait/voices/en_US-lessac-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+curl -L -o ~/.local/share/clickbait/voices/en_US-lessac-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+
+# Set up environment
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY (required) and GENIUS_API_TOKEN (optional)
+
+# Copy the REAPER OSC config (for teleprompter)
+cp src/teleprompter/clickbait.ReaperOSC ~/Library/Application\ Support/REAPER/OSC/
 ```
+
+## Quick start
+
+### Build a song with Claude
+
+The fastest way is with [Claude Code](https://claude.ai/code) or [Claude Cowork](https://claude.com/product/cowork):
+
+```bash
+# In Claude Code, run the skill:
+/clickbait Valerie Amy Winehouse
+```
+
+Claude looks up BPM, key, lyrics, and structure, then writes a DSonGL file and generates the REAPER project. You review and adjust.
+
+Example conversation:
+
+```
+You:    /clickbait When the Saints Go Marching In
+
+Claude: [looks up BPM, key, structure from multiple sources]
+        Found: ~129 BPM, key of G, 4/4 time. Traditional spiritual,
+        standard verse form. Does this look right?
+
+You:    Yes. I have a 78rpm recording at tests/fixtures/audio/saints-78rpm.mp3.
+        There's a spoken intro from 5-18 seconds, then instrumental until
+        about 40 seconds, then vocals with call-and-response.
+
+Claude: [analyzes onsets, writes DSonGL file with audio() node, soffs=18]
+        Here's the structure — 4-bar intro, 12-bar instrumental, then
+        3 verses with call-and-response lyrics. Ready to generate?
+
+You:    Generate it.
+
+Claude: [runs generate.ts → RPP + cue WAVs + teleprompter JSON]
+        Done! Open output/setlist/when-the-saints-go-marching-in-traditional.rpp
+```
+
+### Manual workflow
+
+```bash
+# 1. Look up song data
+target/debug/clickbait-audio lookup "Valerie" -a "Amy Winehouse"
+
+# 2. Write a song file (see songs/traditional/ for examples)
+#    → songs/amy-winehouse/valerie.ts
+
+# 3. Generate the REAPER project
+npx tsx src/generate.ts songs/amy-winehouse/valerie.ts ./output
+
+# 4. Open in REAPER
+open output/valerie-amy-winehouse.rpp
+```
+
+### Teleprompter
+
+```bash
+# Start the teleprompter server
+npx tsx scripts/teleprompter.ts --songs-dir ./output
+
+# Open http://localhost:3000 — scan the QR code on any device
+# REAPER drives the scroll via OSC
+```
+
+REAPER setup for OSC: Preferences > Control/OSC/web > Add > Device IP `127.0.0.1`, Device port `9000`, Pattern config `clickbait`.
+
+## How it works
+
+```
+Song definition (.ts)  →  linearize  →  buildRpp  →  REAPER project (.rpp)
+                                           ↓
+                                    Piper TTS cues (.wav)
+                                           ↓
+                                    Teleprompter JSON (.json)
+                                           ↓
+                          REAPER → OSC → relay → WebSocket → browser
+```
+
+### Song files (DSonGL)
+
+Songs are TypeScript files using a builder DSL:
+
+```typescript
+export default song("Valerie", 148, { artist: "Amy Winehouse", key: "Eb" },
+  seq(
+    span("Intro", bars(4), [ chord("Eb", 0) ]),
+    span("Verse 1", bars(8), { cue: true }, [
+      chord("Eb", 0),
+      lyric("Well sometimes I go out by myself", 0, "Lead Vocal"),
+      // ...
+    ]),
+  ),
+);
+```
+
+Sections with `{ cue: true }` get automatic TTS announcements and count-ins. See `src/types.ts` and `src/dsongl.ts` for the full API.
 
 ## Development
 
-This project follows TDD — write tests first, then implement. Tests are in `tests/` and use `pytest`.
+```bash
+# Run tests
+npm test
 
-All AI-assisted code is developed on feature branches and merged to `main` via pull requests with human review.
+# Watch mode
+npm run test:watch
+
+# Lint (if ruff is installed)
+.venv/bin/ruff check .
+```
+
+Tests use [Vitest](https://vitest.dev/). The project follows TDD — write tests first, then implement.
+
+## Known issues
+
+- **Audio stem import is experimental** — stems land in the RPP but LENGTH and path handling have edge cases
+- **Piper TTS sample rate** — some REAPER versions may play cues at the wrong speed (22050 Hz vs 44100 Hz project). Resample if needed.
+- **macOS only** — not tested on Linux or Windows
+- **No pre-built binaries** — you need Rust toolchain to build `clickbait-audio`
+
+## Project structure
+
+```
+src/
+  types.ts, dsongl.ts     — Song model and DSL builder
+  linearize.ts             — Tree → flat timeline
+  build-rpp.ts             — RPP file generation
+  generate.ts              — End-to-end: song → cues + RPP + JSON
+  teleprompter/            — "One Simple Track" browser lyrics display
+crates/audio/              — Rust binary: lookup, analyze, speak, duration
+songs/                     — Song definitions (gitignored except traditional/)
+scripts/                   — Launchers and utilities
+assets/                    — Click and count-in samples
+```
+
+## License
+
+[MIT](LICENSE)
+
+## Acknowledgments
+
+Built with [Claude Code](https://claude.ai/code) by Anthropic. All AI-authored commits are tagged with `Co-Authored-By` for transparency.

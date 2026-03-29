@@ -29,7 +29,7 @@ All of this feeds into **DSongL**, a domain-specific language that programmatica
 ## Requirements (macOS only for now)
 
 - **Node.js** 18+ and npm
-- **Rust** toolchain (for the audio binary)
+- **Rust** toolchain (to build from source) — or use the pre-built binary from [Releases](https://github.com/markmfredrickson/clickbAIt/releases)
 - **REAPER** (for playback — not needed for generation)
 - **Anthropic API key** (for AI-assisted song building via Claude Code / Cowork)
 - **Genius API token** (optional, for lyrics lookup)

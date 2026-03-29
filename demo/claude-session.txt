@@ -1,0 +1,41 @@
+$ claude
+
+╭──────────────────────────────────────────────╮
+│ ✻ Claude Code                                │
+│                                              │
+│   /clickbait to build show tracks            │
+╰──────────────────────────────────────────────╯
+
+> /clickbait When the Saints Go Marching In — Louis Armstrong. I have a
+  78rpm recording at tests/fixtures/audio/saints-78rpm.mp3. The first 40
+  seconds are a spoken announcer and instrumental. Jump to where the
+  vocals come in. Call-and-response style.
+
+⠋ Looking up song data...
+
+  When the Saints Go Marching In — Louis Armstrong
+  BPM: 106 | Key: Bb | Time: 4/4
+
+  Analyzing tests/fixtures/audio/saints-78rpm.mp3...
+  Duration: 158.2s | Vocal entry: ~40s
+
+  Structure:
+    Intro (4 bars) — count-in
+    Verse 1 (16 bars) — call-and-response vocals
+    Instrumental (34 bars) — solos, Armstrong narration
+    Outro (16 bars) — final chorus
+
+⠋ Writing songs/louis-armstrong/when-the-saints-go-marching-in.ts...
+⠋ Generating cue WAVs...
+  ✓ "When the Saints Go Marching In"
+  ✓ "Verse 1"
+  ✓ "Instrumental"
+  ✓ "Outro"
+
+⠋ Building RPP...
+
+  ✓ output/setlist/when-the-saints-go-marching-in-louis-armstrong.rpp
+  ✓ output/setlist/when-the-saints-go-marching-in-louis-armstrong.json
+
+  Open in REAPER and hit play!
+  Teleprompter: npx tsx scripts/teleprompter.ts --songs-dir output/setlist

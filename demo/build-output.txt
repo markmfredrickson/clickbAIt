@@ -1,0 +1,21 @@
+Building: when-the-saints-go-marching-in
+  Prompt: songs/traditional/when-the-saints-go-marching-in.prompt
+  Output: output/setlist
+
+  Running Claude to generate DSongL...
+Done.
+
+  Song: When the Saints Go Marching In (106 BPM, 4/4, Bb)
+  Sections: Intro → Verse 1 → Instrumental → Outro
+
+  Generating cue WAVs...
+    "When the Saints Go Marching In" → when-the-saints-go-marching-in.wav
+    "Verse 1" → verse-1.wav
+    "Instrumental" → instrumental.wav
+    "Outro" → outro.wav
+
+  Building RPP...
+  Written: output/setlist/when-the-saints-go-marching-in-louis-armstrong.rpp
+  Teleprompter: output/setlist/when-the-saints-go-marching-in-louis-armstrong.json
+
+  Open in REAPER and hit play!

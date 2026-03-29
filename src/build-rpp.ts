@@ -8,31 +8,21 @@
  *   and beat numbers (1 bar before) each section
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { execSync } from "child_process";
+import { resolve, dirname } from "path";
 import type { Song } from "./types.js";
 import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.js";
 import { extractSections, type Section } from "./sections.js";
 import { songSlug } from "./teleprompter/export.js";
 
-/** Read WAV duration in seconds by finding the actual 'data' chunk. */
-function wavDuration(path: string): number {
-  const buf = readFileSync(path);
-  const sampleRate = buf.readUInt32LE(24);
-  const channels = buf.readUInt16LE(22);
-  const bitsPerSample = buf.readUInt16LE(34);
-  const bytesPerSample = bitsPerSample / 8;
-  // Walk RIFF chunks to find 'data'
-  let offset = 12; // skip RIFF header + WAVE tag
-  while (offset + 8 <= buf.length) {
-    const chunkId = buf.toString("ascii", offset, offset + 4);
-    const chunkSize = buf.readUInt32LE(offset + 4);
-    if (chunkId === "data") {
-      return chunkSize / (channels * bytesPerSample) / sampleRate;
-    }
-    offset += 8 + chunkSize;
-  }
-  throw new Error(`No data chunk found in ${path}`);
+const audioBin = resolve(dirname(new URL(import.meta.url).pathname), "..", "target", "debug", "clickbait-audio");
+
+/** Get audio file duration in seconds (WAV, MP3, or any symphonia-supported format). */
+function audioDuration(path: string): number {
+  const out = execSync(`"${audioBin}" duration "${path}"`, { encoding: "utf8" }).trim();
+  const dur = parseFloat(out);
+  if (isNaN(dur)) throw new Error(`Could not determine duration of ${path}`);
+  return dur;
 }
 
 export interface AudioItem {
@@ -186,7 +176,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   const titleSlug = song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
   const titleFile = `${opts.cueDir}/${titleSlug}.wav`;
   cueNames.add(song.title);
-  trackItems.push({ position: 0, length: wavDuration(titleFile), file: titleFile });
+  trackItems.push({ position: 0, length: audioDuration(titleFile), file: titleFile });
 
   // Auto-cues: sections with cue=true get a TTS announcement 2 bars before
   for (const sec of sections) {
@@ -198,7 +188,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     const cueSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
     const file = `${opts.cueDir}/${cueSlug}.wav`;
     cueNames.add(sec.name);
-    trackItems.push({ position: cueSec, length: wavDuration(file), file });
+    trackItems.push({ position: cueSec, length: audioDuration(file), file });
   }
 
   // Manual cue() events (ad-hoc band notes, already padded)
@@ -207,7 +197,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
       const slug = e.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
       const file = `${opts.cueDir}/${slug}.wav`;
       cueNames.add(e.value);
-      trackItems.push({ position: e.seconds, length: wavDuration(file), file });
+      trackItems.push({ position: e.seconds, length: audioDuration(file), file });
     }
   }
 
@@ -221,7 +211,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
       const beatPos = barStartBeat + i;
       const beatSec = beatToSeconds(beatPos, tempoMap);
       const file = `${opts.countDir}/${i + 1}.wav`;
-      trackItems.push({ position: beatSec, length: wavDuration(file), file });
+      trackItems.push({ position: beatSec, length: audioDuration(file), file });
     }
   }
 

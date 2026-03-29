@@ -17,6 +17,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Get the duration of an audio file in seconds (WAV, MP3, etc.)
+    Duration {
+        /// Path to audio file
+        file: String,
+    },
     /// Extract BPM, key, and beat positions from an audio file
     Analyze {
         /// Path to audio file
@@ -60,6 +65,12 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Duration { file } => {
+            let (samples, sample_rate) = analyze::decode_audio(&file)?;
+            let duration = samples.len() as f64 / sample_rate as f64;
+            println!("{:.6}", duration);
+            Ok(())
+        },
         Commands::Analyze { file } => analyze::run(&file),
         Commands::Lookup { title, artist } => lookup::run(&title, artist.as_deref()),
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),

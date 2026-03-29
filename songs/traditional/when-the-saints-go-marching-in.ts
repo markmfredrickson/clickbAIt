@@ -18,8 +18,8 @@ import { song, seq, span, bars, cue, lyric, chord } from "../../src/dsongl.js";
 
 export default song("When the Saints Go Marching In", 116, { artist: "Traditional", key: "G" },
   seq(
-    // ── Intro (2 bars) — count-in ──
-    span("Intro", bars(2), [
+    // ── Intro (4 bars) — title cue + count-in ──
+    span("Intro", bars(4), [
       chord("G", 0),
     ]),
 

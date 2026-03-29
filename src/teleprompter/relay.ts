@@ -298,7 +298,7 @@ export function startRelay(opts: RelayOptions) {
           broadcast(JSON.stringify({ type: parsed.value > 0.5 ? "play" : "stop" }));
         }
       } else if (parsed.type === "string") {
-        if (parsed.address === "/lastregion/name" && parsed.value) {
+        if ((parsed.address === "/lastmarker/name" || parsed.address === "/lastregion/name") && parsed.value) {
           const slug = toSlug(parsed.value);
           if (slug) switchSong(slug);
         }

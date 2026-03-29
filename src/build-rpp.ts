@@ -160,27 +160,17 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // --- Region markers ---
   const regionLines: string[] = [];
   let regionId = 1;
-
-  // Song identification region — spans the whole project so REAPER sends
-  // it via /lastregion/name on tab switch, enabling teleprompter song switching
   const slug = songSlug(song);
-  const lastSec = sections[sections.length - 1];
-  const projectEnd = lastSec
-    ? beatToSeconds(lastSec.beat + lastSec.durationBeats, tempoMap)
-    : 0;
-  regionLines.push(
-    `MARKER ${regionId} 0 ${rppStr(slug)} 1 0 1 B ${newGuid()} 0 1`
-  );
-  regionLines.push(
-    `MARKER ${regionId} ${fmt(projectEnd)} "" 1`
-  );
-  regionId++;
 
   for (const sec of sections) {
     const startSec = beatToSeconds(sec.beat, tempoMap);
     const endSec = beatToSeconds(sec.beat + sec.durationBeats, tempoMap);
+    // First section gets the song slug as its region name — REAPER sends
+    // this via /lastregion/name on tab switch for teleprompter song switching.
+    // Only the band sees it in REAPER; audience never sees or hears it.
+    const name = regionId === 1 ? slug : sec.name;
     regionLines.push(
-      `MARKER ${regionId} ${fmt(startSec)} ${rppStr(sec.name)} 1 0 1 B ${newGuid()} 0 1`
+      `MARKER ${regionId} ${fmt(startSec)} ${rppStr(name)} 1 0 1 B ${newGuid()} 0 1`
     );
     regionLines.push(
       `MARKER ${regionId} ${fmt(endSec)} "" 1`

@@ -268,6 +268,20 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // Cues & Counts track
   rppLines.push(buildTrack("Cues & Counts", 0.8, buildWaveItems(trackItems)));
 
+  // Audio tracks (stems, backing tracks, etc.)
+  const audioByTrack = new Map<string, typeof events>();
+  for (const e of events) {
+    if (e.type === "audio") {
+      const list = audioByTrack.get(e.value) ?? [];
+      list.push(e);
+      audioByTrack.set(e.value, list);
+    }
+  }
+  for (const [trackName, audioEvents] of audioByTrack) {
+    const items = buildAudioFileItems(audioEvents, tempoMap);
+    rppLines.push(buildTrack(trackName, 1, items));
+  }
+
   rppLines.push(`>`);
 
   return {
@@ -372,6 +386,43 @@ function buildWaveItems(items: AudioItem[]): string {
     lines.push(`      GUID ${newGuid()}`);
     lines.push(`      <SOURCE WAVE`);
     lines.push(`        FILE ${rppStr(item.file)}`);
+    lines.push(`      >`);
+    lines.push(`    >`);
+  }
+  return lines.join("\n");
+}
+
+/** Determine RPP source type from file extension. */
+function sourceType(file: string): string {
+  const ext = file.toLowerCase().split(".").pop();
+  if (ext === "mp3") return "MP3";
+  return "WAVE";
+}
+
+function buildAudioFileItems(
+  audioEvents: LinearEvent[],
+  tempoMap: { beat: number; bpm: number }[],
+): string {
+  const lines: string[] = [];
+  for (const e of audioEvents) {
+    const position = e.seconds;
+    const soffs = e.soffs ?? 0;
+    const srcType = sourceType(e.file!);
+    lines.push(`    <ITEM`);
+    lines.push(`      POSITION ${fmtPos(position)}`);
+    lines.push(`      LENGTH 0`);
+    lines.push(`      LOOP 1`);
+    lines.push(`      ALLTAKES 0`);
+    lines.push(`      FADEIN 1 0 0 1 0 0 0`);
+    lines.push(`      FADEOUT 1 0 0 1 0 0 0`);
+    lines.push(`      MUTE 0 0`);
+    lines.push(`      VOLPAN 1 0 1 -1`);
+    lines.push(`      SOFFS ${fmtPos(soffs)}`);
+    lines.push(`      PLAYRATE 1 1 0 -1 0 0.0025`);
+    lines.push(`      CHANMODE 0`);
+    lines.push(`      GUID ${newGuid()}`);
+    lines.push(`      <SOURCE ${srcType}`);
+    lines.push(`        FILE ${rppStr(e.file!)} 1`);
     lines.push(`      >`);
     lines.push(`    >`);
   }

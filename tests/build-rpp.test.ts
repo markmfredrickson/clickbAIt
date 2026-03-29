@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildRpp } from "../src/build-rpp.js";
 import { linearize } from "../src/linearize.js";
-import { song, seq, span, bars, cue, marker } from "../src/dsongl.js";
+import { song, seq, span, bars, cue, marker, audio } from "../src/dsongl.js";
 
 const defaultOpts = {
   cueDir: "/tmp/cues",
@@ -153,6 +153,57 @@ describe("buildRpp", () => {
     expect(rpp).toContain("AUTO 1 0");
     expect(rpp).toContain("/tmp/clicks/accent.wav");
     expect(rpp).toContain("/tmp/clicks/beat.wav");
+  });
+
+  it("generates SOURCE MP3 track for audio node with mp3 file", () => {
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(2)),
+        span("Verse", bars(4)),
+      ),
+      audio("Guitars", "stems/guitars.mp3"),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).toContain("NAME Guitars");
+    expect(rpp).toContain("<SOURCE MP3");
+    expect(rpp).toContain("FILE stems/guitars.mp3 1");
+  });
+
+  it("generates SOURCE WAVE track for audio node with wav file", () => {
+    const s = song("Test", 120,
+      span("Intro", bars(2)),
+      audio("Pad", "stems/pad.wav"),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).toContain("NAME Pad");
+    expect(rpp).toContain("<SOURCE WAVE");
+    expect(rpp).toContain("FILE stems/pad.wav 1");
+  });
+
+  it("groups multiple audio nodes by track name", () => {
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(2)),
+        span("Verse", bars(4)),
+      ),
+      audio("Guitars", "stems/guitars.mp3"),
+      audio("Bass", "stems/bass.mp3"),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).toContain("NAME Guitars");
+    expect(rpp).toContain("NAME Bass");
+    // Should be separate tracks
+    const trackCount = (rpp.match(/NAME Guitars|NAME Bass/g) ?? []).length;
+    expect(trackCount).toBe(2);
+  });
+
+  it("includes SOFFS when audio has source offset", () => {
+    const s = song("Test", 120,
+      span("Intro", bars(2)),
+      audio("Vocals", "stems/vocals.mp3", { soffs: 0.164 }),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).toContain("SOFFS 0.164");
   });
 
   it("works with Bohemian Rhapsody eval output", async () => {

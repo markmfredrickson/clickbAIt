@@ -5,6 +5,7 @@ mod analyze;
 mod lookup;
 mod transcribe;
 mod speak;
+mod unstretch;
 
 #[derive(Parser)]
 #[command(name = "clickbait-audio")]
@@ -37,6 +38,11 @@ enum Commands {
         #[arg(short, long)]
         artist: Option<String>,
     },
+    /// Detect tempo warping and estimate constant recording BPM
+    Unstretch {
+        /// Path to audio file
+        file: String,
+    },
     /// Generate spoken audio from text (for cue tracks)
     Speak {
         /// Text to speak
@@ -57,6 +63,7 @@ fn main() -> Result<()> {
         Commands::Analyze { file } => analyze::run(&file),
         Commands::Lookup { title, artist } => lookup::run(&title, artist.as_deref()),
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
+        Commands::Unstretch { file } => unstretch::run(&file),
         Commands::Speak { text, output, voice } => speak::run(&text, &output, &voice),
     }
 }

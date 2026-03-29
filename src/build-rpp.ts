@@ -175,20 +175,28 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // Title cue at beat 0 — always injected so the band hears the song name
   const titleSlug = song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
   const titleFile = `${opts.cueDir}/${titleSlug}.wav`;
+  const titleDur = audioDuration(titleFile);
   cueNames.add(song.title);
-  trackItems.push({ position: 0, length: audioDuration(titleFile), file: titleFile });
+  trackItems.push({ position: 0, length: titleDur, file: titleFile });
+
+  // Track when the cue track is "free" (no overlapping items)
+  let cueTrackFreeAfter = titleDur;
 
   // Auto-cues: sections with cue=true get a TTS announcement 2 bars before
+  // Skipped if it would overlap with the title cue or a previous section cue
   for (const sec of sections) {
     if (!sec.cue) continue;
     const beatsPerBar = sec.timeSignature[0];
     const cueBeat = sec.beat - beatsPerBar * 2; // 2 bars before section
     if (cueBeat < 0) continue;
     const cueSec = beatToSeconds(cueBeat, tempoMap);
+    if (cueSec < cueTrackFreeAfter) continue; // would overlap — skip
     const cueSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
     const file = `${opts.cueDir}/${cueSlug}.wav`;
+    const dur = audioDuration(file);
     cueNames.add(sec.name);
-    trackItems.push({ position: cueSec, length: audioDuration(file), file });
+    trackItems.push({ position: cueSec, length: dur, file });
+    cueTrackFreeAfter = cueSec + dur;
   }
 
   // Manual cue() events (ad-hoc band notes, already padded)

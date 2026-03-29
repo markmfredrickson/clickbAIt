@@ -13,7 +13,7 @@ PROJECT_ROOT="$(dirname "$DEMO_DIR")"
 OUTPUT_DIR="$DEMO_DIR/output"
 mkdir -p "$OUTPUT_DIR"
 
-RPP_FILE="${1:-$PROJECT_ROOT/output/setlist/when-the-saints-go-marching-in-traditional.rpp}"
+RPP_FILE="${1:-$PROJECT_ROOT/output/setlist/when-the-saints-go-marching-in-louis-armstrong.rpp}"
 DURATION="${2:-30}"
 OUTPUT_FILE="$OUTPUT_DIR/combo-demo.mp4"
 SONGS_DIR="$(dirname "$RPP_FILE")"
@@ -65,6 +65,12 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   echo "  Cancelled."
   exit 0
 fi
+
+# ── Clean slate ──
+info "Clearing stale processes..."
+lsof -ti :9000 2>/dev/null | xargs kill 2>/dev/null || true
+lsof -ti :3000 2>/dev/null | xargs kill 2>/dev/null || true
+sleep 1
 
 # ── Start teleprompter ──
 info "Starting teleprompter server..."
@@ -124,10 +130,15 @@ osascript -e "
 
 sleep 1
 
-# ── Go to start ──
+# ── Jog cursor to trigger region name broadcast ──
+# Go to start, nudge right, go back — forces REAPER to send /lastregion/name
 osascript -e 'tell application "REAPER" to activate' \
+  -e 'tell application "System Events" to key code 115' \
+  -e 'delay 0.3' \
+  -e 'tell application "System Events" to key code 124' \
+  -e 'delay 0.3' \
   -e 'tell application "System Events" to key code 115'
-sleep 0.5
+sleep 1
 
 # ── Check with user ──
 echo ""

@@ -17,7 +17,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # ── Config ──
 # Default to When the Saints Go Marching In (public domain, always available)
-RPP_FILE="${1:-$(dirname "$DEMO_DIR")/output/setlist/when-the-saints-go-marching-in-traditional.rpp}"
+RPP_FILE="${1:-$(dirname "$DEMO_DIR")/output/setlist/when-the-saints-go-marching-in-louis-armstrong.rpp}"
 DURATION="${2:-20}"
 OUTPUT_FILE="$OUTPUT_DIR/reaper-demo.mp4"
 

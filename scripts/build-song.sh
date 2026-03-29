@@ -45,8 +45,8 @@ claude -p "$PROMPT" --allowedTools 'Bash(target/debug/clickbait-audio *)' 'Bash(
 
 # Step 2: Check that Claude created the .ts file
 if [[ ! -f "$TS_FILE" ]]; then
-  # Claude might have put it somewhere else — look for it
-  FOUND=$(find "$SONG_DIR" -name "*.ts" -newer "$PROMPT_FILE" | head -1)
+  # Claude might have put it somewhere else — search all of songs/
+  FOUND=$(find songs/ -name "*.ts" -newer "$PROMPT_FILE" 2>/dev/null | head -1)
   if [[ -n "$FOUND" ]]; then
     TS_FILE="$FOUND"
     echo "  Found generated file: $TS_FILE"

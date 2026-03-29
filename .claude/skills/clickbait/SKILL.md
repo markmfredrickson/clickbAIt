@@ -58,6 +58,12 @@ In this step, do all of the following together as one output:
 - Handle any tempo or time signature changes with span options
 - Set the `key` option on the song if known
 
+**Intro rules (inviolate):**
+- Every song MUST start with an Intro span of at least 4 bars. This is where the title TTS cue and count-in go. No audio, no lyrics, no backing tracks in the Intro — just the slug region and click.
+- Do NOT put `cue: true` on the Intro — there's nothing before it to announce.
+- Audio/backing tracks go inside the FIRST section after the Intro (e.g., inside the Verse span), never as top-level siblings of `seq()` and never in the Intro.
+- buildRpp auto-places: title cue at beat 0, section cue 2 bars before each `cue: true` section, count-in 1 bar before. With a 4-bar intro these never overlap.
+
 The goal is a complete, reviewable dsongl file in one shot. The user will read the code and tell you what to adjust.
 
 ## Step 4: Generate REAPER project

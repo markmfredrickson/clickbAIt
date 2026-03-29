@@ -302,6 +302,11 @@ export function startRelay(opts: RelayOptions) {
 
   wss.on("connection", (ws) => {
     clients.add(ws);
+    // Send current state immediately so new clients don't have to wait
+    // for the next OSC event
+    if (currentSong) {
+      ws.send(JSON.stringify({ type: "song-changed", slug: currentSlug }));
+    }
     ws.on("close", () => clients.delete(ws));
   });
 

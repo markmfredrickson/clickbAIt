@@ -6,6 +6,7 @@
  */
 
 import { networkInterfaces } from "node:os";
+import { readdirSync } from "node:fs";
 import { startRelay } from "./relay.js";
 import { exportSongPayload } from "./export.js";
 import type { Song } from "../types.js";
@@ -57,8 +58,18 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   console.log(`  ${url}`);
   console.log("");
   console.log(qr);
-  console.log(`  OSC listening on UDP port ${oscPort} (REAPER sends /time)`);
-  console.log(`  Song switching via /lastregion/name`);
+  console.log(`  OSC listening on UDP port ${oscPort}`);
+
+  if (opts.songsDir) {
+    try {
+      const files = readdirSync(opts.songsDir).filter(f => f.endsWith(".json"));
+      console.log(`  Songs available (${files.length}):`);
+      for (const f of files) {
+        console.log(`    ${f.replace(".json", "")}`);
+      }
+    } catch { /* dir doesn't exist yet */ }
+  }
+
   console.log("");
 
   return relay;

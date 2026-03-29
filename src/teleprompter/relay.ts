@@ -220,18 +220,49 @@ export function startRelay(opts: RelayOptions) {
     .qr svg { width: 100%; height: auto; }
     .url { margin-top: 1.5rem; font-size: 1.2rem; font-family: monospace;
            color: #ffcc00; word-break: break-all; }
-    .song-title { font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffcc00; }
+    .song-title { font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffcc00;
+                   transition: text-shadow 0.5s ease; }
+    .song-title.glow { text-shadow: 0 0 20px #ffcc00, 0 0 40px #ffcc00; }
   </style>
 </head>
 <body>
   <h1>clickbAIt: One Simple Track</h1>
   <p class="subtitle">Scan to follow along</p>
-  <p class="song-title">${songLine}</p>
+  <p class="song-title" id="song-title">${songLine}</p>
   <div class="qr">${qrSvgCache}</div>
   <p class="url">${baseUrl}</p>
   <a href="/lyrics" style="display:inline-block; margin-top:1.5rem; padding:0.8rem 2rem;
      background:#ffcc00; color:#111; text-decoration:none; border-radius:8px;
      font-weight:700; font-size:1.1rem;">Open Lyrics</a>
+  <script>
+    (function() {
+      var el = document.getElementById("song-title");
+      var ws = new WebSocket((location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host);
+      ws.onmessage = function(e) {
+        var msg;
+        try { msg = JSON.parse(e.data); } catch(x) { return; }
+        if (msg.type === "song-changed") {
+          fetch("/song.json").then(function(r) { return r.json(); }).then(function(song) {
+            var text = song.title;
+            if (song.artist) text += " — " + song.artist;
+            el.textContent = text;
+            el.classList.add("glow");
+            setTimeout(function() { el.classList.remove("glow"); }, 2000);
+          });
+        }
+      };
+      // Poll on load in case song loaded before page opened
+      fetch("/song.json").then(function(r) {
+        if (!r.ok) return;
+        return r.json();
+      }).then(function(song) {
+        if (!song) return;
+        var text = song.title;
+        if (song.artist) text += " — " + song.artist;
+        el.textContent = text;
+      });
+    })();
+  </script>
 </body>
 </html>`);
       return;
@@ -284,6 +315,8 @@ export function startRelay(opts: RelayOptions) {
 
   // OSC UDP listener
   const udp = createSocket("udp4");
+  let playing = false;
+  let lastBeatLog = -1;
 
   udp.on("message", (msg: Buffer) => {
     const messages = parseOscPacket(msg);
@@ -292,10 +325,29 @@ export function startRelay(opts: RelayOptions) {
         if (parsed.address === "/time" && currentSong) {
           const beat = secondsToBeats(parsed.value, currentSong);
           broadcast(JSON.stringify({ type: "position", beat }));
+          // Log beat progress as a spinner (update every ~4 beats)
+          const rounded = Math.floor(beat / 4) * 4;
+          if (rounded !== lastBeatLog) {
+            lastBeatLog = rounded;
+            const sec = parsed.value;
+            const min = Math.floor(sec / 60);
+            const s = (sec % 60).toFixed(0).padStart(2, "0");
+            process.stdout.write(`\r  ♩ beat ${rounded}  ${min}:${s}  `);
+          }
         } else if (parsed.address === "/beat") {
           broadcast(JSON.stringify({ type: "position", beat: parsed.value }));
         } else if (parsed.address === "/play") {
-          broadcast(JSON.stringify({ type: parsed.value > 0.5 ? "play" : "stop" }));
+          const isPlaying = parsed.value > 0.5;
+          broadcast(JSON.stringify({ type: isPlaying ? "play" : "stop" }));
+          if (isPlaying && !playing) {
+            playing = true;
+            console.log(`\n  ▶ Playing${currentSong ? `: ${currentSong.title}` : ""}`);
+          } else if (!isPlaying && playing) {
+            playing = false;
+            process.stdout.write("\r");
+            console.log(`  ■ Stopped`);
+            lastBeatLog = -1;
+          }
         }
       } else if (parsed.type === "string") {
         if ((parsed.address === "/lastmarker/name" || parsed.address === "/lastregion/name") && parsed.value) {

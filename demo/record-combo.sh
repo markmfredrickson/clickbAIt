@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 #
-# Record REAPER + teleprompter side-by-side
+# Record REAPER + teleprompter side-by-side demo
 #
-# Positions REAPER on the left half and a browser on the right half,
-# starts the teleprompter server, opens the lyrics page, then captures
-# the full screen while REAPER drives playback via OSC.
+# Shows: QR join page → song loads → switch to lyrics → scrolling with REAPER
 #
 # Usage: ./demo/record-combo.sh [project.rpp] [duration_seconds]
 #
-set -euo pipefail
+set -uo pipefail
 
 DEMO_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$DEMO_DIR")"
@@ -41,24 +39,63 @@ if [[ ! -f "$RPP_FILE" ]]; then
   exit 1
 fi
 
-# ── Start teleprompter server ──
+# Auto-detect screen capture device
+SCREEN_DEV=$(ffmpeg -f avfoundation -list_devices true -i "" 2>&1 | grep -i "capture screen" | head -1 | sed 's/.*\[\([0-9]*\)\].*/\1/')
+SCREEN_DEV="${SCREEN_DEV:-2}"
+
+# ── Confirmation ──
+echo ""
+echo "  Demo recording setup:"
+echo "    RPP:      $(basename "$RPP_FILE")"
+echo "    Duration: ${DURATION}s"
+echo "    Screen:   device $SCREEN_DEV"
+echo "    Layout:   REAPER (left) + Browser (right)"
+echo ""
+echo "  This will:"
+echo "    1. Start the teleprompter server"
+echo "    2. Open the QR join page in a new browser window"
+echo "    3. Open the RPP in REAPER"
+echo "    4. Position both windows side-by-side"
+echo "    5. Start recording, play the song"
+echo "    6. Switch browser to lyrics view mid-recording"
+echo ""
+read -p "  Ready? (y/n) " -n 1 -r
+echo ""
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo "  Cancelled."
+  exit 0
+fi
+
+# ── Start teleprompter ──
 info "Starting teleprompter server..."
 npx tsx "$PROJECT_ROOT/scripts/teleprompter.ts" --songs-dir "$SONGS_DIR" &
 TELEPROMPTER_PID=$!
 sleep 3
 
-# ── Open browser to lyrics page ──
-info "Opening browser..."
-open "http://localhost:3000/lyrics"
+cleanup() {
+  kill "$TELEPROMPTER_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# ── Open QR join page in a new window ──
+info "Opening QR join page..."
+osascript -e '
+  tell application "Brave Browser"
+    make new window
+    set URL of active tab of front window to "http://localhost:3000/"
+  end tell
+' 2>/dev/null || open "http://localhost:3000/"
 sleep 2
+
+# ── Open REAPER with the project ──
+info "Opening project in REAPER..."
+open -a REAPER "$RPP_FILE"
+sleep 4
 
 # ── Position windows side by side ──
 info "Positioning windows..."
 
 # REAPER: left half
-open -a REAPER "$RPP_FILE"
-sleep 3
-
 osascript -e "
   tell application \"REAPER\" to activate
   delay 0.3
@@ -72,72 +109,52 @@ osascript -e "
   end tell
 " 2>/dev/null
 
-# Browser: right half (find Chrome/Brave/Safari)
-sleep 1
+# Browser: right half
+sleep 0.5
 osascript -e "
-  -- Try common browsers
-  set browserFound to false
-
-  try
-    tell application \"Brave Browser\"
-      activate
+  tell application \"Brave Browser\" to activate
+  delay 0.3
+  tell application \"System Events\"
+    tell process \"Brave Browser\"
+      set position of front window to {$HALF_WIDTH, 0}
+      set size of front window to {$HALF_WIDTH, $((WINDOW_HEIGHT + TITLEBAR_HEIGHT))}
     end tell
-    delay 0.3
-    tell application \"System Events\"
-      tell process \"Brave Browser\"
-        set position of window 1 to {$HALF_WIDTH, 0}
-        set size of window 1 to {$HALF_WIDTH, $((WINDOW_HEIGHT + TITLEBAR_HEIGHT))}
-      end tell
-    end tell
-    set browserFound to true
-  end try
-
-  if not browserFound then
-    try
-      tell application \"Google Chrome\"
-        activate
-      end tell
-      delay 0.3
-      tell application \"System Events\"
-        tell process \"Google Chrome\"
-          set position of window 1 to {$HALF_WIDTH, 0}
-          set size of window 1 to {$HALF_WIDTH, $((WINDOW_HEIGHT + TITLEBAR_HEIGHT))}
-        end tell
-      end tell
-      set browserFound to true
-    end try
-  end if
-
-  if not browserFound then
-    try
-      tell application \"Safari\"
-        activate
-      end tell
-      delay 0.3
-      tell application \"System Events\"
-        tell process \"Safari\"
-          set position of window 1 to {$HALF_WIDTH, 0}
-          set size of window 1 to {$HALF_WIDTH, $((WINDOW_HEIGHT + TITLEBAR_HEIGHT))}
-        end tell
-      end tell
-    end try
-  end if
+  end tell
 " 2>/dev/null
 
 sleep 1
 
-# ── Go to start and start recording ──
-info "Going to start of project..."
+# ── Go to start ──
 osascript -e 'tell application "REAPER" to activate' \
   -e 'tell application "System Events" to key code 115'
 sleep 0.5
 
-info "Recording side-by-side (${DURATION}s)..."
+# ── Check with user ──
+echo ""
+echo "  Windows should now be positioned:"
+echo "    Left:  REAPER with $(basename "$RPP_FILE")"
+echo "    Right: QR join page"
+echo ""
+read -p "  Look good? (y/n) " -n 1 -r
+echo ""
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo "  Cancelled. Adjust windows manually and try again."
+  exit 0
+fi
+
+# ── Bring windows to front before recording ──
+osascript -e 'tell application "Brave Browser" to activate' 2>/dev/null
+sleep 0.3
+osascript -e 'tell application "REAPER" to activate' 2>/dev/null
+sleep 0.3
+
+# ── Start screen recording ──
+info "Recording (${DURATION}s)..."
 ffmpeg -y \
   -f avfoundation \
   -framerate 30 \
   -capture_cursor 0 \
-  -i "2:" \
+  -i "${SCREEN_DEV}:" \
   -t "$((DURATION + 2))" \
   -vf "crop=${CAPTURE_WIDTH}:${CAPTURE_HEIGHT}:0:${CROP_Y},scale=1280:720" \
   -c:v libx264 -preset ultrafast -crf 23 \
@@ -147,12 +164,23 @@ ffmpeg -y \
 FFMPEG_PID=$!
 sleep 1
 
-info "Starting REAPER playback..."
+# ── Act 1: Start REAPER playback, QR page visible (5s) ──
+info "Act 1: Playing — QR join page showing..."
 osascript -e 'tell application "REAPER" to activate' \
   -e 'tell application "System Events" to keystroke " "'
+sleep 5
 
-sleep "$DURATION"
+# ── Act 2: Switch browser to lyrics view ──
+info "Act 2: Switching to lyrics..."
+osascript -e '
+  tell application "Brave Browser"
+    activate
+    set URL of active tab of front window to "http://localhost:3000/lyrics"
+  end tell
+' 2>/dev/null
+sleep $((DURATION - 8))
 
+# ── Stop ──
 info "Stopping playback..."
 osascript -e 'tell application "REAPER" to activate' \
   -e 'tell application "System Events" to keystroke " "'
@@ -169,8 +197,5 @@ ffmpeg -y -i "$OUTPUT_DIR/_combo_raw.mp4" \
   "$OUTPUT_FILE" 2>/dev/null
 
 rm -f "$OUTPUT_DIR/_combo_raw.mp4"
-
-# Clean up teleprompter
-kill "$TELEPROMPTER_PID" 2>/dev/null || true
 
 ok "Combined screencast: $OUTPUT_FILE"

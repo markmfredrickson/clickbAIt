@@ -23,13 +23,15 @@ target/debug/clickbait-audio lookup "<title>" -a "<artist>"
 
 This searches Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel.
 
+**If the user provides an audio file**, analyze it first with `clickbait-audio analyze` — the actual recording is the primary source of truth for BPM, key, and timing. Online lookups are secondary confirmation. Never default to round-number BPMs (120, 140) when you have a recording to analyze.
+
 ## Step 2: Present findings and confirm
 
 Show the user what was found:
-- **BPM** from Deezer (if available)
-- **Key** from Hooktheory (if available)
+- **BPM** from audio analysis (if file provided), confirmed by Deezer
+- **Key** from Hooktheory or audio analysis (if available)
 - **Song structure** from lyrics section markers and Hooktheory
-- **Duration** from MusicBrainz/Deezer
+- **Duration** from audio file or MusicBrainz/Deezer
 
 If BPM or key data is missing from the sources, use your musical knowledge but flag it as an estimate. The lookup data is suggestive — you can augment with web searches and musical knowledge.
 

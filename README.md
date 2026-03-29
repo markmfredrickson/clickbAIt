@@ -18,6 +18,8 @@ clickbAIt builds **show tracks** — everything a band needs alongside their liv
 - **Whisper** transcribes vocals for word-level lyric timing
 - Stem splitting (Demucs) and audio analysis planned
 
+All of this feeds into **DSongL**, a domain-specific language that programmatically generates REAPER project files and powers a web-based live lyrics display.
+
 **What you get:**
 - **Click + cues** — hear "Verse 2... 1, 2, 3, 4" in your in-ears before each section
 - **Song structure** defined in DSongL, a TypeScript domain-specific language for show tracks — sections, lyrics, chords, tempo changes

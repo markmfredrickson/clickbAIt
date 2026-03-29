@@ -28,6 +28,7 @@
   const offsetValue = document.getElementById("offset-value");
   const scrollModeBtn = document.getElementById("scroll-mode-btn");
   const sizeDownBtn = document.getElementById("size-down-btn");
+  const sizeResetBtn = document.getElementById("size-reset-btn");
   const sizeUpBtn = document.getElementById("size-up-btn");
   const darkModeBtn = document.getElementById("dark-mode-btn");
   const transportLight = document.getElementById("transport-light");
@@ -267,7 +268,11 @@
       root.style.setProperty("--section-size", (lyricSize * 0.5) + "rem");
     }
     sizeUpBtn.addEventListener("click", function () {
-      lyricSize = Math.min(5, lyricSize + 0.25);
+      lyricSize = Math.min(8, lyricSize + 0.25);
+      applySize();
+    });
+    sizeResetBtn.addEventListener("click", function () {
+      lyricSize = 1.5;
       applySize();
     });
     sizeDownBtn.addEventListener("click", function () {

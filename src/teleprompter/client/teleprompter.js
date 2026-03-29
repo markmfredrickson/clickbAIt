@@ -27,6 +27,8 @@
   const offsetSlider = document.getElementById("offset-slider");
   const offsetValue = document.getElementById("offset-value");
   const scrollModeBtn = document.getElementById("scroll-mode-btn");
+  const sizeDownBtn = document.getElementById("size-down-btn");
+  const sizeUpBtn = document.getElementById("size-up-btn");
   const darkModeBtn = document.getElementById("dark-mode-btn");
   const transportLight = document.getElementById("transport-light");
 
@@ -244,7 +246,7 @@
     // Offset slider
     offsetSlider.addEventListener("input", function () {
       offsetBeats = parseFloat(this.value);
-      offsetValue.textContent = offsetBeats > 0 ? "+" + offsetBeats : offsetBeats;
+      offsetValue.textContent = offsetBeats;
       if (currentBeat >= 0) onBeatUpdate(currentBeat - offsetBeats); // re-apply
     });
 
@@ -254,6 +256,23 @@
       autoScroll = !autoScroll;
       this.classList.toggle("active", autoScroll);
       this.textContent = autoScroll ? "Auto" : "Manual";
+    });
+
+    // Text size
+    var lyricSize = 1.5; // rem, matches CSS default
+    function applySize() {
+      var root = document.documentElement;
+      root.style.setProperty("--lyric-size", lyricSize + "rem");
+      root.style.setProperty("--chord-size", (lyricSize * 0.6) + "rem");
+      root.style.setProperty("--section-size", (lyricSize * 0.5) + "rem");
+    }
+    sizeUpBtn.addEventListener("click", function () {
+      lyricSize = Math.min(5, lyricSize + 0.25);
+      applySize();
+    });
+    sizeDownBtn.addEventListener("click", function () {
+      lyricSize = Math.max(0.75, lyricSize - 0.25);
+      applySize();
     });
 
     // Dark/light mode

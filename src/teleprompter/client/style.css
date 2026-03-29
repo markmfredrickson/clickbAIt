@@ -10,6 +10,9 @@
   --section-bg: #1a1a1a;
   --chord-color: #88bbff;
   --header-bg: #0a0a0a;
+  --lyric-size: 1.5rem;
+  --chord-size: 0.9rem;
+  --section-size: 0.75rem;
 }
 
 .light {
@@ -118,7 +121,7 @@ body {
 }
 
 .section-name {
-  font-size: 0.75rem;
+  font-size: var(--section-size);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -129,7 +132,7 @@ body {
 }
 
 .lyric-line {
-  font-size: 1.5rem;
+  font-size: var(--lyric-size);
   line-height: 2;
   color: var(--text-dim);
   transition: color 0.2s ease;
@@ -144,7 +147,7 @@ body {
 }
 
 .chord-row {
-  font-size: 0.9rem;
+  font-size: var(--chord-size);
   font-weight: 600;
   color: var(--chord-color);
   margin-bottom: 0.1rem;

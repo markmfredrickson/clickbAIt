@@ -28,6 +28,23 @@ brew install charmbracelet/tap/vhs
 brew install ffmpeg
 ```
 
+### macOS Automation permissions (for REAPER recording)
+
+The REAPER screencast uses AppleScript to position the window and control playback.
+Your terminal app (e.g. Ghostty) needs **Automation** permission to control REAPER:
+
+1. Run this to trigger the permission prompt:
+   ```bash
+   osascript -e 'tell application "REAPER" to activate'
+   ```
+2. Click **Allow** when macOS prompts
+3. Verify in **System Settings > Privacy & Security > Automation** that your terminal has REAPER listed
+4. If the prompt doesn't appear, reset and retry:
+   ```bash
+   tccutil reset AppleEvents com.mitchellh.ghostty  # replace with your terminal's bundle ID
+   osascript -e 'tell application "REAPER" to activate'
+   ```
+
 ## How it works
 
 ### REAPER screencast (`reaper-record.sh`)

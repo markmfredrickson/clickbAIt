@@ -17,7 +17,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # ── Config ──
 # Default to When the Saints Go Marching In (public domain, always available)
-RPP_FILE="${1:-$(dirname "$DEMO_DIR")/output/saints/when-the-saints-go-marching-in-traditional.rpp}"
+RPP_FILE="${1:-$(dirname "$DEMO_DIR")/output/setlist/when-the-saints-go-marching-in-traditional.rpp}"
 DURATION="${2:-20}"
 OUTPUT_FILE="$OUTPUT_DIR/reaper-demo.mp4"
 
@@ -76,7 +76,7 @@ tag = ',f\x00\x00'
 val = struct.pack('>f', 1.0)
 msg = addr_padded.encode('ascii') + tag.encode('ascii') + val
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.sendto(msg, ('127.0.0.1', 8000))
+sock.sendto(msg, ('${REAPER_OSC_HOST:-127.0.0.1}', ${REAPER_OSC_PORT:-8000}))
 sock.close()
 " 2>/dev/null || true
 }
@@ -110,7 +110,8 @@ position_reaper
 sleep 1
 
 info "Going to start of project..."
-send_osc_action $ACTION_GO_TO_START
+# REAPER: Home key = go to start of project
+osascript -e 'tell application "REAPER" to activate' -e 'tell application "System Events" to key code 115'
 sleep 0.5
 
 info "Starting screen recording (${DURATION}s)..."
@@ -132,13 +133,14 @@ FFMPEG_PID=$!
 sleep 1
 
 info "Starting REAPER playback..."
-send_osc_action $ACTION_PLAY
+# REAPER: Space = play/stop
+osascript -e 'tell application "REAPER" to activate' -e 'tell application "System Events" to keystroke " "'
 
 # Wait for recording duration
 sleep "$DURATION"
 
 info "Stopping playback..."
-send_osc_action $ACTION_STOP
+osascript -e 'tell application "REAPER" to activate' -e 'tell application "System Events" to keystroke " "'
 
 # Let the recording finish gracefully
 sleep 1

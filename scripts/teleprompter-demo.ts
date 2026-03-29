@@ -11,7 +11,7 @@ import { startTeleprompter } from "../src/teleprompter/index.js";
 import valerie from "../songs/amy-winehouse/valerie.js";
 
 const HTTP_PORT = 3000;
-const OSC_PORT = 9000;
+const OSC_PORT = 9001;
 const BPM = 148;
 const BEAT_INTERVAL_MS = (60 / BPM) * 1000; // ~405ms per beat
 

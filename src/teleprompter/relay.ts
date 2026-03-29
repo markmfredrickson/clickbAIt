@@ -35,34 +35,47 @@ const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
+export interface OscMessage { address: string; value: number }
+
 /**
- * Parse a raw OSC message buffer.
- * We only care about messages like: /beat f <float>
- * OSC format: null-terminated address string, padded to 4-byte boundary,
- * null-terminated type tag string (e.g. ",f"), padded, then args.
+ * Parse a single OSC message with a float arg from a buffer region.
  */
-export function parseOscFloat(buf: Buffer): { address: string; value: number } | null {
-  // Read null-terminated address
-  const nullIdx = buf.indexOf(0);
-  if (nullIdx === -1) return null;
-  const address = buf.toString("ascii", 0, nullIdx);
+export function parseOscFloat(buf: Buffer, start = 0, end = buf.length): OscMessage | null {
+  const nullIdx = buf.indexOf(0, start);
+  if (nullIdx < 0 || nullIdx >= end) return null;
+  const address = buf.toString("ascii", start, nullIdx);
 
-  // Skip to next 4-byte boundary
   let offset = Math.ceil((nullIdx + 1) / 4) * 4;
-
-  // Read type tag string (should start with ',')
   const tagNull = buf.indexOf(0, offset);
-  if (tagNull === -1) return null;
+  if (tagNull < 0 || tagNull >= end) return null;
   const tags = buf.toString("ascii", offset, tagNull);
   if (tags !== ",f") return null;
 
-  // Skip to next 4-byte boundary
   offset = Math.ceil((tagNull + 1) / 4) * 4;
+  if (offset + 4 > end) return null;
+  return { address, value: buf.readFloatBE(offset) };
+}
 
-  // Read 32-bit float (big-endian)
-  if (offset + 4 > buf.length) return null;
-  const value = buf.readFloatBE(offset);
-  return { address, value };
+/**
+ * Extract all float-typed OSC messages from a packet.
+ * Handles both bare messages and OSC bundles (recursive).
+ */
+export function parseOscPacket(buf: Buffer, start = 0, end = buf.length): OscMessage[] {
+  if (buf.toString("ascii", start, start + 7) === "#bundle") {
+    // Skip "#bundle\0" (8) + timetag (8) = 16 bytes
+    const results: OscMessage[] = [];
+    let pos = start + 16;
+    while (pos + 4 <= end) {
+      const size = buf.readInt32BE(pos);
+      pos += 4;
+      if (size <= 0 || pos + size > end) break;
+      results.push(...parseOscPacket(buf, pos, pos + size));
+      pos += size;
+    }
+    return results;
+  }
+  const msg = parseOscFloat(buf, start, end);
+  return msg ? [msg] : [];
 }
 
 function getLocalIP(): string {
@@ -196,20 +209,17 @@ export function startRelay(opts: RelayOptions) {
   const udp = createSocket("udp4");
 
   udp.on("message", (msg: Buffer) => {
-    const parsed = parseOscFloat(msg);
-    if (!parsed) return;
-
-    if (parsed.address === "/time") {
-      // REAPER sends seconds — convert to beats using tempo map
-      const beat = secondsToBeats(parsed.value, opts.song);
-      broadcast(JSON.stringify({ type: "position", beat }));
-    } else if (parsed.address === "/beat") {
-      // Direct beat position (from demo script or custom sender)
-      broadcast(JSON.stringify({ type: "position", beat: parsed.value }));
-    } else if (parsed.address === "/play") {
-      broadcast(JSON.stringify({ type: "play" }));
-    } else if (parsed.address === "/stop") {
-      broadcast(JSON.stringify({ type: "stop" }));
+    const messages = parseOscPacket(msg);
+    for (const parsed of messages) {
+      if (parsed.address === "/time") {
+        const beat = secondsToBeats(parsed.value, opts.song);
+        broadcast(JSON.stringify({ type: "position", beat }));
+      } else if (parsed.address === "/beat") {
+        broadcast(JSON.stringify({ type: "position", beat: parsed.value }));
+      } else if (parsed.address === "/play") {
+        // REAPER sends /play 1.0 = playing, /play 0.0 = not playing
+        broadcast(JSON.stringify({ type: parsed.value > 0.5 ? "play" : "stop" }));
+      }
     }
   });
 

@@ -28,6 +28,7 @@
   const offsetValue = document.getElementById("offset-value");
   const scrollModeBtn = document.getElementById("scroll-mode-btn");
   const darkModeBtn = document.getElementById("dark-mode-btn");
+  const transportLight = document.getElementById("transport-light");
 
   // ── Init ──
   async function init() {
@@ -137,10 +138,9 @@
       if (msg.type === "position") {
         onBeatUpdate(msg.beat);
       } else if (msg.type === "stop") {
-        statusEl.textContent = "Stopped";
+        transportLight.className = "stopped";
       } else if (msg.type === "play") {
-        statusEl.textContent = "Connected";
-        statusEl.className = "connected";
+        transportLight.className = "playing";
       }
     };
 
@@ -188,8 +188,22 @@
     });
   }
 
+  var scrollTarget = 0;
+  var scrolling = false;
+
+  function animateScroll() {
+    var current = window.scrollY;
+    var diff = scrollTarget - current;
+    if (Math.abs(diff) < 1) {
+      scrolling = false;
+      return;
+    }
+    // Ease toward target — 10% per frame for smooth but responsive motion
+    window.scrollTo(0, current + diff * 0.1);
+    requestAnimationFrame(animateScroll);
+  }
+
   function scrollToCurrentLine(beat) {
-    // Find the active lyric element
     var target = null;
     for (var i = lyricElements.length - 1; i >= 0; i--) {
       if (beat >= lyricElements[i].beat) {
@@ -199,7 +213,6 @@
     }
 
     if (!target) {
-      // Before any lyrics — find active section header
       for (var j = sectionElements.length - 1; j >= 0; j--) {
         if (beat >= sectionElements[j].beat) {
           target = sectionElements[j].el;
@@ -209,7 +222,12 @@
     }
 
     if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      var rect = target.getBoundingClientRect();
+      scrollTarget = window.scrollY + rect.top - window.innerHeight * 0.33;
+      if (!scrolling) {
+        scrolling = true;
+        requestAnimationFrame(animateScroll);
+      }
     }
   }
 
@@ -230,37 +248,14 @@
       this.textContent = autoScroll ? "Auto" : "Manual";
     });
 
-    // Pause auto-scroll on manual scroll, resume on button
-    var scrollTimeout;
-    window.addEventListener("wheel", function () {
-      if (autoScroll) {
-        autoScroll = false;
-        scrollModeBtn.classList.remove("active");
-        scrollModeBtn.textContent = "Manual";
-      }
-    });
-    window.addEventListener("touchmove", function () {
-      if (autoScroll) {
-        autoScroll = false;
-        scrollModeBtn.classList.remove("active");
-        scrollModeBtn.textContent = "Manual";
-      }
-    });
-
     // Dark/light mode
     darkModeBtn.addEventListener("click", function () {
       document.body.classList.toggle("light");
       this.textContent = document.body.classList.contains("light") ? "☀️" : "🌙";
     });
 
-    // Keyboard shortcuts
+    // Keyboard shortcuts — only arrow keys for offset, no accidental scroll toggle
     document.addEventListener("keydown", function (e) {
-      if (e.key === " ") {
-        e.preventDefault();
-        autoScroll = !autoScroll;
-        scrollModeBtn.classList.toggle("active", autoScroll);
-        scrollModeBtn.textContent = autoScroll ? "Auto" : "Manual";
-      }
       if (e.key === "ArrowUp") {
         offsetSlider.value = parseFloat(offsetSlider.value) + 0.5;
         offsetSlider.dispatchEvent(new Event("input"));

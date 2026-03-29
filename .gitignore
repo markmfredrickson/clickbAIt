@@ -57,3 +57,6 @@ target/
 # Build/working artifacts
 .cache
 clickbait-workspace/
+
+# Demo recordings (generated)
+demo/output/

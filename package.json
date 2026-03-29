@@ -5,9 +5,14 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:skill": "node scripts/inject-dsongl-api.mjs"
+    "build:skill": "node scripts/inject-dsongl-api.mjs",
+    "demo": "./demo/render.sh --all",
+    "demo:browser": "./demo/render.sh --browser-only",
+    "demo:cli": "./demo/render.sh --cli-only",
+    "demo:reaper": "./demo/render.sh --reaper-only"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/qrcode": "^1.5.6",
     "@types/ws": "^8.18.1",
     "typescript": "^5.0.0",

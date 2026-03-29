@@ -12,6 +12,13 @@ We asked AI to build our cover band's click tracks. You won't believe what happe
 
 clickbAIt builds **show tracks** — everything a band needs alongside their live playing: click tracks, spoken section cues, count-ins, backing tracks, and synchronized lyrics. Think of it as a stage manager in a REAPER project.
 
+**AI runs through the whole pipeline:**
+- **Claude** designs the song structure — looks up BPM, key, lyrics, and writes the project with you
+- **Piper TTS** generates spoken cue announcements ("Verse 2", "Chorus")
+- **Whisper** transcribes vocals for word-level lyric timing
+- Stem splitting (Demucs) and audio analysis planned
+
+**What you get:**
 - **Click + cues** — hear "Verse 2... 1, 2, 3, 4" in your in-ears before each section
 - **Song structure** defined in DSongL, a TypeScript domain-specific language for show tracks — sections, lyrics, chords, tempo changes
 - **Backing tracks** — place stems or audio files on the timeline, aligned to the click

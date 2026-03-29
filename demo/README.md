@@ -95,6 +95,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+## Generating the demo song
+
+The REAPER screencast uses "When the Saints Go Marching In" (public domain).
+To generate the `.rpp` project if it doesn't exist yet:
+
+```bash
+/clickbait When the Saints Go Marching In - Traditional
+```
+
+Or directly:
+
+```bash
+npx tsx src/generate.ts songs/traditional/when-the-saints-go-marching-in.ts output/saints
+```
+
 ## Updating for new features
 
 - **New REAPER feature**: Adjust `reaper-record.sh` duration or project

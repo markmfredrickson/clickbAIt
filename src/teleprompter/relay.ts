@@ -1,27 +1,30 @@
 /**
  * OSC → WebSocket relay server.
  *
- * Listens for OSC beat position messages from REAPER,
- * broadcasts to all connected browser clients over WebSocket.
- * Also serves the static browser client and song payload.
+ * Listens for OSC messages from REAPER, broadcasts to browser clients.
+ * Supports multiple songs via a songs directory — switches automatically
+ * when REAPER sends a region name matching a song slug.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
 import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import type { SongPayload } from "./types.js";
+import { toSlug } from "./export.js";
 
 export interface RelayOptions {
   /** HTTP/WebSocket port (default 3000) */
   httpPort?: number;
   /** UDP port for incoming OSC messages (default 9000) */
   oscPort?: number;
-  /** Song payload to serve to clients */
-  song: SongPayload;
+  /** Directory containing song JSON files (default: cwd) */
+  songsDir?: string;
+  /** Initial song payload (optional — can also load from songsDir) */
+  song?: SongPayload;
   /** Directory containing the static client files */
   clientDir?: string;
 }
@@ -35,12 +38,16 @@ const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
-export interface OscMessage { address: string; value: number }
+// ── OSC parsing ──
+
+export interface OscFloat { type: "float"; address: string; value: number }
+export interface OscString { type: "string"; address: string; value: string }
+export type OscMessage = OscFloat | OscString;
 
 /**
- * Parse a single OSC message with a float arg from a buffer region.
+ * Parse a single OSC message (float or string arg) from a buffer region.
  */
-export function parseOscFloat(buf: Buffer, start = 0, end = buf.length): OscMessage | null {
+export function parseOscMessage(buf: Buffer, start = 0, end = buf.length): OscMessage | null {
   const nullIdx = buf.indexOf(0, start);
   if (nullIdx < 0 || nullIdx >= end) return null;
   const address = buf.toString("ascii", start, nullIdx);
@@ -49,22 +56,36 @@ export function parseOscFloat(buf: Buffer, start = 0, end = buf.length): OscMess
   const tagNull = buf.indexOf(0, offset);
   if (tagNull < 0 || tagNull >= end) return null;
   const tags = buf.toString("ascii", offset, tagNull);
-  if (tags !== ",f") return null;
 
   offset = Math.ceil((tagNull + 1) / 4) * 4;
-  if (offset + 4 > end) return null;
-  return { address, value: buf.readFloatBE(offset) };
+
+  if (tags === ",f") {
+    if (offset + 4 > end) return null;
+    return { type: "float", address, value: buf.readFloatBE(offset) };
+  }
+
+  if (tags === ",s") {
+    const sNull = buf.indexOf(0, offset);
+    if (sNull < 0) return null;
+    return { type: "string", address, value: buf.toString("utf8", offset, sNull) };
+  }
+
+  return null;
+}
+
+/** Backwards compat alias */
+export function parseOscFloat(buf: Buffer, start = 0, end = buf.length): OscFloat | null {
+  const msg = parseOscMessage(buf, start, end);
+  return msg?.type === "float" ? msg : null;
 }
 
 /**
- * Extract all float-typed OSC messages from a packet.
- * Handles both bare messages and OSC bundles (recursive).
+ * Extract all OSC messages from a packet (handles bundles).
  */
 export function parseOscPacket(buf: Buffer, start = 0, end = buf.length): OscMessage[] {
   if (buf.toString("ascii", start, start + 7) === "#bundle") {
-    // Skip "#bundle\0" (8) + timetag (8) = 16 bytes
     const results: OscMessage[] = [];
-    let pos = start + 16;
+    let pos = start + 16; // skip header + timetag
     while (pos + 4 <= end) {
       const size = buf.readInt32BE(pos);
       pos += 4;
@@ -74,9 +95,11 @@ export function parseOscPacket(buf: Buffer, start = 0, end = buf.length): OscMes
     }
     return results;
   }
-  const msg = parseOscFloat(buf, start, end);
+  const msg = parseOscMessage(buf, start, end);
   return msg ? [msg] : [];
 }
+
+// ── Utilities ──
 
 function getLocalIP(): string {
   const nets = networkInterfaces();
@@ -90,8 +113,6 @@ function getLocalIP(): string {
 
 /**
  * Convert seconds to beats using the song's tempo map.
- * Inverse of beats→seconds: walks tempo points and computes
- * how many beats fit in the remaining seconds.
  */
 export function secondsToBeats(seconds: number, song: SongPayload): number {
   const map = song.tempoMap;
@@ -114,23 +135,65 @@ export function secondsToBeats(seconds: number, song: SongPayload): number {
   return beat;
 }
 
+// ── Server ──
+
 export function startRelay(opts: RelayOptions) {
   const httpPort = opts.httpPort ?? 3000;
   const oscPort = opts.oscPort ?? 9000;
   const clientDir = opts.clientDir ?? join(import.meta.dirname ?? ".", "client");
+  const songsDir = opts.songsDir ?? process.cwd();
   const ip = getLocalIP();
   const baseUrl = `http://${ip}:${httpPort}`;
+
+  // Current song state
+  let currentSong: SongPayload | null = opts.song ?? null;
+  let currentSlug = currentSong?.slug ?? "";
+
+  // Song cache: slug → payload
+  const songCache = new Map<string, SongPayload>();
+  if (currentSong) songCache.set(currentSlug, currentSong);
+
+  async function loadSong(slug: string): Promise<SongPayload | null> {
+    if (songCache.has(slug)) return songCache.get(slug)!;
+    try {
+      const data = await readFile(join(songsDir, slug + ".json"), "utf8");
+      const payload = JSON.parse(data) as SongPayload;
+      songCache.set(slug, payload);
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  async function switchSong(slug: string) {
+    if (slug === currentSlug) return;
+    const song = await loadSong(slug);
+    if (!song) {
+      console.log(`  Song not found: ${slug}.json`);
+      return;
+    }
+    currentSong = song;
+    currentSlug = slug;
+    qrSvgCache = null; // reset QR (song title changed)
+    console.log(`  Switched to: ${song.title}${song.artist ? ` — ${song.artist}` : ""}`);
+    broadcast(JSON.stringify({ type: "song-changed", slug }));
+  }
 
   // Pre-generate QR code as SVG
   let qrSvgCache: string | null = null;
 
-  // HTTP server — serves static files and song JSON
+  // HTTP server
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? "/";
 
     if (url === "/song.json") {
+      if (!currentSong) {
+        res.writeHead(404);
+        res.end("No song loaded");
+        return;
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(opts.song));
+      res.end(JSON.stringify(currentSong));
       return;
     }
 
@@ -138,6 +201,9 @@ export function startRelay(opts: RelayOptions) {
       if (!qrSvgCache) {
         qrSvgCache = await QRCode.toString(baseUrl, { type: "svg" });
       }
+      const songLine = currentSong
+        ? `${currentSong.title}${currentSong.artist ? ` — ${currentSong.artist}` : ""}`
+        : "Waiting for song…";
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(`<!DOCTYPE html>
 <html lang="en">
@@ -163,7 +229,7 @@ export function startRelay(opts: RelayOptions) {
 <body>
   <h1>clickbAIt: One Simple Track</h1>
   <p class="subtitle">Scan to follow along</p>
-  <p class="song-title">${opts.song.title}${opts.song.artist ? ` — ${opts.song.artist}` : ""}</p>
+  <p class="song-title">${songLine}</p>
   <div class="qr">${qrSvgCache}</div>
   <p class="url">${baseUrl}</p>
   <a href="/lyrics" style="display:inline-block; margin-top:1.5rem; padding:0.8rem 2rem;
@@ -171,6 +237,20 @@ export function startRelay(opts: RelayOptions) {
      font-weight:700; font-size:1.1rem;">Open Lyrics</a>
 </body>
 </html>`);
+      return;
+    }
+
+    // List available songs
+    if (url === "/songs") {
+      try {
+        const files = await readdir(songsDir);
+        const songs = files.filter(f => f.endsWith(".json")).map(f => f.replace(".json", ""));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(songs));
+      } catch {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end("[]");
+      }
       return;
     }
 
@@ -188,7 +268,7 @@ export function startRelay(opts: RelayOptions) {
     }
   });
 
-  // WebSocket server — attached to same HTTP server
+  // WebSocket
   const wss = new WebSocketServer({ server });
   const clients = new Set<WebSocket>();
 
@@ -211,14 +291,20 @@ export function startRelay(opts: RelayOptions) {
   udp.on("message", (msg: Buffer) => {
     const messages = parseOscPacket(msg);
     for (const parsed of messages) {
-      if (parsed.address === "/time") {
-        const beat = secondsToBeats(parsed.value, opts.song);
-        broadcast(JSON.stringify({ type: "position", beat }));
-      } else if (parsed.address === "/beat") {
-        broadcast(JSON.stringify({ type: "position", beat: parsed.value }));
-      } else if (parsed.address === "/play") {
-        // REAPER sends /play 1.0 = playing, /play 0.0 = not playing
-        broadcast(JSON.stringify({ type: parsed.value > 0.5 ? "play" : "stop" }));
+      if (parsed.type === "float") {
+        if (parsed.address === "/time" && currentSong) {
+          const beat = secondsToBeats(parsed.value, currentSong);
+          broadcast(JSON.stringify({ type: "position", beat }));
+        } else if (parsed.address === "/beat") {
+          broadcast(JSON.stringify({ type: "position", beat: parsed.value }));
+        } else if (parsed.address === "/play") {
+          broadcast(JSON.stringify({ type: parsed.value > 0.5 ? "play" : "stop" }));
+        }
+      } else if (parsed.type === "string") {
+        if (parsed.address === "/lastregion/name" && parsed.value) {
+          const slug = toSlug(parsed.value);
+          if (slug) switchSong(slug);
+        }
       }
     }
   });

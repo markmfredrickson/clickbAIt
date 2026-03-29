@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { exportSongPayload } from "../../src/teleprompter/export.js";
+import { exportSongPayload, toSlug, songSlug } from "../../src/teleprompter/export.js";
 import { song, seq, span, bars, lyric, chord, cue } from "../../src/dsongl.js";
 
 const testSong = song("Test Song", 120, { artist: "Test Artist", key: "C" },
@@ -40,6 +40,7 @@ describe("exportSongPayload", () => {
     expect(payload.artist).toBe("Test Artist");
     expect(payload.key).toBe("C");
     expect(payload.bpm).toBe(120);
+    expect(payload.slug).toBe("test-song-test-artist");
     expect(payload.tempoMap).toBeDefined();
     expect(payload.tempoMap.length).toBeGreaterThan(0);
   });
@@ -104,5 +105,39 @@ describe("exportSongPayload", () => {
     expect(firstChord.chord).toBe("C");
     expect(firstChord.beat).toBe(8);
     expect(firstChord.seconds).toBeCloseTo(4);
+  });
+});
+
+describe("toSlug", () => {
+  it("lowercases and replaces non-alphanumeric with hyphens", () => {
+    expect(toSlug("Valerie")).toBe("valerie");
+    expect(toSlug("Amy Winehouse")).toBe("amy-winehouse");
+    expect(toSlug("Dani California in A minor")).toBe("dani-california-in-a-minor");
+  });
+
+  it("strips leading and trailing hyphens", () => {
+    expect(toSlug("--hello--")).toBe("hello");
+    expect(toSlug("  spaces  ")).toBe("spaces");
+  });
+
+  it("collapses multiple non-alphanumeric chars", () => {
+    expect(toSlug("foo---bar")).toBe("foo-bar");
+    expect(toSlug("file.json; rm -rf /")).toBe("file-json-rm-rf");
+  });
+
+  it("handles empty string", () => {
+    expect(toSlug("")).toBe("");
+  });
+});
+
+describe("songSlug", () => {
+  it("combines title and artist", () => {
+    expect(songSlug({ kind: "song", title: "Valerie", artist: "Amy Winehouse", bpm: 148, timeSignature: [4, 4], children: [] }))
+      .toBe("valerie-amy-winehouse");
+  });
+
+  it("uses title only when no artist", () => {
+    expect(songSlug({ kind: "song", title: "Take Five", bpm: 170, timeSignature: [5, 4], children: [] }))
+      .toBe("take-five");
   });
 });

@@ -39,6 +39,8 @@ export interface SongPayload {
   artist?: string;
   key?: string;
   bpm: number;
+  /** Slug used for file lookup and RPP region identification. */
+  slug: string;
   tempoMap: TempoPoint[];
   sections: Section[];
 }

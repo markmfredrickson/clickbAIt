@@ -31,17 +31,23 @@
   const transportLight = document.getElementById("transport-light");
 
   // ── Init ──
-  async function init() {
+  async function loadSong() {
     try {
-      const res = await fetch("/song.json");
+      var res = await fetch("/song.json");
+      if (!res.ok) {
+        statusEl.textContent = "Waiting for song…";
+        return;
+      }
       song = await res.json();
+      renderSong();
     } catch (e) {
       statusEl.textContent = "Failed to load song";
       statusEl.className = "disconnected";
-      return;
     }
+  }
 
-    renderSong();
+  async function init() {
+    await loadSong();
     connectWebSocket();
     setupControls();
   }
@@ -141,6 +147,8 @@
         transportLight.className = "stopped";
       } else if (msg.type === "play") {
         transportLight.className = "playing";
+      } else if (msg.type === "song-changed") {
+        loadSong();
       }
     };
 

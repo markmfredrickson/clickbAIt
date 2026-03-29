@@ -1,18 +1,36 @@
 /**
  * Launch clickbAIt: One Simple Track
  *
- * Usage: npx tsx scripts/teleprompter.ts <song-file.ts>
- * Example: npx tsx scripts/teleprompter.ts songs/amy-winehouse/valerie.ts
+ * Usage:
+ *   npx tsx scripts/teleprompter.ts <song-file.ts>              # single song
+ *   npx tsx scripts/teleprompter.ts --songs-dir ./output/songs   # multi-song
+ *   npx tsx scripts/teleprompter.ts <song.ts> --songs-dir ./dir  # both
  */
 
 import { resolve } from "node:path";
 import { startTeleprompter } from "../src/teleprompter/index.js";
 
-const songPath = process.argv[2];
-if (!songPath) {
-  console.error("Usage: npx tsx scripts/teleprompter.ts <song-file.ts>");
+const args = process.argv.slice(2);
+let songPath: string | undefined;
+let songsDir: string | undefined;
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === "--songs-dir" && args[i + 1]) {
+    songsDir = resolve(args[++i]);
+  } else if (!args[i].startsWith("-")) {
+    songPath = args[i];
+  }
+}
+
+if (!songPath && !songsDir) {
+  console.error("Usage:");
+  console.error("  npx tsx scripts/teleprompter.ts <song-file.ts>");
+  console.error("  npx tsx scripts/teleprompter.ts --songs-dir ./output/songs");
   process.exit(1);
 }
 
-const songModule = await import(resolve(songPath));
-await startTeleprompter({ song: songModule.default });
+const song = songPath
+  ? (await import(resolve(songPath))).default
+  : undefined;
+
+await startTeleprompter({ song, songsDir });

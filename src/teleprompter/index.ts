@@ -1,8 +1,8 @@
 /**
  * clickbAIt: One Simple Track
  *
- * Entry point: loads a song, starts the OSC→WebSocket relay,
- * prints a QR code to the terminal, and serves the browser client.
+ * Entry point: starts the OSC→WebSocket relay with a songs directory.
+ * Can optionally start with a specific song pre-loaded.
  */
 
 import { networkInterfaces } from "node:os";
@@ -12,7 +12,10 @@ import type { Song } from "../types.js";
 import QRCode from "qrcode";
 
 export interface TeleprompterOptions {
-  song: Song;
+  /** Pre-load a specific song */
+  song?: Song;
+  /** Directory containing song JSON files for multi-song mode */
+  songsDir?: string;
   httpPort?: number;
   oscPort?: number;
 }
@@ -31,25 +34,31 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   const httpPort = opts.httpPort ?? 3000;
   const oscPort = opts.oscPort ?? 9000;
 
-  const payload = exportSongPayload(opts.song);
-  const relay = startRelay({ httpPort, oscPort, song: payload });
+  const payload = opts.song ? exportSongPayload(opts.song) : undefined;
+  const relay = startRelay({
+    httpPort,
+    oscPort,
+    song: payload,
+    songsDir: opts.songsDir,
+  });
 
   const ip = getLocalIP();
   const url = `http://${ip}:${httpPort}`;
 
   const qr = await QRCode.toString(url, { type: "terminal", small: true });
   console.log("");
-  console.log(`  clickbAIt: One Simple Track — ${payload.title}`);
+  console.log(`  clickbAIt: One Simple Track`);
+  if (payload) {
+    console.log(`  Now playing: ${payload.title}${payload.artist ? ` — ${payload.artist}` : ""}`);
+  }
+  if (opts.songsDir) {
+    console.log(`  Songs dir: ${opts.songsDir}`);
+  }
   console.log(`  ${url}`);
   console.log("");
   console.log(qr);
   console.log(`  OSC listening on UDP port ${oscPort} (REAPER sends /time)`);
-  console.log("");
-  console.log(`  REAPER setup:`);
-  console.log(`    Preferences > Control/OSC/web > Add`);
-  console.log(`    Mode: Configure device IP+local port`);
-  console.log(`    Device IP: 127.0.0.1 | Device port: ${oscPort}`);
-  console.log(`    Pattern config: clickbait`);
+  console.log(`  Song switching via /lastregion/name`);
   console.log("");
 
   return relay;

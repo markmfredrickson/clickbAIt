@@ -9,6 +9,7 @@ import { execSync } from "child_process";
 import { resolve, dirname } from "path";
 import { buildRpp } from "./build-rpp.js";
 import { extractSections } from "./sections.js";
+import { exportSongPayload, songSlug } from "./teleprompter/export.js";
 import type { Song } from "./types.js";
 
 const songPath = process.argv[2];
@@ -66,8 +67,17 @@ for (const name of cueWavsNeeded) {
   generateWav(name, resolve(cueDir, `${slug}.wav`));
 }
 
-const rppPath = resolve(outDir, `${song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.rpp`);
+const slug = songSlug(song);
+const rppPath = resolve(outDir, `${slug}.rpp`);
 writeFileSync(rppPath, rpp);
+
+// Write teleprompter sidecar JSON for One Simple Track
+const payload = exportSongPayload(song);
+const jsonPath = resolve(outDir, `${slug}.json`);
+writeFileSync(jsonPath, JSON.stringify(payload, null, 2));
+
 console.log(`\nWritten: ${rppPath}`);
+console.log(`Teleprompter: ${jsonPath}`);
 console.log(`Cue WAVs: ${cueDir}/`);
 console.log(`\nOpen in REAPER and hit play!`);
+console.log(`Teleprompter: npx tsx scripts/teleprompter.ts --songs-dir ${outDir}`);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseOscFloat, secondsToBeats } from "../../src/teleprompter/relay.js";
+import { parseOscFloat, parseOscPacket, parseOscMessage, secondsToBeats } from "../../src/teleprompter/relay.js";
 import type { SongPayload } from "../../src/teleprompter/types.js";
 
 /** Build a minimal OSC message with address and a single float arg. */
@@ -63,9 +63,95 @@ describe("parseOscFloat", () => {
   });
 });
 
+/** Build an OSC bundle containing multiple messages. */
+function buildOscBundle(...messages: { address: string; value: number }[]): Buffer {
+  const header = Buffer.from("#bundle\0"); // 8 bytes
+  const timetag = Buffer.alloc(8); // 8 bytes of zeros (immediate)
+  const parts = [header, timetag];
+
+  for (const msg of messages) {
+    const msgBuf = buildOscMessage(msg.address, msg.value);
+    const sizeBuf = Buffer.alloc(4);
+    sizeBuf.writeInt32BE(msgBuf.length);
+    parts.push(sizeBuf, msgBuf);
+  }
+
+  return Buffer.concat(parts);
+}
+
+describe("parseOscPacket", () => {
+  it("parses a bare float message", () => {
+    const msg = buildOscMessage("/time", 1.5);
+    const results = parseOscPacket(msg);
+    expect(results).toHaveLength(1);
+    expect(results[0].address).toBe("/time");
+    expect(results[0].type).toBe("float");
+    if (results[0].type === "float") expect(results[0].value).toBeCloseTo(1.5);
+  });
+
+  it("unwraps a bundle with multiple float messages", () => {
+    const bundle = buildOscBundle(
+      { address: "/time", value: 2.5 },
+      { address: "/play", value: 1.0 },
+    );
+    const results = parseOscPacket(bundle);
+    expect(results).toHaveLength(2);
+    expect(results[0].address).toBe("/time");
+    expect(results[1].address).toBe("/play");
+  });
+
+  it("parses a string message in a bundle", () => {
+    // Build a bundle with a string message: /lastregion/name ,s "Intro"
+    const strAddr = Buffer.from("/lastregion/name\0\0\0\0"); // 20 bytes (padded)
+    const strTag = Buffer.alloc(4);
+    strTag.write(",s\0");
+    const strVal = Buffer.from("Intro\0\0\0"); // 8 bytes (padded)
+    const strMsg = Buffer.concat([strAddr, strTag, strVal]);
+
+    const header = Buffer.from("#bundle\0");
+    const timetag = Buffer.alloc(8);
+    const size = Buffer.alloc(4);
+    size.writeInt32BE(strMsg.length);
+    const bundle = Buffer.concat([header, timetag, size, strMsg]);
+
+    const results = parseOscPacket(bundle);
+    expect(results).toHaveLength(1);
+    expect(results[0].type).toBe("string");
+    if (results[0].type === "string") {
+      expect(results[0].address).toBe("/lastregion/name");
+      expect(results[0].value).toBe("Intro");
+    }
+  });
+
+  it("parses mixed float and string messages in a bundle", () => {
+    const floatMsg = buildOscMessage("/time", 3.0);
+    const strAddr = Buffer.from("/beat/str\0\0\0"); // 12 bytes
+    const strTag = Buffer.alloc(4);
+    strTag.write(",s\0");
+    const strVal = Buffer.from("1.1.00\0\0"); // 8 bytes
+    const strMsg = Buffer.concat([strAddr, strTag, strVal]);
+
+    const header = Buffer.from("#bundle\0");
+    const timetag = Buffer.alloc(8);
+    const size1 = Buffer.alloc(4);
+    size1.writeInt32BE(floatMsg.length);
+    const size2 = Buffer.alloc(4);
+    size2.writeInt32BE(strMsg.length);
+
+    const bundle = Buffer.concat([header, timetag, size1, floatMsg, size2, strMsg]);
+    const results = parseOscPacket(bundle);
+    expect(results).toHaveLength(2);
+    expect(results[0].type).toBe("float");
+    expect(results[0].address).toBe("/time");
+    expect(results[1].type).toBe("string");
+    expect(results[1].address).toBe("/beat/str");
+  });
+});
+
 describe("secondsToBeats", () => {
   const simpleSong: SongPayload = {
     title: "Test",
+    slug: "test",
     bpm: 120,
     tempoMap: [{ beat: 0, seconds: 0, bpm: 120 }],
     sections: [],
@@ -81,6 +167,7 @@ describe("secondsToBeats", () => {
 
   const tempoChangeSong: SongPayload = {
     title: "Test",
+    slug: "test",
     bpm: 120,
     tempoMap: [
       { beat: 0, seconds: 0, bpm: 120 },
@@ -98,7 +185,7 @@ describe("secondsToBeats", () => {
   });
 
   it("handles empty tempo map", () => {
-    const empty: SongPayload = { title: "T", bpm: 90, tempoMap: [], sections: [] };
+    const empty: SongPayload = { title: "T", slug: "t", bpm: 90, tempoMap: [], sections: [] };
     // Falls back to master BPM: 90 BPM = 1.5 beats/sec
     expect(secondsToBeats(2, empty)).toBeCloseTo(3);
   });

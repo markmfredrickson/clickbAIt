@@ -13,19 +13,38 @@
 #
 # Minimal config — only what clickbAIt needs. Keeps OSC traffic low.
 
+DEVICE_TRACK_COUNT 0
+DEVICE_SEND_COUNT 0
+DEVICE_RECEIVE_COUNT 0
+DEVICE_FX_COUNT 0
+DEVICE_FX_PARAM_COUNT 0
+DEVICE_FX_INST_PARAM_COUNT 0
+DEVICE_MARKER_COUNT 0
+DEVICE_REGION_COUNT 8
+
 # Transport position in seconds (float, sent continuously during playback)
 TIME f/time s/time/str
 
 # Beat position as formatted string (measure.beat.subdivisions)
 BEAT s/beat/str
 
-# Play/stop state
+# Current tempo — sent live, handles tempo changes without precomputing
+TEMPO f/tempo/raw s/tempo/str
+
+# Play/stop/pause state
 PLAY t/play
 STOP t/stop
+PAUSE t/pause
 
 # Repeat/loop state
 REPEAT t/repeat
 
-# Marker/region feedback (sent when play cursor crosses a marker)
+# Marker feedback (sent when play cursor crosses a marker)
 LAST_MARKER_NAME s/lastmarker/name
 LAST_MARKER_NUMBER s/lastmarker/number/str
+
+# Region feedback (sections are regions in clickbAIt RPPs)
+LAST_REGION_NAME s/lastregion/name
+LAST_REGION_NUMBER s/lastregion/number/str
+LAST_REGION_TIME f/lastregion/time
+LAST_REGION_LENGTH f/lastregion/length

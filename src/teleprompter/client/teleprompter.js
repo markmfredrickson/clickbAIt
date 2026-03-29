@@ -166,32 +166,37 @@
 
   // ── Beat update ──
   function onBeatUpdate(beat) {
-    var effectiveBeat = beat + offsetBeats;
-    currentBeat = effectiveBeat;
+    var readingBeat = beat + offsetBeats;
+    currentBeat = readingBeat;
     beatDisplay.textContent = "Beat: " + Math.round(beat * 10) / 10;
 
-    updateHighlight(effectiveBeat);
+    updateHighlight(beat, readingBeat);
 
     if (autoScroll) {
-      scrollToCurrentLine(effectiveBeat);
+      scrollToCurrentLine(readingBeat);
     }
   }
 
-  function updateHighlight(beat) {
-    var activeIdx = -1;
-
+  function updateHighlight(nowBeat, readingBeat) {
+    // Find the "now" lyric (actual song position)
+    var nowIdx = -1;
     for (var i = lyricElements.length - 1; i >= 0; i--) {
-      if (beat >= lyricElements[i].beat) {
-        activeIdx = i;
-        break;
-      }
+      if (nowBeat >= lyricElements[i].beat) { nowIdx = i; break; }
+    }
+
+    // Find the "reading" lyric (offset/lookahead position)
+    var readIdx = -1;
+    for (var j = lyricElements.length - 1; j >= 0; j--) {
+      if (readingBeat >= lyricElements[j].beat) { readIdx = j; break; }
     }
 
     lyricElements.forEach(function (item, idx) {
-      item.el.classList.remove("active", "past");
-      if (idx === activeIdx) {
-        item.el.classList.add("active");
-      } else if (idx < activeIdx) {
+      item.el.classList.remove("reading", "now", "past");
+      if (idx === readIdx) {
+        item.el.classList.add("reading");
+      } else if (idx === nowIdx && nowIdx !== readIdx) {
+        item.el.classList.add("now");
+      } else if (idx < nowIdx) {
         item.el.classList.add("past");
       }
     });

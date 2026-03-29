@@ -138,8 +138,15 @@ body {
   transition: color 0.2s ease;
 }
 
-.lyric-line.active {
+.lyric-line.reading {
   color: var(--text);
+}
+
+.lyric-line.now {
+  color: var(--text);
+  opacity: 0.7;
+  border-left: 3px solid var(--accent);
+  padding-left: 0.5rem;
 }
 
 .lyric-line.past {

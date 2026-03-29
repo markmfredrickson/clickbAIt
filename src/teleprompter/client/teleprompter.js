@@ -136,6 +136,11 @@
       try { msg = JSON.parse(event.data); } catch (e) { return; }
       if (msg.type === "position") {
         onBeatUpdate(msg.beat);
+      } else if (msg.type === "stop") {
+        statusEl.textContent = "Stopped";
+      } else if (msg.type === "play") {
+        statusEl.textContent = "Connected";
+        statusEl.className = "connected";
       }
     };
 

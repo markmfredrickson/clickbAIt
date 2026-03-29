@@ -1,0 +1,31 @@
+# clickbAIt: One Simple Track — REAPER OSC Pattern Config
+#
+# Install: Copy this file to REAPER's OSC config directory
+#   (Preferences > Control/OSC/web > Add > OSC > Pattern Config > Open config directory)
+#
+# Then add an OSC control surface in REAPER:
+#   Preferences > Control/OSC/web > Add
+#   Mode: Configure device IP+local port
+#   Device IP: 127.0.0.1
+#   Device port: 9000  (the teleprompter relay's OSC port)
+#   Local listen port: 8000  (for receiving — not used by clickbAIt)
+#   Pattern config: clickbait
+#
+# Minimal config — only what clickbAIt needs. Keeps OSC traffic low.
+
+# Transport position in seconds (float, sent continuously during playback)
+TIME f/time s/time/str
+
+# Beat position as formatted string (measure.beat.subdivisions)
+BEAT s/beat/str
+
+# Play/stop state
+PLAY t/play
+STOP t/stop
+
+# Repeat/loop state
+REPEAT t/repeat
+
+# Marker/region feedback (sent when play cursor crosses a marker)
+LAST_MARKER_NAME s/lastmarker/name
+LAST_MARKER_NUMBER s/lastmarker/number/str

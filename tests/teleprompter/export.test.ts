@@ -40,6 +40,8 @@ describe("exportSongPayload", () => {
     expect(payload.artist).toBe("Test Artist");
     expect(payload.key).toBe("C");
     expect(payload.bpm).toBe(120);
+    expect(payload.tempoMap).toBeDefined();
+    expect(payload.tempoMap.length).toBeGreaterThan(0);
   });
 
   it("extracts all sections", () => {

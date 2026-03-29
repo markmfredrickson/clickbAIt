@@ -26,12 +26,20 @@ export interface Section {
   chords: ChordMark[];
 }
 
+/** A tempo change point for seconds↔beats conversion. */
+export interface TempoPoint {
+  beat: number;
+  seconds: number;
+  bpm: number;
+}
+
 /** Full song payload sent to the browser on connect. */
 export interface SongPayload {
   title: string;
   artist?: string;
   key?: string;
   bpm: number;
+  tempoMap: TempoPoint[];
   sections: Section[];
 }
 

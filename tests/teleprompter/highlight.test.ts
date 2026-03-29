@@ -5,6 +5,7 @@ import type { SongPayload } from "../../src/teleprompter/types.js";
 const payload: SongPayload = {
   title: "Test",
   bpm: 120,
+  tempoMap: [{ beat: 0, seconds: 0, bpm: 120 }],
   sections: [
     {
       name: "Intro",

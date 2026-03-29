@@ -1,5 +1,5 @@
 /**
- * clickbAIt Teleprompter — "Singers HATE This"
+ * clickbAIt: One Simple Track
  *
  * Entry point: loads a song, starts the OSC→WebSocket relay,
  * prints a QR code to the terminal, and serves the browser client.
@@ -17,14 +17,11 @@ export interface TeleprompterOptions {
   oscPort?: number;
 }
 
-/** Get the first non-loopback IPv4 address. */
 function getLocalIP(): string {
   const nets = networkInterfaces();
   for (const name of Object.keys(nets)) {
     for (const net of nets[name] ?? []) {
-      if (net.family === "IPv4" && !net.internal) {
-        return net.address;
-      }
+      if (net.family === "IPv4" && !net.internal) return net.address;
     }
   }
   return "localhost";
@@ -40,15 +37,19 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   const ip = getLocalIP();
   const url = `http://${ip}:${httpPort}`;
 
-  // Print QR code to terminal
   const qr = await QRCode.toString(url, { type: "terminal", small: true });
   console.log("");
   console.log(`  clickbAIt: One Simple Track — ${payload.title}`);
   console.log(`  ${url}`);
   console.log("");
   console.log(qr);
-  console.log(`  OSC listening on UDP port ${oscPort}`);
-  console.log(`  Send /beat <float> from REAPER`);
+  console.log(`  OSC listening on UDP port ${oscPort} (REAPER sends /time)`);
+  console.log("");
+  console.log(`  REAPER setup:`);
+  console.log(`    Preferences > Control/OSC/web > Add`);
+  console.log(`    Mode: Configure device IP+local port`);
+  console.log(`    Device IP: 127.0.0.1 | Device port: ${oscPort}`);
+  console.log(`    Pattern config: clickbait`);
   console.log("");
 
   return relay;

@@ -5,7 +5,7 @@
 
 import type { Song } from "../types.js";
 import type { LinearEvent } from "../linearize.js";
-import type { SongPayload, Section, LyricLine, ChordMark } from "./types.js";
+import type { SongPayload, Section, LyricLine, ChordMark, TempoPoint } from "./types.js";
 import { linearize } from "../linearize.js";
 import { extractSections } from "../sections.js";
 
@@ -55,11 +55,19 @@ export function exportSongPayload(song: Song): SongPayload {
     };
   });
 
+  // Build tempo map with seconds for each tempo change
+  const tempoPoints: TempoPoint[] = tempoMap.map((t) => ({
+    beat: t.beat,
+    seconds: beatsToSeconds(t.beat, tempoMap),
+    bpm: t.bpm,
+  }));
+
   return {
     title: song.title,
     artist: song.artist,
     key: song.key,
     bpm: song.bpm,
+    tempoMap: tempoPoints,
     sections: exportedSections,
   };
 }

@@ -75,6 +75,32 @@ function getLocalIP(): string {
   return "localhost";
 }
 
+/**
+ * Convert seconds to beats using the song's tempo map.
+ * Inverse of beats→seconds: walks tempo points and computes
+ * how many beats fit in the remaining seconds.
+ */
+export function secondsToBeats(seconds: number, song: SongPayload): number {
+  const map = song.tempoMap;
+  if (map.length === 0) return (seconds / 60) * song.bpm;
+
+  let beat = 0;
+  let prevSec = 0;
+  let bpm = map[0].bpm;
+
+  for (const tp of map) {
+    if (tp.seconds >= seconds) break;
+    if (tp.seconds > prevSec) {
+      beat += ((tp.seconds - prevSec) / 60) * bpm;
+      prevSec = tp.seconds;
+    }
+    bpm = tp.bpm;
+  }
+
+  beat += ((seconds - prevSec) / 60) * bpm;
+  return beat;
+}
+
 export function startRelay(opts: RelayOptions) {
   const httpPort = opts.httpPort ?? 3000;
   const oscPort = opts.oscPort ?? 9000;
@@ -173,8 +199,17 @@ export function startRelay(opts: RelayOptions) {
     const parsed = parseOscFloat(msg);
     if (!parsed) return;
 
-    if (parsed.address === "/beat") {
+    if (parsed.address === "/time") {
+      // REAPER sends seconds — convert to beats using tempo map
+      const beat = secondsToBeats(parsed.value, opts.song);
+      broadcast(JSON.stringify({ type: "position", beat }));
+    } else if (parsed.address === "/beat") {
+      // Direct beat position (from demo script or custom sender)
       broadcast(JSON.stringify({ type: "position", beat: parsed.value }));
+    } else if (parsed.address === "/play") {
+      broadcast(JSON.stringify({ type: "play" }));
+    } else if (parsed.address === "/stop") {
+      broadcast(JSON.stringify({ type: "stop" }));
     }
   });
 

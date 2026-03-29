@@ -28,15 +28,24 @@ async function main() {
   // UDP client to send OSC to ourselves
   const client = createSocket("udp4");
 
-  function sendBeat(beat: number) {
-    // Build OSC message: /beat ,f <float32>
-    const addr = "/beat\0\0\0"; // 8 bytes (padded)
-    const tag = ",f\0\0";       // 4 bytes
-    const buf = Buffer.alloc(16);
-    buf.write(addr, 0, "ascii");
-    buf.write(tag, 8, "ascii");
-    buf.writeFloatBE(beat, 12);
-    client.send(buf, OSC_PORT, "127.0.0.1");
+  function sendOscFloat(address: string, value: number) {
+    // Pad address to 4-byte boundary
+    const addrBytes = Buffer.from(address + "\0");
+    const addrPadded = Buffer.alloc(Math.ceil(addrBytes.length / 4) * 4);
+    addrBytes.copy(addrPadded);
+    // Type tag ",f" padded to 4 bytes
+    const tag = Buffer.alloc(4);
+    tag.write(",f\0");
+    // Float: 32-bit big-endian
+    const val = Buffer.alloc(4);
+    val.writeFloatBE(value);
+    client.send(Buffer.concat([addrPadded, tag, val]), OSC_PORT, "127.0.0.1");
+  }
+
+  function sendTime(beat: number) {
+    // Convert beat to seconds (like REAPER would send via /time)
+    const seconds = (beat / BPM) * 60;
+    sendOscFloat("/time", seconds);
   }
 
   // Song structure for Valerie (beat positions of sections)
@@ -92,7 +101,7 @@ async function main() {
       console.log("  >> song ended, restarting from top");
     }
 
-    sendBeat(beat);
+    sendTime(beat);
 
     // Add some jitter: occasionally advance by 0.5 or 1.5 beats
     const jitter = Math.random();

@@ -25,6 +25,7 @@ export interface Span {
   timeSignature?: [number, number];
   duration?: Duration;
   tag?: string;               // inherited by children unless overridden
+  cue?: boolean;              // if true, buildRpp auto-places a TTS cue before this section
   children?: Node[];
 }
 

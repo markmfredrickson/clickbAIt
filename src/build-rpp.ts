@@ -188,7 +188,20 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   cueNames.add(song.title);
   trackItems.push({ position: 0, length: wavDuration(titleFile), file: titleFile });
 
-  // Cues: use linearized cue events (already padded)
+  // Auto-cues: sections with cue=true get a TTS announcement 2 bars before
+  for (const sec of sections) {
+    if (!sec.cue) continue;
+    const beatsPerBar = sec.timeSignature[0];
+    const cueBeat = sec.beat - beatsPerBar * 2; // 2 bars before section
+    if (cueBeat < 0) continue;
+    const cueSec = beatToSeconds(cueBeat, tempoMap);
+    const cueSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+    const file = `${opts.cueDir}/${cueSlug}.wav`;
+    cueNames.add(sec.name);
+    trackItems.push({ position: cueSec, length: wavDuration(file), file });
+  }
+
+  // Manual cue() events (ad-hoc band notes, already padded)
   for (const e of events) {
     if (e.type === "cue") {
       const slug = e.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");

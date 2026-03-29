@@ -29,6 +29,7 @@ interface SpanOptions {
   bpm?: number;
   timeSignature?: [number, number];
   tag?: string;
+  cue?: boolean;
 }
 
 export function span(name: string, duration: Duration, children?: Node[]): Span;
@@ -43,6 +44,7 @@ export function span(name: string, duration: Duration, third?: Node[] | SpanOpti
     ...opts.bpm !== undefined && { bpm: opts.bpm },
     ...opts.timeSignature !== undefined && { timeSignature: opts.timeSignature },
     ...opts.tag !== undefined && { tag: opts.tag },
+    ...opts.cue !== undefined && { cue: opts.cue },
     ...children !== undefined && { children },
   };
 }

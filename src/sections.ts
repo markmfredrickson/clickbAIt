@@ -7,6 +7,7 @@ export interface Section {
   durationBeats: number;
   timeSignature: [number, number];
   bpm: number;
+  cue?: boolean;          // if true, buildRpp auto-places a TTS cue before this section
 }
 
 interface Ctx {
@@ -51,7 +52,7 @@ function walkChildren(children: Node[], ctx: Ctx, out: Section[], isSequence: bo
       const dur = child.duration ? durationBeats(child.duration, ts) : 0;
 
       if (child.name) {
-        out.push({ name: child.name, beat, durationBeats: dur, timeSignature: ts, bpm });
+        out.push({ name: child.name, beat, durationBeats: dur, timeSignature: ts, bpm, cue: child.cue });
       }
 
       if (child.children) {

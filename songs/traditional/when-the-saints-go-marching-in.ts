@@ -1,4 +1,4 @@
-import { song, seq, span, bars, cue, lyric, chord } from "../../src/dsongl.js";
+import { song, seq, span, bars, lyric, chord } from "../../src/dsongl.js";
 
 /**
  * When the Saints Go Marching In — Traditional
@@ -24,8 +24,7 @@ export default song("When the Saints Go Marching In", 116, { artist: "Traditiona
     ]),
 
     // ── Verse 1 ──
-    span("Verse 1", bars(16), [
-      cue("Verse", -8),
+    span("Verse 1", bars(16), { cue: true }, [
       // Line 1: "Oh when the saints go marching in"
       chord("G", 0),
       lyric("Oh when the saints go marching in", 0, "Lead Vocal"),
@@ -47,8 +46,7 @@ export default song("When the Saints Go Marching In", 116, { artist: "Traditiona
     ]),
 
     // ── Verse 2 ──
-    span("Verse 2", bars(16), [
-      cue("Verse", -8),
+    span("Verse 2", bars(16), { cue: true }, [
       chord("G", 0),
       lyric("Oh when the sun refuse to shine", 0, "Lead Vocal"),
       chord("G", 16),
@@ -66,8 +64,7 @@ export default song("When the Saints Go Marching In", 116, { artist: "Traditiona
     ]),
 
     // ── Verse 3 ──
-    span("Verse 3", bars(16), [
-      cue("Verse", -8),
+    span("Verse 3", bars(16), { cue: true }, [
       chord("G", 0),
       lyric("Oh when the trumpet sounds its call", 0, "Lead Vocal"),
       chord("G", 16),
@@ -85,8 +82,7 @@ export default song("When the Saints Go Marching In", 116, { artist: "Traditiona
     ]),
 
     // ── Verse 4 ──
-    span("Verse 4", bars(16), [
-      cue("Verse", -8),
+    span("Verse 4", bars(16), { cue: true }, [
       chord("G", 0),
       lyric("Oh when the stars have disappeared", 0, "Lead Vocal"),
       chord("G", 16),
@@ -104,8 +100,7 @@ export default song("When the Saints Go Marching In", 116, { artist: "Traditiona
     ]),
 
     // ── Verse 5 ──
-    span("Verse 5", bars(16), [
-      cue("Verse", -8),
+    span("Verse 5", bars(16), { cue: true }, [
       chord("G", 0),
       lyric("Oh on that hallelujah day", 0, "Lead Vocal"),
       chord("G", 16),

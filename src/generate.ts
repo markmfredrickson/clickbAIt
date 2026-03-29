@@ -53,10 +53,12 @@ function generateWav(text: string, wavPath: string): void {
 const sections = extractSections(song);
 console.log(`\nSections: ${sections.map(s => s.name).join(" → ")}`);
 
-// Collect unique cue names from linearized events + title cue
+// Collect unique cue names: title + auto-cues from sections + manual cue() events
 import { linearize } from "./linearize.js";
 const allEvents = linearize(song);
-const cueNames = [...new Set([song.title, ...allEvents.filter(e => e.type === "cue").map(e => e.value)])];
+const autoCueNames = sections.filter(s => s.cue).map(s => s.name);
+const manualCueNames = allEvents.filter(e => e.type === "cue").map(e => e.value);
+const cueNames = [...new Set([song.title, ...autoCueNames, ...manualCueNames])];
 console.log(`\nGenerating ${cueNames.length} cue WAVs...`);
 
 for (const name of cueNames) {

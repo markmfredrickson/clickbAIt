@@ -21,10 +21,17 @@ RPP_FILE="${1:-$(dirname "$DEMO_DIR")/output/setlist/when-the-saints-go-marching
 DURATION="${2:-20}"
 OUTPUT_FILE="$OUTPUT_DIR/reaper-demo.mp4"
 
-# Recording region (adjust for your display — these are logical pixels)
-# Default: 1280x720 capture from top-left of REAPER window
-CAPTURE_WIDTH=1280
-CAPTURE_HEIGHT=720
+# Recording region (logical pixels — the window size)
+WINDOW_WIDTH=1280
+WINDOW_HEIGHT=720
+TITLEBAR_HEIGHT=58
+
+# Retina: ffmpeg captures at native resolution, so scale the crop
+# Set RETINA_SCALE=2 for Retina displays, 1 for non-Retina
+RETINA_SCALE="${RETINA_SCALE:-2}"
+CAPTURE_WIDTH=$((WINDOW_WIDTH * RETINA_SCALE))
+CAPTURE_HEIGHT=$((WINDOW_HEIGHT * RETINA_SCALE))
+CROP_Y=$((TITLEBAR_HEIGHT * RETINA_SCALE))
 
 # REAPER actions (built-in command IDs)
 ACTION_PLAY=1007
@@ -92,7 +99,7 @@ position_reaper() {
       tell process \"REAPER\"
         try
           set position of window 1 to {0, 0}
-          set size of window 1 to {$CAPTURE_WIDTH, $CAPTURE_HEIGHT}
+          set size of window 1 to {$WINDOW_WIDTH, $((WINDOW_HEIGHT + TITLEBAR_HEIGHT))}
         end try
       end tell
     end tell
@@ -103,10 +110,14 @@ position_reaper() {
 
 info "Opening project in REAPER..."
 open -a REAPER "$RPP_FILE"
-sleep 3
+sleep 5
 
 info "Positioning REAPER window..."
 position_reaper
+sleep 1
+
+# Keep REAPER in foreground so media doesn't show as offline
+osascript -e 'tell application "REAPER" to activate'
 sleep 1
 
 info "Going to start of project..."
@@ -122,12 +133,12 @@ ffmpeg -y \
   -f avfoundation \
   -framerate 30 \
   -capture_cursor 1 \
-  -i "3:" \
+  -i "2:" \
   -t "$((DURATION + 2))" \
-  -vf "crop=${CAPTURE_WIDTH}:${CAPTURE_HEIGHT}:0:0" \
+  -vf "crop=${CAPTURE_WIDTH}:${CAPTURE_HEIGHT}:0:${CROP_Y},scale=1280:720" \
   -c:v libx264 -preset ultrafast -crf 23 \
   -pix_fmt yuv420p \
-  "$OUTPUT_DIR/_reaper_raw.mp4" 2>/dev/null &
+  "$OUTPUT_DIR/_reaper_raw.mp4" 2>/tmp/clickbait-ffmpeg.log &
 
 FFMPEG_PID=$!
 sleep 1

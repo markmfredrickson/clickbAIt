@@ -12,7 +12,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { type ChildProcess, fork } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { resolve } from "node:path";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "..");
@@ -22,9 +22,8 @@ let demoServer: ChildProcess;
 
 test.beforeAll(async () => {
   // Start the demo server (teleprompter + simulated OSC beats)
-  demoServer = fork(DEMO_SCRIPT, [], {
+  demoServer = spawn("npx", ["tsx", DEMO_SCRIPT], {
     cwd: PROJECT_ROOT,
-    execArgv: ["--import", "tsx"],
     stdio: "pipe",
   });
 
@@ -53,11 +52,11 @@ test.afterAll(async () => {
 
 test("teleprompter screencast", async ({ page }) => {
   // ── Load the teleprompter ──
-  await page.goto("/");
+  await page.goto("/lyrics");
   await expect(page.locator("#song-title")).not.toBeEmpty({ timeout: 10_000 });
 
   // Verify song loaded
-  await expect(page.locator("#song-title")).toContainText("Valerie");
+  await expect(page.locator("#song-title")).toContainText("When the Saints");
 
   // Let it play for a bit — watch lyrics highlight and scroll
   await waitBeats(page, 4_000, "Watching intro...");

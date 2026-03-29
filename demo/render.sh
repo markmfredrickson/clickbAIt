@@ -68,7 +68,7 @@ record_reaper() {
   fi
 
   # Default: When the Saints Go Marching In (public domain)
-  local rpp_file="${REAPER_RPP:-$(dirname "$DEMO_DIR")/output/saints/when-the-saints-go-marching-in-traditional.rpp}"
+  local rpp_file="${REAPER_RPP:-$(dirname "$DEMO_DIR")/output/setlist/when-the-saints-go-marching-in-traditional.rpp}"
 
   "$DEMO_DIR/reaper-record.sh" "$rpp_file" "${REAPER_DURATION:-20}"
 

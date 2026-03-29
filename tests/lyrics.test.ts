@@ -1,44 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { Word, Phrase } from "../src/types.js";
-
-// Pure functions from lyrics-from-audio.ts, inlined here for testing.
-// These will move to an importable module.
-
-function secondsToBeats(seconds: number, bpm: number): number {
-  return (seconds / 60) * bpm;
-}
-
-function quantize(beats: number, grid: number = 0.25): number {
-  return Math.round(beats / grid) * grid;
-}
-
-function groupIntoPhrases(words: Word[], bpm: number): Phrase[] {
-  const phrases: Phrase[] = [];
-  let current: Word[] = [];
-  let lastEndMs = 0;
-
-  for (const word of words) {
-    const gapMs = word.startMs - lastEndMs;
-    const gapBeats = secondsToBeats(gapMs / 1000, bpm);
-
-    if (
-      current.length > 0 &&
-      (gapBeats > 1 || /[.!?]$/.test(current[current.length - 1].text))
-    ) {
-      phrases.push(current);
-      current = [];
-    }
-
-    current.push(word);
-    lastEndMs = word.endMs;
-  }
-
-  if (current.length > 0) {
-    phrases.push(current);
-  }
-
-  return phrases;
-}
+import {
+  secondsToBeats,
+  quantize,
+  groupIntoPhrases,
+  buildTranscriptionPhrase,
+} from "../src/transcribe.js";
 
 // ── secondsToBeats ─────────────────────────────────────────────
 
@@ -167,5 +134,68 @@ describe("beat offset from phrase", () => {
     // 2000ms at 97 BPM = 3.233 beats → 3.25
     const beat = quantize(secondsToBeats(2, 97));
     expect(beat).toBe(3.25);
+  });
+});
+
+// ── buildTranscriptionPhrase ───────────────────────────────────
+
+describe("buildTranscriptionPhrase", () => {
+  it("computes average confidence", () => {
+    const words: Word[] = [
+      { text: "hello", startMs: 0, endMs: 200, confidence: 0.8 },
+      { text: "world", startMs: 220, endMs: 400, confidence: 0.6 },
+    ];
+    const phrase = buildTranscriptionPhrase(words);
+    expect(phrase.avgConfidence).toBe(0.7);
+  });
+
+  it("identifies low confidence words", () => {
+    const words: Word[] = [
+      { text: "clear", startMs: 0, endMs: 200, confidence: 0.9 },
+      { text: "mumble", startMs: 220, endMs: 400, confidence: 0.3 },
+      { text: "ok", startMs: 420, endMs: 500, confidence: 0.7 },
+    ];
+    const phrase = buildTranscriptionPhrase(words);
+    expect(phrase.lowConfidenceWords).toHaveLength(1);
+    expect(phrase.lowConfidenceWords[0]).toContain("mumble");
+    expect(phrase.lowConfidenceWords[0]).toContain("30%");
+  });
+
+  it("joins word text with spaces", () => {
+    const words: Word[] = [
+      { text: "just", startMs: 0, endMs: 100, confidence: 0.9 },
+      { text: "a", startMs: 120, endMs: 150, confidence: 0.9 },
+      { text: "girl", startMs: 170, endMs: 300, confidence: 0.9 },
+    ];
+    const phrase = buildTranscriptionPhrase(words);
+    expect(phrase.text).toBe("just a girl");
+  });
+
+  it("uses first word startMs", () => {
+    const words: Word[] = [
+      { text: "hey", startMs: 500, endMs: 700, confidence: 0.9 },
+      { text: "now", startMs: 720, endMs: 900, confidence: 0.9 },
+    ];
+    const phrase = buildTranscriptionPhrase(words);
+    expect(phrase.startMs).toBe(500);
+  });
+
+  it("handles words with undefined confidence", () => {
+    const words: Word[] = [
+      { text: "word", startMs: 0, endMs: 200 },
+    ];
+    const phrase = buildTranscriptionPhrase(words);
+    expect(phrase.avgConfidence).toBe(0);
+    expect(phrase.lowConfidenceWords).toHaveLength(1);
+  });
+
+  it("respects custom minConfidence threshold", () => {
+    const words: Word[] = [
+      { text: "word", startMs: 0, endMs: 200, confidence: 0.6 },
+    ];
+    // Default threshold (0.5) — should pass
+    expect(buildTranscriptionPhrase(words).lowConfidenceWords).toHaveLength(0);
+    // Higher threshold — should flag
+    expect(buildTranscriptionPhrase(words, 0.7).lowConfidenceWords).toHaveLength(1);
   });
 });

@@ -9,9 +9,30 @@
  */
 
 import { readFileSync } from "fs";
+import { resolve } from "path";
 import type { Song } from "./types.js";
 import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.js";
 import { extractSections, type Section } from "./sections.js";
+
+/** Read WAV duration in seconds by finding the actual 'data' chunk. */
+function wavDuration(path: string): number {
+  const buf = readFileSync(path);
+  const sampleRate = buf.readUInt32LE(24);
+  const channels = buf.readUInt16LE(22);
+  const bitsPerSample = buf.readUInt16LE(34);
+  const bytesPerSample = bitsPerSample / 8;
+  // Walk RIFF chunks to find 'data'
+  let offset = 12; // skip RIFF header + WAVE tag
+  while (offset + 8 <= buf.length) {
+    const chunkId = buf.toString("ascii", offset, offset + 4);
+    const chunkSize = buf.readUInt32LE(offset + 4);
+    if (chunkId === "data") {
+      return chunkSize / (channels * bytesPerSample) / sampleRate;
+    }
+    offset += 8 + chunkSize;
+  }
+  throw new Error(`No data chunk found in ${path}`);
+}
 
 export interface AudioItem {
   position: number;   // seconds
@@ -24,23 +45,6 @@ export interface RppProject {
   cueWavsNeeded: string[];  // unique cue values that need TTS WAVs
 }
 
-/** Read WAV duration in seconds from file header. Returns fallback if file can't be read. */
-function wavDuration(path: string, fallback: number): number {
-  try {
-    const buf = readFileSync(path);
-    // WAV header: bytes 24-27 = sample rate (uint32 LE), bytes 40-43 = data size (uint32 LE)
-    // channels at bytes 22-23 (uint16 LE), bits per sample at bytes 34-35 (uint16 LE)
-    const sampleRate = buf.readUInt32LE(24);
-    const channels = buf.readUInt16LE(22);
-    const bitsPerSample = buf.readUInt16LE(34);
-    const dataSize = buf.readUInt32LE(40);
-    const bytesPerSample = bitsPerSample / 8;
-    const numSamples = dataSize / (channels * bytesPerSample);
-    return numSamples / sampleRate;
-  } catch {
-    return fallback;
-  }
-}
 
 /** Format a position to REAPER's 12-decimal precision. */
 function fmtPos(n: number): string { return n.toFixed(12); }
@@ -98,10 +102,6 @@ export interface BuildOptions {
   countDir: string;
   /** Directory containing click samples: accent.wav, beat.wav */
   clickDir: string;
-  /** Fallback duration of a cue WAV in seconds if file can't be read (default 0.8) */
-  cueDuration?: number;
-  /** Fallback duration of a count WAV in seconds if file can't be read (default 0.4) */
-  countDuration?: number;
 }
 
 export function buildRpp(song: Song, opts: BuildOptions): RppProject {
@@ -172,11 +172,8 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   }
 
   // --- Cue + count items (single track) ---
-  const cueFallback = opts.cueDuration ?? 0.8;
-  const countFallback = opts.countDuration ?? 0.4;
   const trackItems: AudioItem[] = [];
   const cueNames = new Set<string>();
-
 
   // Cues: use linearized cue events (already padded)
   for (const e of events) {
@@ -184,11 +181,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
       const slug = e.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
       const file = `${opts.cueDir}/${slug}.wav`;
       cueNames.add(e.value);
-      trackItems.push({
-        position: e.seconds,
-        length: wavDuration(file, cueFallback),
-        file,
-      });
+      trackItems.push({ position: e.seconds, length: wavDuration(file), file });
     }
   }
 
@@ -202,11 +195,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
       const beatPos = barStartBeat + i;
       const beatSec = beatToSeconds(beatPos, tempoMap);
       const file = `${opts.countDir}/${i + 1}.wav`;
-      trackItems.push({
-        position: beatSec,
-        length: wavDuration(file, countFallback),
-        file,
-      });
+      trackItems.push({ position: beatSec, length: wavDuration(file), file });
     }
   }
 
@@ -265,8 +254,8 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     beat: -1, playoffs: "0 1", nchan: 2, mainsend: "1 0",
   }));
 
-  // Cues & Counts track
-  rppLines.push(buildTrack("Cues & Counts", 0.8, buildWaveItems(trackItems)));
+  // Cues & Counts track (BEAT -1 = time-based, so positions in seconds aren't reinterpreted as beats)
+  rppLines.push(buildTrack("Cues & Counts", 0.8, buildWaveItems(trackItems), { beat: -1 }));
 
   // Audio tracks (stems, backing tracks, etc.)
   const audioByTrack = new Map<string, typeof events>();
@@ -279,7 +268,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   }
   for (const [trackName, audioEvents] of audioByTrack) {
     const items = buildAudioFileItems(audioEvents, tempoMap);
-    rppLines.push(buildTrack(trackName, 1, items));
+    rppLines.push(buildTrack(trackName, 1, items, { beat: -1 }));
   }
 
   rppLines.push(`>`);
@@ -407,7 +396,8 @@ function buildAudioFileItems(
   for (const e of audioEvents) {
     const position = e.seconds;
     const soffs = e.soffs ?? 0;
-    const srcType = sourceType(e.file!);
+    const absFile = resolve(e.file!);
+    const srcType = sourceType(absFile);
     lines.push(`    <ITEM`);
     lines.push(`      POSITION ${fmtPos(position)}`);
     lines.push(`      LENGTH 0`);
@@ -422,7 +412,7 @@ function buildAudioFileItems(
     lines.push(`      CHANMODE 0`);
     lines.push(`      GUID ${newGuid()}`);
     lines.push(`      <SOURCE ${srcType}`);
-    lines.push(`        FILE ${rppStr(e.file!)} 1`);
+    lines.push(`        FILE ${rppStr(absFile)} 1`);
     lines.push(`      >`);
     lines.push(`    >`);
   }

@@ -50,7 +50,7 @@ Once the user confirms the structure, write the song as a TypeScript file at `so
 In this step, do all of the following together as one output:
 - Define the section structure (Intro, Verse, Chorus, Bridge, etc.) as a sequence of spans
 - Set measure counts for each section
-- Place `cue()` events 2 bars before each section (e.g. `cue("Chorus", -8)` in 4/4). The count-in occupies the last bar before the section, so cues must be at least 2 bars out to avoid collision.
+- Mark sections with `{ cue: true }` so buildRpp auto-places TTS announcements 2 bars before each section and count-ins 1 bar before. Do NOT use manual `cue()` for section announcements — that's only for ad-hoc band notes (e.g. `cue("Hit the flanger pedal", 24)`).
 - Map lyrics from Genius into `lyric()` events at appropriate beat offsets within sections, typically one per bar or per phrase, tagged with the vocalist role (e.g. "Lead Vocal")
 - Place `chord()` events where chord changes are known
 - Handle any tempo or time signature changes with span options

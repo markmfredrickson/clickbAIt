@@ -55,8 +55,17 @@ export interface Song {
   children: Node[];
 }
 
+/** An audio file placed on the timeline, assigned to a named track. */
+export interface Audio {
+  kind: "audio";
+  name: string;       // track name (e.g. "Guitars", "Bass")
+  file: string;       // path to audio file
+  offset?: number;    // beats relative to parent; default 0
+  soffs?: number;     // source offset in seconds (trim from start of file)
+}
+
 /** Any node in the tree. */
-export type Node = Event | Span | Sequence | Song;
+export type Node = Event | Span | Sequence | Song | Audio;
 
 /** A single word with timing (milliseconds) and optional confidence (0–1). */
 export interface Word {

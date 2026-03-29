@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { linearize, type LinearEvent } from "../src/linearize.js";
-import { song, seq, span, bars, beats, cue, chord, lyric, marker } from "../src/dsongl.js";
+import { song, seq, span, bars, beats, cue, chord, lyric, marker, audio } from "../src/dsongl.js";
 
 /** Helper: find events by type */
 function ofType(events: LinearEvent[], type: string) {
@@ -217,6 +217,59 @@ describe("linearize", () => {
     const markers = ofType(events, "marker");
     expect(markers.find((e) => e.value === "inherited")?.tag).toBe("drums");
     expect(markers.find((e) => e.value === "own")?.tag).toBe("vocals");
+  });
+
+  it("audio at song root linearizes at beat 0", () => {
+    const s = song("Test", 120,
+      audio("Guitars", "stems/guitars.mp3"),
+      span("Intro", bars(2)),
+    );
+    const events = linearize(s);
+    const audios = ofType(events, "audio");
+    expect(audios).toHaveLength(1);
+    expect(audios[0].beat).toBe(0);
+    expect(audios[0].seconds).toBe(0);
+    expect(audios[0].value).toBe("Guitars");
+    expect(audios[0].file).toBe("stems/guitars.mp3");
+  });
+
+  it("audio inside a span inherits parent position", () => {
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(2)),
+        span("Verse", bars(4), [
+          audio("Synth", "stems/synth.mp3"),
+        ]),
+      ),
+    );
+    const events = linearize(s);
+    const audios = ofType(events, "audio");
+    expect(audios).toHaveLength(1);
+    expect(audios[0].beat).toBe(8); // 2 bars × 4 beats
+  });
+
+  it("audio with explicit offset shifts position", () => {
+    const s = song("Test", 60,
+      audio("Bass", "stems/bass.mp3", { offset: 4, soffs: 0.5 }),
+    );
+    const events = linearize(s);
+    const audios = ofType(events, "audio");
+    expect(audios[0].beat).toBe(4);
+    expect(audios[0].seconds).toBeCloseTo(4.0); // 4 beats at 60 BPM
+    expect(audios[0].soffs).toBe(0.5);
+  });
+
+  it("audio gets shifted by padding like other events", () => {
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(2), [cue("Intro", -8)]),
+      ),
+      audio("Guitars", "stems/guitars.mp3"),
+    );
+    const { events, paddingBeats } = linearize(s, { withPadding: true });
+    expect(paddingBeats).toBe(8);
+    const audios = ofType(events, "audio");
+    expect(audios[0].beat).toBe(8); // shifted by padding
   });
 
   it("seconds calculation with BPM changes", () => {

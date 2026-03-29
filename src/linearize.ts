@@ -1,11 +1,15 @@
-import type { Node, Event, Span, Sequence, Song, Duration } from "./types.js";
+import type { Node, Event, Span, Sequence, Song, Audio, Duration } from "./types.js";
 
 export interface LinearEvent {
   beat: number;
   seconds: number;
-  type: Event["type"] | "tempo" | "timesig";
+  type: Event["type"] | "tempo" | "timesig" | "audio";
   value: string;
   tag?: string;
+  /** For audio events: path to audio file */
+  file?: string;
+  /** For audio events: source offset in seconds (trim from start) */
+  soffs?: number;
 }
 
 interface Context {
@@ -57,6 +61,19 @@ function walk(node: Node, ctx: Context, out: LinearEvent[]): void {
 
     case "sequence": {
       walkSequence(node, ctx, out);
+      break;
+    }
+
+    case "audio": {
+      const beat = ctx.beatOffset + (node.offset ?? 0);
+      out.push({
+        beat,
+        seconds: 0,
+        type: "audio",
+        value: node.name,  // track name
+        file: node.file,
+        soffs: node.soffs,
+      });
       break;
     }
   }
@@ -117,6 +134,7 @@ function walkSequence(node: Sequence, ctx: Context, out: LinearEvent[]): void {
 function childDuration(node: Node, ts: [number, number]): number {
   switch (node.kind) {
     case "event":
+    case "audio":
       return 0;
     case "span":
     case "sequence": {

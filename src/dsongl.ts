@@ -1,4 +1,4 @@
-import type { Duration, Event, Span, Sequence, Song, Node } from "./types.js";
+import type { Duration, Event, Span, Sequence, Song, Audio, Node } from "./types.js";
 
 // --- Duration sugar ---
 
@@ -44,6 +44,23 @@ export function span(name: string, duration: Duration, third?: Node[] | SpanOpti
     ...opts.timeSignature !== undefined && { timeSignature: opts.timeSignature },
     ...opts.tag !== undefined && { tag: opts.tag },
     ...children !== undefined && { children },
+  };
+}
+
+// --- Audio builder ---
+
+interface AudioOptions {
+  offset?: number;
+  soffs?: number;
+}
+
+export function audio(name: string, file: string, opts?: AudioOptions): Audio {
+  return {
+    kind: "audio",
+    name,
+    file,
+    ...opts?.offset !== undefined && { offset: opts.offset },
+    ...opts?.soffs !== undefined && { soffs: opts.soffs },
   };
 }
 

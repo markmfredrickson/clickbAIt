@@ -8,10 +8,15 @@
     "build:skill": "node scripts/inject-dsongl-api.mjs"
   },
   "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "nodejs-whisper": "^0.2.9"
+    "nodejs-whisper": "^0.2.9",
+    "osc": "^2.4.5",
+    "qrcode": "^1.5.4",
+    "ws": "^8.20.0"
   }
 }

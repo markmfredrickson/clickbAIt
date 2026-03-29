@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>clickbAIt: One Simple Track</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="header">
+    <h1 id="song-title"></h1>
+    <div id="song-meta"></div>
+    <div id="controls">
+      <label>
+        Offset
+        <input type="range" id="offset-slider" min="-8" max="8" step="0.5" value="0">
+        <span id="offset-value">0</span> beats
+      </label>
+      <button id="scroll-mode-btn" title="Toggle auto-scroll">Auto</button>
+      <button id="dark-mode-btn" title="Toggle dark/light">🌙</button>
+    </div>
+  </header>
+
+  <main id="lyrics-container"></main>
+
+  <footer id="status-bar">
+    <span id="connection-status">Connecting…</span>
+    <span id="beat-display">Beat: —</span>
+  </footer>
+
+  <script src="teleprompter.js"></script>
+</body>
+</html>

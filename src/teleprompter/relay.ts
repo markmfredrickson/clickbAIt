@@ -168,10 +168,7 @@ export function startRelay(opts: RelayOptions) {
   async function switchSong(slug: string) {
     if (slug === currentSlug) return;
     const song = await loadSong(slug);
-    if (!song) {
-      console.log(`  Song not found: ${slug}.json`);
-      return;
-    }
+    if (!song) return; // not a song slug — just a section name, ignore silently
     currentSong = song;
     currentSlug = slug;
     qrSvgCache = null; // reset QR (song title changed)

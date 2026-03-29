@@ -49,23 +49,28 @@ function generateWav(text: string, wavPath: string): void {
   execSync(`${audioBin} speak "${text}" -o "${wavPath}"`, { stdio: "pipe" });
 }
 
-// Build RPP first to discover what cue WAVs are needed
+// Discover what cue WAVs are needed by scanning the song tree
+const sections = extractSections(song);
+console.log(`\nSections: ${sections.map(s => s.name).join(" → ")}`);
+
+// Collect unique cue names from linearized events + title cue
+import { linearize } from "./linearize.js";
+const allEvents = linearize(song);
+const cueNames = [...new Set([song.title, ...allEvents.filter(e => e.type === "cue").map(e => e.value)])];
+console.log(`\nGenerating ${cueNames.length} cue WAVs...`);
+
+for (const name of cueNames) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+  generateWav(name, resolve(cueDir, `${slug}.wav`));
+}
+
+// Now build RPP (cue WAVs exist on disk for duration measurement)
 console.log(`\nBuilding RPP...`);
 const { rpp, cueWavsNeeded } = buildRpp(song, {
   cueDir,
   countDir,
   clickDir,
 });
-
-// Generate cue WAVs for each unique cue value
-const sections = extractSections(song);
-console.log(`\nSections: ${sections.map(s => s.name).join(" → ")}`);
-console.log(`\nGenerating ${cueWavsNeeded.length} cue WAVs...`);
-
-for (const name of cueWavsNeeded) {
-  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
-  generateWav(name, resolve(cueDir, `${slug}.wav`));
-}
 
 const slug = songSlug(song);
 const rppPath = resolve(outDir, `${slug}.rpp`);

@@ -47,7 +47,9 @@ node_modules/
 
 # Audio stems and samples (copyrighted, not distributable)
 examples/all_the_small_things/
-songs/
+songs/*
+# Exception: public domain test songs
+!songs/traditional/
 
 # Rust
 target/

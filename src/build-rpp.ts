@@ -13,6 +13,7 @@ import { resolve } from "path";
 import type { Song } from "./types.js";
 import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.js";
 import { extractSections, type Section } from "./sections.js";
+import { songSlug } from "./teleprompter/export.js";
 
 /** Read WAV duration in seconds by finding the actual 'data' chunk. */
 function wavDuration(path: string): number {
@@ -159,6 +160,22 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // --- Region markers ---
   const regionLines: string[] = [];
   let regionId = 1;
+
+  // Song identification region — spans the whole project so REAPER sends
+  // it via /lastregion/name on tab switch, enabling teleprompter song switching
+  const slug = songSlug(song);
+  const lastSec = sections[sections.length - 1];
+  const projectEnd = lastSec
+    ? beatToSeconds(lastSec.beat + lastSec.durationBeats, tempoMap)
+    : 0;
+  regionLines.push(
+    `MARKER ${regionId} 0 ${rppStr(slug)} 1 0 1 B ${newGuid()} 0 1`
+  );
+  regionLines.push(
+    `MARKER ${regionId} ${fmt(projectEnd)} "" 1`
+  );
+  regionId++;
+
   for (const sec of sections) {
     const startSec = beatToSeconds(sec.beat, tempoMap);
     const endSec = beatToSeconds(sec.beat + sec.durationBeats, tempoMap);
@@ -174,6 +191,12 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // --- Cue + count items (single track) ---
   const trackItems: AudioItem[] = [];
   const cueNames = new Set<string>();
+
+  // Title cue at beat 0 — always injected so the band hears the song name
+  const titleSlug = song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+  const titleFile = `${opts.cueDir}/${titleSlug}.wav`;
+  cueNames.add(song.title);
+  trackItems.push({ position: 0, length: wavDuration(titleFile), file: titleFile });
 
   // Cues: use linearized cue events (already padded)
   for (const e of events) {

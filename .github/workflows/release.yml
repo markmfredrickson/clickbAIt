@@ -40,6 +40,8 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
 
@@ -63,6 +65,11 @@ jobs:
             -output clickbait-audio
           chmod +x clickbait-audio
           tar czf clickbait-audio-macos-universal.tar.gz clickbait-audio
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: clickbait-audio-macos-universal.tar.gz
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

@@ -26,7 +26,7 @@ fi
 echo "Latest release: $LATEST"
 
 # Download universal binary
-BINARY_URL="https://github.com/$REPO/releases/download/$LATEST/clickbait-audio-macos-universal.tar.gz"
+BINARY_URL="https://github.com/$REPO/releases/download/$LATEST/clickbait-audio-macos-arm64.tar.gz"
 echo "Downloading clickbait-audio..."
 mkdir -p target/release
 curl -fL "$BINARY_URL" | tar xz -C target/release/

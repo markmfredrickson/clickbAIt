@@ -18,34 +18,25 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Build arm64
+      - name: Build
         run: cargo build --release
 
-      - name: Build x86_64
-        run: cargo build --release --target x86_64-apple-darwin
-
-      - name: Create universal binary
+      - name: Package binary
         run: |
-          lipo -create \
-            target/release/clickbait-audio \
-            target/x86_64-apple-darwin/release/clickbait-audio \
-            -output clickbait-audio
-          chmod +x clickbait-audio
-          tar czf clickbait-audio-macos-universal.tar.gz clickbait-audio
+          chmod +x target/release/clickbait-audio
+          tar czf clickbait-audio-macos-arm64.tar.gz -C target/release clickbait-audio
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: clickbait-audio-macos-universal.tar.gz
+          subject-path: clickbait-audio-macos-arm64.tar.gz
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: clickbait-audio-macos-universal.tar.gz
+          files: clickbait-audio-macos-arm64.tar.gz
           generate_release_notes: true

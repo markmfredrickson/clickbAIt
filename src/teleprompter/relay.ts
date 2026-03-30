@@ -14,7 +14,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import type { SongPayload } from "./types.js";
-import { toSlug } from "./export.js";
+import { toSlug } from "@clickbait/dsongl";
 
 export interface RelayOptions {
   /** HTTP/WebSocket port (default 3000) */

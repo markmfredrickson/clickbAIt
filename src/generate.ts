@@ -9,7 +9,8 @@ import { execSync } from "child_process";
 import { resolve, dirname } from "path";
 import { buildRpp } from "./build-rpp.js";
 import { extractSections } from "./sections.js";
-import { exportSongPayload, songSlug } from "./teleprompter/export.js";
+import { songSlug } from "@clickbait/dsongl";
+import { exportSongPayload } from "./teleprompter/export.js";
 import type { Song } from "@clickbait/dsongl";
 
 const songPath = process.argv[2];
@@ -33,10 +34,13 @@ console.log(`Song: ${song.title} (${song.bpm} BPM, ${song.timeSignature.join("/"
 // Ensure output dirs exist
 mkdirSync(cueDir, { recursive: true });
 
-// Find the clickbait-audio binary
-const audioBin = resolve(dirname(new URL(import.meta.url).pathname), "..", "target", "debug", "clickbait-audio");
+// Find the clickbait-audio binary (prefer release build)
+const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const audioBin = existsSync(resolve(root, "target", "release", "clickbait-audio"))
+  ? resolve(root, "target", "release", "clickbait-audio")
+  : resolve(root, "target", "debug", "clickbait-audio");
 if (!existsSync(audioBin)) {
-  console.error(`Build the Rust binary first: cargo build`);
+  console.error(`Build the Rust binary first: cargo build --release`);
   process.exit(1);
 }
 

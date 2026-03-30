@@ -1,8 +1,0 @@
-{
-  "name": "@clickbait/songs-traditional",
-  "version": "0.1.0",
-  "type": "module",
-  "dependencies": {
-    "@clickbait/dsongl": "*"
-  }
-}

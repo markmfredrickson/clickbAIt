@@ -4,22 +4,13 @@
  */
 
 import type { Song } from "@clickbait/dsongl";
+import { toSlug, songSlug } from "@clickbait/dsongl";
 import type { LinearEvent } from "../linearize.js";
 import type { SongPayload, Section, LyricLine, ChordMark, TempoPoint } from "./types.js";
 import { linearize } from "../linearize.js";
 import { extractSections } from "../sections.js";
 
-/** Sanitize a string to a safe filename slug. */
-export function toSlug(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
-
-/** Generate the canonical slug for a song. */
-export function songSlug(song: Song): string {
-  const parts = [song.title];
-  if (song.artist) parts.push(song.artist);
-  return toSlug(parts.join("-"));
-}
+export { toSlug, songSlug };
 
 export function exportSongPayload(song: Song): SongPayload {
   const events = linearize(song);

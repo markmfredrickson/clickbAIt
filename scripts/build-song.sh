@@ -41,7 +41,7 @@ fi
 
 echo "  Running Claude to generate DSongL..."
 PROMPT="$(cat "$PROMPT_FILE")"
-claude -p "$PROMPT" --allowedTools 'Bash(target/debug/clickbait-audio *)' 'Bash(npx tsx src/generate.ts *)' Read Write Glob
+claude -p "$PROMPT" --allowedTools 'Bash(target/release/clickbait-audio *)' 'Bash(target/debug/clickbait-audio *)' 'Bash(npx tsx src/generate.ts *)' Read Write Glob
 
 # Step 2: Check that Claude created the .ts file
 if [[ ! -f "$TS_FILE" ]]; then

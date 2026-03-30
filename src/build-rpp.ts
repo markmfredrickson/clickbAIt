@@ -15,7 +15,18 @@ import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.j
 import { extractSections, type Section } from "./sections.js";
 import { songSlug } from "./teleprompter/export.js";
 
-const audioBin = resolve(dirname(new URL(import.meta.url).pathname), "..", "target", "debug", "clickbait-audio");
+import { accessSync, constants } from "fs";
+
+/** Resolve the clickbait-audio binary: prefer release build, fall back to debug. */
+function findAudioBin(): string {
+  const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+  const release = resolve(root, "target", "release", "clickbait-audio");
+  const debug = resolve(root, "target", "debug", "clickbait-audio");
+  try { accessSync(release, constants.X_OK); return release; } catch {}
+  try { accessSync(debug, constants.X_OK); return debug; } catch {}
+  throw new Error(`clickbait-audio not found. Run: cargo build --release -p clickbait-audio`);
+}
+const audioBin = findAudioBin();
 
 /** Get audio file duration in seconds (WAV, MP3, or any symphonia-supported format). */
 function audioDuration(path: string): number {

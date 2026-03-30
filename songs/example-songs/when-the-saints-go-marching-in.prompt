@@ -1,0 +1,7 @@
+/clickbait When the Saints Go Marching In — Louis Armstrong
+
+I have a 78rpm recording at tests/fixtures/audio/saints-78rpm.mp3.
+The first 40 seconds are a spoken announcer and instrumental intro.
+Jump to where the vocals come in around 40s. Call-and-response style.
+Place the recording as an audio track.
+Don't ask me questions, just build it and generate the RPP to output/setlist.

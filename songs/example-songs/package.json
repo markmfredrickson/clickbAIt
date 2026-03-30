@@ -1,0 +1,11 @@
+{
+  "name": "@clickbait/example-songs",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./when-the-saints-go-marching-in": "./when-the-saints-go-marching-in.ts"
+  },
+  "dependencies": {
+    "@clickbait/dsongl": "*"
+  }
+}

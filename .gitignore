@@ -48,11 +48,10 @@ node_modules/
 # Audio stems and samples (copyrighted, not distributable)
 examples/all_the_small_things/
 songs/*
-# Exception: .prompt files (source of truth) and public domain songs
+# Exception: packaged songs (fully tracked)
+!songs/example-songs/
+# For other song dirs: .prompt files are source of truth, .ts are AI-generated
 !songs/**/*.prompt
-!songs/traditional/
-# .ts song files are build products (generated from .prompt by Claude)
-songs/**/*.ts
 
 # Rust
 target/
@@ -60,6 +59,9 @@ target/
 # Build/working artifacts
 .cache
 clickbait-workspace/
+
+# Claude Code worktrees
+.claude/worktrees/
 
 # Demo recordings (generated)
 demo/output/

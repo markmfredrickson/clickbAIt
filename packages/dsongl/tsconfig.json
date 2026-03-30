@@ -4,7 +4,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*", "tests/**/*", "packages/*/src/**/*", "songs/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*"]
 }

@@ -10,7 +10,7 @@ import { resolve, dirname } from "path";
 import { buildRpp } from "./build-rpp.js";
 import { extractSections } from "./sections.js";
 import { exportSongPayload, songSlug } from "./teleprompter/export.js";
-import type { Song } from "./types.js";
+import type { Song } from "@clickbait/dsongl";
 
 const songPath = process.argv[2];
 if (!songPath) {

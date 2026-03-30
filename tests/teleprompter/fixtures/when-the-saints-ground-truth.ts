@@ -1,4 +1,4 @@
-import { song, seq, span, bars, cue, lyric, chord } from "../../src/dsongl.js";
+import { song, seq, span, bars, cue, lyric, chord } from "@clickbait/dsongl";
 
 /**
  * When the Saints Go Marching In — Traditional

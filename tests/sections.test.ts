@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractSections } from "../src/sections.js";
-import { song, seq, span, bars, beats } from "../src/dsongl.js";
+import { song, seq, span, bars, beats } from "@clickbait/dsongl";
 
 describe("extractSections", () => {
   it("extracts named spans from a sequence", () => {

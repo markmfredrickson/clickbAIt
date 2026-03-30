@@ -1,4 +1,5 @@
-import type { Song, Section } from "./types.js";
+import type { Song } from "@clickbait/dsongl";
+import type { Section } from "./sections.js";
 
 interface TimelineBar {
   beatStart: number;      // cumulative beat position (for internal use)

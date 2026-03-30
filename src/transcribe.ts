@@ -10,7 +10,7 @@ import { readFileSync, unlinkSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { Word, Phrase } from "./types.js";
+import type { Word, Phrase } from "@clickbait/dsongl";
 
 const execFile = promisify(execFileCb);
 const __dirname = dirname(fileURLToPath(import.meta.url));

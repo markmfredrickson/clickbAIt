@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { generateRpp } from "../src/rpp.js";
 import { reaperAvailable, reaperMutate, parseMarkers, parsePTs } from "./helpers/reaper.js";
-import type { Song } from "../src/types.js";
+import type { Song } from "@clickbait/dsongl";
 
 const runIf = reaperAvailable ? it : it.skip;
 

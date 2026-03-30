@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateRpp } from "../src/rpp.js";
-import type { Song } from "../src/types.js";
+import type { Song } from "@clickbait/dsongl";
 
 const simpleSong: Song = {
   title: "Test Song",

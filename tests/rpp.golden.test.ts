@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { generateRpp } from "../src/rpp.js";
-import type { Song } from "../src/types.js";
+import type { Song } from "@clickbait/dsongl";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 

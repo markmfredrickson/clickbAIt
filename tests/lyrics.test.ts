@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Word, Phrase } from "../src/types.js";
+import type { Word, Phrase } from "@clickbait/dsongl";
 import {
   secondsToBeats,
   quantize,

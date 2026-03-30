@@ -2,6 +2,10 @@
   "name": "clickbait",
   "version": "0.1.0-beta.1",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "songs/*"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
@@ -21,6 +25,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "@clickbait/dsongl": "*",
     "nodejs-whisper": "^0.2.9",
     "osc": "^2.4.5",
     "qrcode": "^1.5.4",

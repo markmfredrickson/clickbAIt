@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { exportSongPayload, toSlug, songSlug } from "../../src/teleprompter/export.js";
-import { song, seq, span, bars, lyric, chord, cue } from "../../src/dsongl.js";
+import { song, seq, span, bars, lyric, chord, cue } from "@clickbait/dsongl";
 
 const testSong = song("Test Song", 120, { artist: "Test Artist", key: "C" },
   seq(

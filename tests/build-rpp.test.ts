@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildRpp } from "../src/build-rpp.js";
 import { linearize } from "../src/linearize.js";
-import { song, seq, span, bars, cue, marker, audio } from "../src/dsongl.js";
+import { song, seq, span, bars, cue, marker, audio } from "@clickbait/dsongl";
 
 const defaultOpts = {
   cueDir: "/tmp/cues",

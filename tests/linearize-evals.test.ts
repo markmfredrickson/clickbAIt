@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { linearize } from "../src/linearize.js";
-import type { Song } from "../src/types.js";
+import type { Song } from "@clickbait/dsongl";
 
 // Import eval outputs — these use relative paths to dsongl, so we import the default exports
 import takeFiveIter1 from "../clickbait-workspace/iteration-1/take-five-brubeck/with_skill/outputs/take-five.js";

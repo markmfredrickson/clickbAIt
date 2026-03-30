@@ -1,6 +1,6 @@
 import { generateRpp } from "./rpp.js";
 import { writeFileSync } from "fs";
-import type { Song } from "./types.js";
+import type { Song } from "@clickbait/dsongl";
 
 const song: Song = {
   title: "Don't Dream It's Over",

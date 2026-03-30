@@ -4,12 +4,13 @@ import path from "path";
 export default defineConfig({
   resolve: {
     alias: {
-      // Eval outputs use various relative paths to dsongl/types — normalize them all
-      "../../src/dsongl.js": path.resolve("src/dsongl.ts"),
-      "../../../../../src/dsongl.js": path.resolve("src/dsongl.ts"),
-      "../../../../src/dsongl.js": path.resolve("src/dsongl.ts"),
-      "../../../../../../src/dsongl.js": path.resolve("src/dsongl.ts"),
-      "../../../../../../src/types.js": path.resolve("src/types.ts"),
+      // AI-generated songs may still use relative paths — map them to the package
+      "@clickbait/dsongl": path.resolve("packages/dsongl/src/index.ts"),
+      "../../src/dsongl.js": path.resolve("packages/dsongl/src/index.ts"),
+      "../../../../../src/dsongl.js": path.resolve("packages/dsongl/src/index.ts"),
+      "../../../../src/dsongl.js": path.resolve("packages/dsongl/src/index.ts"),
+      "../../../../../../src/dsongl.js": path.resolve("packages/dsongl/src/index.ts"),
+      "../../../../../../src/types.js": path.resolve("packages/dsongl/src/index.ts"),
     },
   },
 });

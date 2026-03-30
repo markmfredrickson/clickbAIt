@@ -10,7 +10,7 @@
 
 import { execSync } from "child_process";
 import { resolve, dirname } from "path";
-import type { Song } from "./types.js";
+import type { Song } from "@clickbait/dsongl";
 import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.js";
 import { extractSections, type Section } from "./sections.js";
 import { songSlug } from "./teleprompter/export.js";

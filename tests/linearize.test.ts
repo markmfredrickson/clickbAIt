@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { linearize, type LinearEvent } from "../src/linearize.js";
-import { song, seq, span, bars, beats, cue, chord, lyric, marker, audio } from "../src/dsongl.js";
+import { song, seq, span, bars, beats, cue, chord, lyric, marker, audio } from "@clickbait/dsongl";
 
 /** Helper: find events by type */
 function ofType(events: LinearEvent[], type: string) {

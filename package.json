@@ -25,7 +25,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "@clickbait/dsongl": "*",
+    "@clickbait/dsongl": "~0.1.0",
     "nodejs-whisper": "^0.2.9",
     "osc": "^2.4.5",
     "qrcode": "^1.5.4",

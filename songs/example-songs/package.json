@@ -6,6 +6,6 @@
     "./when-the-saints-go-marching-in": "./when-the-saints-go-marching-in.ts"
   },
   "dependencies": {
-    "@clickbait/dsongl": "*"
+    "@clickbait/dsongl": "~0.1.0"
   }
 }

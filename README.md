@@ -100,9 +100,9 @@ Claude: [runs generate.ts → RPP + cue WAVs + teleprompter JSON]
 
 ```bash
 # 1. Look up song data
-target/debug/clickbait-audio lookup "Valerie" -a "Amy Winehouse"
+target/release/clickbait-audio lookup "Valerie" -a "Amy Winehouse"
 
-# 2. Write a song file (see songs/traditional/ for examples)
+# 2. Write a song file (see songs/example-songs/ for examples)
 #    → songs/amy-winehouse/valerie.ts
 
 # 3. Generate the REAPER project
@@ -153,7 +153,22 @@ export default song("Valerie", 148, { artist: "Amy Winehouse", key: "Eb" },
 );
 ```
 
-Sections with `{ cue: true }` get automatic TTS announcements and count-ins. See `src/types.ts` and `src/dsongl.ts` for the full API.
+Sections with `{ cue: true }` get automatic TTS announcements and count-ins. See `packages/dsongl/src/` for the full API, or `songs/example-songs/` for a working example.
+
+## Versioning
+
+All packages in this repository share a **compatibility epoch** defined by the major and minor version (`x.y`). Patch versions (`z`) may vary independently per package.
+
+**The contract:** any package at version `x.y.*` is guaranteed to work with any other package at `x.y.*`. If a change in one package has implications for another, all packages move to `x.(y+1).0` together.
+
+| Package | Role |
+|---|---|
+| `@clickbait/dsongl` | DSL and types — the core contract |
+| `@clickbait/example-songs` | Example songs, tracks `dsongl` `x.y` |
+| `clickbait-audio` (Rust) | Audio tooling, tracks `x.y` |
+| CLI / skill | Orchestration, tracks `x.y` |
+
+Workspace dependencies are pinned with a tilde range (`~x.y.0`) to enforce this at install time.
 
 ## Development
 
@@ -163,9 +178,6 @@ npm test
 
 # Watch mode
 npm run test:watch
-
-# Lint (if ruff is installed)
-.venv/bin/ruff check .
 ```
 
 Tests use [Vitest](https://vitest.dev/). The project follows TDD — write tests first, then implement.
@@ -180,14 +192,16 @@ Tests use [Vitest](https://vitest.dev/). The project follows TDD — write tests
 ## Project structure
 
 ```
+packages/
+  dsongl/                  — @clickbait/dsongl: Song model, DSL builders, slug
 src/
-  types.ts, dsongl.ts     — Song model and DSL builder
   linearize.ts             — Tree → flat timeline
   build-rpp.ts             — RPP file generation
   generate.ts              — End-to-end: song → cues + RPP + JSON
   teleprompter/            — "One Simple Track" browser lyrics display
 crates/audio/              — Rust binary: lookup, analyze, speak, duration
-songs/                     — Song definitions (gitignored except traditional/)
+songs/
+  example-songs/           — @clickbait/example-songs: example and demo songs
 scripts/                   — Launchers and utilities
 assets/                    — Click and count-in samples
 ```

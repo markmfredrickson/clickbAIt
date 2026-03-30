@@ -30,31 +30,10 @@ clickbAIt generates show tracks for cover bands — click tracks, spoken section
 **Install:**
 ```bash
 git clone https://github.com/markmfredrickson/clickbAIt && cd clickbAIt
-npm install
-
-# Pre-built binary (Apple Silicon):
-mkdir -p target/release
-# Download clickbait-audio-macos-arm64.tar.gz from the GitHub release
-tar xzf clickbait-audio-macos-arm64.tar.gz -C target/release/
-
-# Or build from source (needs Rust):
-# cargo build --release
-# cp target/release/clickbait-audio target/debug/
-
-# Download the TTS voice model
-mkdir -p ~/.local/share/clickbait/voices
-curl -L -o ~/.local/share/clickbait/voices/en_US-lessac-medium.onnx \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
-curl -L -o ~/.local/share/clickbait/voices/en_US-lessac-medium.onnx.json \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
-
-# Set up your API key
-cp .env.example .env
-# Edit .env — add your ANTHROPIC_API_KEY
-
-# Set up REAPER OSC (for the teleprompter)
-cp src/teleprompter/clickbait.ReaperOSC ~/Library/Application\ Support/REAPER/OSC/
+./setup.sh
 ```
+
+`setup.sh` handles everything: Node dependencies, pre-built binary, TTS voice model, REAPER OSC config. Then edit `.env` and add your `ANTHROPIC_API_KEY`.
 
 ## Build a song
 

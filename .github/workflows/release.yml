@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-macos:
+    name: Build (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-13
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clickbait-audio-${{ matrix.arch }}
+          path: target/release/clickbait-audio
+
+  release:
+    name: Create release
+    needs: build-macos
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: clickbait-audio-arm64
+          path: artifacts/arm64
+
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: clickbait-audio-x86_64
+          path: artifacts/x86_64
+
+      - name: Create universal binary
+        run: |
+          lipo -create \
+            artifacts/arm64/clickbait-audio \
+            artifacts/x86_64/clickbait-audio \
+            -output clickbait-audio
+          chmod +x clickbait-audio
+          tar czf clickbait-audio-macos-universal.tar.gz clickbait-audio
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: clickbait-audio-macos-universal.tar.gz
+          generate_release_notes: true

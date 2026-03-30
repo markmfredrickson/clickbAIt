@@ -56,6 +56,14 @@ else
   echo ".env already exists, skipping."
 fi
 
+# Warm up demucs GPU (downloads model weights ~84MB, compiles shaders)
+# Better to take this hit at install than mid-session
+echo "Warming up stem splitter (downloads model, compiles GPU shaders — takes a minute)..."
+mkdir -p /tmp/clickbait-warmup
+target/release/clickbait-audio split assets/warmup.wav --output /tmp/clickbait-warmup 2>&1 | grep -v "^$"
+rm -rf /tmp/clickbait-warmup
+echo "  → GPU ready"
+
 # REAPER OSC config
 REAPER_OSC_DIR="$HOME/Library/Application Support/REAPER/OSC"
 if [ -d "$REAPER_OSC_DIR" ]; then

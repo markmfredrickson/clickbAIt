@@ -98,6 +98,83 @@ pub fn decode_audio(path: &str) -> Result<(Vec<f32>, u32)> {
     Ok((samples, sample_rate))
 }
 
+/// Decode an audio file to stereo f32 samples (left, right) using symphonia.
+/// Mono files are duplicated to both channels.
+pub fn decode_stereo(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32)> {
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("Failed to open audio file: {path}"))?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let mut hint = Hint::new();
+    if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+
+    let probed = symphonia::default::get_probe()
+        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .with_context(|| format!("Failed to probe audio format: {path}"))?;
+
+    let mut format = probed.format;
+
+    let track = format.default_track().context("No audio tracks found")?;
+    let track_id = track.id;
+    let sample_rate = track
+        .codec_params
+        .sample_rate
+        .context("No sample rate in codec params")?;
+    let channels = track
+        .codec_params
+        .channels
+        .map(|c| c.count())
+        .unwrap_or(2);
+
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+        .context("Failed to create audio decoder")?;
+
+    let mut left: Vec<f32> = Vec::new();
+    let mut right: Vec<f32> = Vec::new();
+
+    loop {
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            Err(symphonia::core::errors::Error::IoError(ref e))
+                if e.kind() == std::io::ErrorKind::UnexpectedEof =>
+            {
+                break;
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        if packet.track_id() != track_id {
+            continue;
+        }
+
+        let decoded = decoder.decode(&packet)?;
+        let spec = *decoded.spec();
+        let num_frames = decoded.frames();
+
+        let mut sample_buf = SampleBuffer::<f32>::new(num_frames as u64, spec);
+        sample_buf.copy_interleaved_ref(decoded);
+
+        let interleaved = sample_buf.samples();
+
+        if channels == 1 {
+            for &s in interleaved {
+                left.push(s);
+                right.push(s);
+            }
+        } else {
+            for chunk in interleaved.chunks(channels) {
+                left.push(chunk[0]);
+                right.push(if channels > 1 { chunk[1] } else { chunk[0] });
+            }
+        }
+    }
+
+    Ok((left, right, sample_rate))
+}
+
 /// Compute the Hann window of a given size.
 fn hann_window(size: usize) -> Vec<f64> {
     (0..size)

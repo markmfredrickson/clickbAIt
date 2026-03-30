@@ -1,3 +1,37 @@
 [workspace]
 members = ["crates/audio"]
 resolver = "2"
+
+# Optimize heavy dependencies even in debug builds
+[profile.dev.package.demucs-core]
+opt-level = 3
+[profile.dev.package.burn]
+opt-level = 3
+[profile.dev.package.burn-ndarray]
+opt-level = 3
+[profile.dev.package.burn-wgpu]
+opt-level = 3
+[profile.dev.package.burn-tensor]
+opt-level = 3
+[profile.dev.package.burn-core]
+opt-level = 3
+[profile.dev.package.burn-cubecl]
+opt-level = 3
+[profile.dev.package.cubecl-wgpu]
+opt-level = 3
+[profile.dev.package.cubecl-runtime]
+opt-level = 3
+[profile.dev.package.cubecl-core]
+opt-level = 3
+[profile.dev.package.realfft]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3
+[profile.dev.package.symphonia]
+opt-level = 3
+[profile.dev.package.symphonia-core]
+opt-level = 3
+[profile.dev.package.symphonia-bundle-mp3]
+opt-level = 3
+[profile.dev.package.hound]
+opt-level = 3

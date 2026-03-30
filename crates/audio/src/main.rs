@@ -3,6 +3,7 @@ use anyhow::Result;
 
 mod analyze;
 mod lookup;
+mod split;
 mod transcribe;
 mod speak;
 mod unstretch;
@@ -48,6 +49,17 @@ enum Commands {
         /// Path to audio file
         file: String,
     },
+    /// Separate audio into stems using Demucs
+    Split {
+        /// Path to audio file
+        file: String,
+        /// Output directory for stem WAV files
+        #[arg(short, long, default_value = ".")]
+        output_dir: String,
+        /// Model variant: 4stem, 6stem, finetune
+        #[arg(short, long, default_value = "6stem")]
+        model: String,
+    },
     /// Generate spoken audio from text (for cue tracks)
     Speak {
         /// Text to speak
@@ -75,6 +87,7 @@ fn main() -> Result<()> {
         Commands::Lookup { title, artist } => lookup::run(&title, artist.as_deref()),
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
         Commands::Unstretch { file } => unstretch::run(&file),
+        Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),
         Commands::Speak { text, output, voice } => speak::run(&text, &output, &voice),
     }
 }

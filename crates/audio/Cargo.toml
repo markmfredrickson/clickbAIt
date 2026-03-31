@@ -16,7 +16,7 @@ serde_json = "1"
 anyhow = "1"
 
 # Audio analysis (BPM, key, beats)
-symphonia = { version = "0.5", features = ["mp3", "wav", "pcm"] }
+symphonia = { version = "0.5", features = ["mp3", "wav", "pcm", "aac", "isomp4"] }
 rustfft = "6.2"
 
 # Speech-to-text (lyrics from audio)

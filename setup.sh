@@ -46,6 +46,15 @@ else
   echo "TTS voice model already present, skipping."
 fi
 
+# Whitelist the binary in Claude Code project settings
+if [ ! -f .claude/settings.json ]; then
+  mkdir -p .claude
+  echo '{"permissions":{"allow":["Bash(skill/bin/clickbait-audio *)"]}}' > .claude/settings.json
+  echo "Created .claude/settings.json (binary whitelisted)."
+else
+  echo ".claude/settings.json already exists, skipping."
+fi
+
 # .env
 if [ ! -f .env ]; then
   cp .env.example .env

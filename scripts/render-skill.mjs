@@ -19,15 +19,22 @@ const root = resolve(__dirname, "..");
 
 // --- Extract types from types.ts ---
 
+// Types excluded from the skill API reference (not used in song authoring)
+const EXCLUDED_TYPES = new Set(["Word", "Phrase"]);
+
 function extractTypes(source) {
   const lines = source.split("\n");
   const blocks = [];
   let capture = false;
   let depth = 0;
   let block = [];
+  let currentName = "";
 
   for (const line of lines) {
     if (!capture && /^export (type|interface) /.test(line)) {
+      const m = line.match(/^export (?:type|interface) (\w+)/);
+      currentName = m ? m[1] : "";
+      if (EXCLUDED_TYPES.has(currentName)) continue;
       capture = true;
       depth = 0;
       block = [];
@@ -51,16 +58,18 @@ function extractTypes(source) {
 
 function extractBuilders(source) {
   const sigs = [];
-  const seen = new Set();
+  const seen = new Map();
 
   for (const line of source.split("\n")) {
     if (!/^export function /.test(line)) continue;
 
     const name = (line.match(/function (\w+)/) || [])[1] || "";
+    const count = seen.get(name) || 0;
 
-    // Skip implementation overloads (wider union/rest types) once name seen
-    if (seen.has(name) && /\.\.\.|(\w+\s*\|\s*\w+)/.test(line)) continue;
-    seen.add(name);
+    // Skip implementation overloads: wider union/rest types, or 3rd+ signature for same name
+    if (count >= 1 && /\.\.\.|(\w+\s*\|\s*\w+)/.test(line)) continue;
+    if (count >= 2) continue;
+    seen.set(name, count + 1);
 
     // Extract signature up to closing paren + return type, strip body
     const match = line.match(/^(export function .+?\)(?::\s*[\w\[\], ]+)?)/);

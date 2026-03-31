@@ -8,7 +8,7 @@
  * Usage: node scripts/setup-sandbox.mjs
  */
 
-import { copyFileSync, mkdirSync, existsSync, cpSync } from "node:fs";
+import { copyFileSync, mkdirSync, existsSync, cpSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 

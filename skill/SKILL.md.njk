@@ -13,25 +13,11 @@ Help the user build show tracks for a song — click, cues, backing tracks, and 
 
 ## Binary
 
-```bash
-CLICKBAIT_AUDIO=skill/bin/clickbait-audio
-```
+The binary is always at `skill/bin/clickbait-audio`. Use that path directly in all commands — no variable needed.
 
-Use `$CLICKBAIT_AUDIO` for all subsequent commands. If the binary is missing, tell the user to run `setup.sh`.
+All commands write progress to stderr and JSON to stdout. Never redirect stderr (`2>&1`) — keep stdout clean for JSON output.
 
-## First-run setup
-
-Check `.claude/settings.json` to see if `skill/bin/clickbait-audio *` is already whitelisted:
-
-```bash
-cat .claude/settings.json 2>/dev/null || echo "{}"
-```
-
-If `skill/bin/clickbait-audio *` is **not** in `permissions.allow`, offer to add it:
-
-> "I can whitelist the clickbait-audio binary so you won't be prompted for permission on every command. Add it to `.claude/settings.json`?"
-
-If the user says yes, write or update `.claude/settings.json` to include it — merge with any existing content, don't overwrite. Only do this once; skip silently on subsequent runs if it's already there.
+If the binary is missing, tell the user to run `setup.sh`.
 
 ## Arguments
 
@@ -42,7 +28,7 @@ The user provides a song title and optionally an artist: `$ARGUMENTS`
 **Check for stems or audio first, before any web lookups.**
 
 If the user mentions stems, audio files, or backing tracks:
-1. If they have a full mix (not yet split), split it into the song's project directory:
+1. If they have a full mix (not yet split), split it into the song's project directory. The binary accepts WAV, MP3, and M4A — pass the file directly, no conversion needed:
    ```bash
    $CLICKBAIT_AUDIO split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
    ```
@@ -61,33 +47,43 @@ If the user mentions stems, audio files, or backing tracks:
 
 3. Record stem analysis results — they are the source of truth. Web data supplements, never overrides.
 
-**Format conversion:** If the user's file is M4A or another unsupported format, convert it once upfront before any analysis steps:
-```bash
-ffmpeg -i input.m4a -ar 44100 output.wav
-```
-Don't convert per-command — do it once and use the WAV throughout.
-
 **If no audio is provided**, skip to Step 2 and use online sources only.
 
 ## Step 2: Look up song data
-
-Run the batch lookup to get BPM, key, lyrics, and metadata from all available sources:
 
 ```bash
 $CLICKBAIT_AUDIO lookup "<title>" -a "<artist>"
 ```
 
-This searches Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel.
+This fetches from Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel.
 
-Cross-reference online BPM against stem analysis BPM. Agreement = high confidence. Divergence = flag to user. If the stem analyzer's BPM seems like double or quadruple time, compare with the Deezer figure and use musical judgment for the genre.
+**When audio is available**, online data serves as a bumper — it cross-checks stem analysis but never overrides it:
+- If Deezer BPM agrees with drum stem BPM → high confidence
+- If they diverge → flag to user and trust the stem
+- Genius lyrics are the truth on words; Whisper provides the timing. Merge them: align Genius phrases to Whisper word timestamps using fuzzy matching. Auto-correct obvious phonetic near-misses (Whisper: "I will sublime" → Genius: "I Will Survive" → use Genius, say nothing). Only ask the user when a match is genuinely ambiguous — a line Genius doesn't have, or a section where timing is too far off to align confidently.
+
+  If the merge is clean enough to be useful, offer to write `songs/<artist-slug>/<song-slug>.lyrics.csv`:
+  ```
+  section,beat,text,tag
+  Verse 1,0,"At first I was afraid",Lead Vocal
+  Verse 1,4,"I was petrified",Lead Vocal
+  ```
+  - `section` — matches the span name in the DSongL file
+  - `beat` — beat offset from the start of that section (derived from Whisper timestamps + BPM)
+  - `text` — Genius-corrected lyric line
+  - `tag` — vocalist role (default "Lead Vocal")
+
+  If this file already exists, use it as-is — it's the human-edited version. Never overwrite it.
+
+**When no audio is available**, online sources are primary: Deezer for BPM, Hooktheory for key/structure, Genius for lyrics and song structure markers.
 
 ## Step 3: Present findings and confirm
 
-Show the user what was found:
-- **BPM** — from drum stem analysis (primary), cross-checked with Deezer and musical intuition
-- **Key** — from Hooktheory or audio analysis
-- **Song structure** — from lyrics section markers and Hooktheory
-- **Duration** — from audio file or MusicBrainz/Deezer
+Show the user:
+- **BPM** — stem analysis (primary when available), Deezer as cross-check
+- **Key** — audio analysis or Hooktheory
+- **Song structure** — Genius section markers and Hooktheory
+- **Duration** — audio file or MusicBrainz/Deezer
 
 If BPM or key data is missing, use your musical knowledge but flag it as an estimate. Never default to round-number BPMs (120, 140) without evidence.
 
@@ -154,22 +150,10 @@ This tool helps musicians build practice materials for their own use. Freely fet
 
 Use full words in section names — no abbreviations. TTS reads these aloud: "Intro (continued)" not "Intro (cont.)".
 
-## Stems
-
-When the user has audio to split, has pre-existing stems, or mentions backing tracks, read `skill/stems.md` for the full workflow. Key capabilities:
-
-- **Split a full mix** into 6 stems (vocals, drums, bass, guitar, piano, other) via Demucs
-- **Parallel analysis**: vocals stem for Whisper transcription, drums stem for BPM, full mix for comparison
-- **Grid fitting**: map noisy onsets to a clean beat grid using musical context
-- **Unstretch**: detect and correct tempo warping from KV-style stems
-
 ## Component docs
 
-When you need details on a subsystem, read its doc:
+Read these when you need detail on a subsystem:
 
 - **Stems** (`skill/stems.md`) — splitting, parallel analysis, grid fitting, unstretch
 - **Teleprompter** (`skill/teleprompter.md`) — browser lyrics display, OSC relay, REAPER setup
 - **TTS / cue generation** — `$CLICKBAIT_AUDIO speak` (Piper TTS, lessac voice)
-- **RPP generation** (`src/build-rpp.ts`) — tempo map, click track, cue/count items, audio tracks
-- **Song model** (`packages/dsongl/src/types.ts`, `packages/dsongl/src/dsongl.ts`) — recursive TimeBox tree, DSongL builder API
-- **Linearizer** (`src/linearize.ts`) — tree → flat timeline with beat/second positions

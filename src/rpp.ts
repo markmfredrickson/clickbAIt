@@ -1,4 +1,4 @@
-import type { Song } from "@clickbait/dsongl";
+import type { Song } from "./dsongl/index.js";
 import type { Section } from "./sections.js";
 
 interface TimelineBar {

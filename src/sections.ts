@@ -1,4 +1,4 @@
-import type { Node, Song, Duration } from "@clickbait/dsongl";
+import type { Node, Song, Duration } from "./dsongl/index.js";
 
 /** A section boundary extracted from the song tree. */
 export interface Section {

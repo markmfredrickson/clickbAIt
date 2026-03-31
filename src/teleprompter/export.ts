@@ -3,8 +3,8 @@
  * Groups linearized events by section, with lyrics, chords, and timing.
  */
 
-import type { Song } from "@clickbait/dsongl";
-import { toSlug, songSlug } from "@clickbait/dsongl";
+import type { Song } from "../dsongl/index.js";
+import { toSlug, songSlug } from "../dsongl/index.js";
 import type { LinearEvent } from "../linearize.js";
 import type { SongPayload, Section, LyricLine, ChordMark, TempoPoint } from "./types.js";
 import { linearize } from "../linearize.js";

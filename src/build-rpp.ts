@@ -10,10 +10,10 @@
 
 import { execSync } from "child_process";
 import { resolve, dirname } from "path";
-import type { Song } from "@clickbait/dsongl";
+import type { Song } from "./dsongl/index.js";
 import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.js";
 import { extractSections, type Section } from "./sections.js";
-import { songSlug } from "@clickbait/dsongl";
+import { songSlug } from "./dsongl/index.js";
 
 import { accessSync, constants } from "fs";
 

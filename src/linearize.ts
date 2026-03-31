@@ -1,4 +1,4 @@
-import type { Node, Event, Span, Sequence, Song, Audio, Duration } from "@clickbait/dsongl";
+import type { Node, Event, Span, Sequence, Song, Audio, Duration } from "./dsongl/index.js";
 
 export interface LinearEvent {
   beat: number;

@@ -11,6 +11,7 @@
 import { copyFileSync, mkdirSync, existsSync, cpSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -45,23 +46,23 @@ function copyDir(src, dest) {
 
 console.log("=== Populating sandbox ===\n");
 
-// Skill docs and generated SKILL.md
-copyDir("skill", "skill");
+// Skill docs and generated SKILL.md (into .claude/skills/clickbait/)
+copyDir("skill", ".claude/skills/clickbait");
 copy(".claude/skills/clickbait/SKILL.md", ".claude/skills/clickbait/SKILL.md");
 
-// Binary (prefer release, fall back to debug)
+// Binary (prefer release, fall back to debug) → .claude/skills/clickbait/bin/
 const releaseBin = "skill/bin/clickbait-audio";
 const releaseFallback = "target/release/clickbait-audio";
 const debugFallback = "target/debug/clickbait-audio";
 
 if (existsSync(resolve(root, releaseBin))) {
-  copy(releaseBin, "skill/bin/clickbait-audio");
+  copy(releaseBin, ".claude/skills/clickbait/bin/clickbait-audio");
 } else if (existsSync(resolve(root, releaseFallback))) {
   console.log("  (skill/bin not populated — using target/release)");
-  copy(releaseFallback, "skill/bin/clickbait-audio");
+  copy(releaseFallback, ".claude/skills/clickbait/bin/clickbait-audio");
 } else if (existsSync(resolve(root, debugFallback))) {
   console.log("  (skill/bin not populated — using target/debug)");
-  copy(debugFallback, "skill/bin/clickbait-audio");
+  copy(debugFallback, ".claude/skills/clickbait/bin/clickbait-audio");
 } else {
   console.warn("  SKIP binary (run `cargo build --release` first)");
 }
@@ -74,6 +75,16 @@ if (existsSync(resolve(root, ".env"))) {
   console.log("  (.env not found — copied .env.example; add your API key)");
 }
 
+// Pack and install the npm package locally in the sandbox
+console.log("  Packing clickbait npm package...");
+const packOutput = execSync("npm pack --json", { cwd: root }).toString();
+const [{ filename }] = JSON.parse(packOutput);
+const tgz = resolve(root, filename);
+execSync(`npm install --prefix "${sandbox}" "${tgz}"`, { stdio: "pipe" });
+// Clean up tgz — it's installed now
+execSync(`rm "${tgz}"`);
+console.log(`  clickbait installed → sandbox/node_modules/`);
+
 // Empty songs dir
 dir(resolve(sandbox, "songs"));
 console.log("  songs/ (empty)");
@@ -81,12 +92,32 @@ console.log("  songs/ (empty)");
 // Pre-whitelist the binary so the sandbox doesn't prompt
 const settingsPath = resolve(sandbox, ".claude/settings.json");
 dir(resolve(sandbox, ".claude"));
+const logPath = resolve(sandbox, "session.log").replace(/'/g, "'\\''");
 writeFileSync(settingsPath, JSON.stringify({
   permissions: {
-    allow: ["Bash(skill/bin/clickbait-audio *)"]
+    allow: [
+      "Bash(.claude/skills/clickbait/bin/clickbait-audio *)",
+      "Bash(node_modules/.bin/clickbait-generate *)",
+      "Bash(node_modules/.bin/clickbait-teleprompter *)",
+      "Bash(mkdir *)"
+    ]
+  },
+  hooks: {
+    PostToolUse: [{
+      matcher: "Bash",
+      hooks: [{ type: "command", async: true,
+        command: `jq -r '"[" + (now | strftime("%H:%M:%S")) + "] " + (.tool_input.command | split("\\n")[0])' >> '${logPath}' 2>/dev/null || true`
+      }]
+    }],
+    PostToolUseFailure: [{
+      matcher: "Bash",
+      hooks: [{ type: "command", async: true,
+        command: `jq -r '"[" + (now | strftime("%H:%M:%S")) + "] [FAIL] " + (.tool_input.command | split("\\n")[0])' >> '${logPath}' 2>/dev/null || true`
+      }]
+    }],
   }
 }, null, 2) + "\n");
-console.log("  .claude/settings.json (binary pre-whitelisted)");
+console.log("  .claude/settings.json (commands pre-whitelisted, session logging enabled)");
 
 console.log("\n=== Done ===");
 console.log("\nOpen a new Claude Code session in sandbox/ to test the skill:");

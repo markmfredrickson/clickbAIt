@@ -9,9 +9,9 @@ import { execSync } from "child_process";
 import { resolve, dirname } from "path";
 import { buildRpp } from "./build-rpp.js";
 import { extractSections } from "./sections.js";
-import { songSlug } from "@clickbait/dsongl";
+import { songSlug } from "./dsongl/index.js";
 import { exportSongPayload } from "./teleprompter/export.js";
-import type { Song } from "@clickbait/dsongl";
+import type { Song } from "./dsongl/index.js";
 
 const songPath = process.argv[2];
 if (!songPath) {

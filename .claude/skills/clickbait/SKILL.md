@@ -2,22 +2,41 @@
 name: clickbait
 description: Build REAPER DAW show tracks (click, cues, backing tracks, lyrics) for cover bands. Looks up BPM, key, lyrics, and song structure from multiple sources, then helps design the project. Use this skill whenever the user mentions building show tracks, click tracks, cue tracks, backing tracks, song charts, wants to set up a song for their band, says they have stems to work with, or wants to set up the teleprompter/lyrics display, even if they don't explicitly say "clickbait."
 argument-hint: <song-title> [artist]
-allowed-tools: Bash(skill/bin/clickbait-audio *), Bash(npx tsx src/generate.ts *), Bash(npx tsx scripts/teleprompter.ts *), Read, Write, Glob
+allowed-tools: Bash(.claude/skills/clickbait/bin/clickbait-audio *), Bash(mkdir *), Read, Write, Glob
 ---
 
 # clickbAIt — Song Project Builder
 
 Help the user build show tracks for a song — click, cues, backing tracks, and synchronized lyrics, all in a REAPER project. This is a conversation — you're a musical collaborator helping a musician think through their song, not a tool running a pipeline.
 
-**Scripting preference:** Node.js is always available. Use `node -e` or `npx tsx` for any inline data processing. Do not use Python — it may not be installed.
+**Working directory:** All paths are relative to your working directory (the directory where this Claude session was launched). Never construct absolute paths or prepend the session directory to relative paths.
+
+**Reading data:** Use the `Read` tool to read JSON sidecars and song files directly — do not shell out to `cat` or `node -e` to parse them. You can reason about JSON content after reading it.
 
 ## Binary
 
-The binary is always at `skill/bin/clickbait-audio`. Use that path directly in all commands — no variable needed.
+The binary is always at `.claude/skills/clickbait/bin/clickbait-audio`. Use that path directly in all commands — no variable needed.
 
 All commands write progress to stderr and JSON to stdout. Never redirect stderr (`2>&1`) — keep stdout clean for JSON output.
 
 If the binary is missing, tell the user to run `setup.sh`.
+
+## First run: check configuration
+
+Check whether `.claude/skills/clickbait/bin/clickbait-audio` exists. If not, tell the user to run `setup.sh`.
+
+Check whether `.env` exists and has a `GENIUS_API_TOKEN` set:
+- If missing or empty, offer to help. It's free — instructions in `skill/setup.md`. Write or update `.env`:
+  ```
+  GENIUS_API_TOKEN=your-token-here
+  ```
+- If present, proceed silently.
+
+If this looks like a first run (no `songs/` directory or it's empty), suggest running setup to download models:
+```bash
+.claude/skills/clickbait/bin/clickbait-audio setup
+```
+See `skill/setup.md` for details.
 
 ## Arguments
 
@@ -37,13 +56,13 @@ If the user mentions stems, audio files, or backing tracks:
    - `<drums-stem>.analysis.json` — cached BPM/onsets
    - `<vocals-stem>.words.json` — cached Whisper transcription
 
-   If sidecars exist, read them directly — the binary will also use them automatically. If missing, run:
+   If sidecars exist, use the `Read` tool to read them directly — the binary will also use them automatically. If missing, run:
    ```bash
-   $CLICKBAIT_AUDIO analyze "<drums-stem>"
-   $CLICKBAIT_AUDIO transcribe "<vocals-stem>"
-   $CLICKBAIT_AUDIO analyze "<original-file>"
+   .claude/skills/clickbait/bin/clickbait-audio analyze "<drums-stem>"
+   .claude/skills/clickbait/bin/clickbait-audio transcribe "<vocals-stem>"
+   .claude/skills/clickbait/bin/clickbait-audio analyze "<original-file>"
    ```
-   Each command writes its sidecar alongside the input file. Sidecars are human-editable — if Whisper got a lyric wrong or the BPM is off, edit the JSON and the next run will use your correction.
+   Each command writes its sidecar alongside the input file. Read sidecars with the `Read` tool and reason about the JSON content directly. Sidecars are human-editable — if Whisper got a lyric wrong or the BPM is off, edit the JSON and the next run will use your correction.
 
 3. Record stem analysis results — they are the source of truth. Web data supplements, never overrides.
 
@@ -52,10 +71,10 @@ If the user mentions stems, audio files, or backing tracks:
 ## Step 2: Look up song data
 
 ```bash
-$CLICKBAIT_AUDIO lookup "<title>" -a "<artist>"
+.claude/skills/clickbait/bin/clickbait-audio lookup "<title>" -a "<artist>" > "songs/<artist-slug>/<song-slug>.lookup.json"
 ```
 
-This fetches from Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel.
+This fetches from Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel. Saving to a sidecar lets you `Read` it directly and re-use it without re-fetching.
 
 **When audio is available**, online data serves as a bumper — it cross-checks stem analysis but never overrides it:
 - If Deezer BPM agrees with drum stem BPM → high confidence
@@ -193,7 +212,7 @@ The goal is a complete, reviewable dsongl file in one shot. The user will read t
 Once the song file is finalized, generate the RPP:
 
 ```bash
-npx tsx src/generate.ts songs/<artist-slug>/<song-slug>.ts <output-dir>
+node_modules/.bin/clickbait-generate songs/<artist-slug>/<song-slug>.ts songs/<artist-slug>
 ```
 
 This will:

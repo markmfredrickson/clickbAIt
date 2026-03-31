@@ -1,4 +1,4 @@
-import { song, seq, span, bars, lyric, audio } from "@clickbait/dsongl";
+import { song, seq, span, bars, lyric, audio } from "../../src/dsongl/index.js";
 
 export default song("When the Saints Go Marching In", 108,
   { artist: "Louis Armstrong", key: "Bb", timeSignature: [4, 4] },

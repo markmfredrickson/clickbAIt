@@ -3,6 +3,7 @@ use anyhow::Result;
 
 mod analyze;
 mod lookup;
+mod setup;
 mod split;
 mod transcribe;
 mod speak;
@@ -60,6 +61,8 @@ enum Commands {
         #[arg(short, long, default_value = "6stem")]
         model: String,
     },
+    /// Download required models (Whisper, Piper, Demucs) to ~/.cache/clickbait/
+    Setup,
     /// Generate spoken audio from text (for cue tracks)
     Speak {
         /// Text to speak
@@ -83,6 +86,7 @@ fn main() -> Result<()> {
             println!("{:.6}", duration);
             Ok(())
         },
+        Commands::Setup => setup::run(),
         Commands::Analyze { file } => analyze::run(&file),
         Commands::Lookup { title, artist } => lookup::run(&title, artist.as_deref()),
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),

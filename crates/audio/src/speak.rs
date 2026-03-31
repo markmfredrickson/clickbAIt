@@ -48,11 +48,11 @@ fn write_wav(path: &str, samples: &[f32], sample_rate: u32) -> Result<()> {
 }
 
 /// Resolve the directory where voice models live.
-/// Checks $CLICKBAIT_MODELS, then ~/.local/share/clickbait/voices/
-fn model_dir() -> Result<std::path::PathBuf> {
+/// Checks $CLICKBAIT_MODELS, then ~/.cache/clickbait/voices/
+pub fn model_dir() -> Result<std::path::PathBuf> {
     if let Ok(dir) = std::env::var("CLICKBAIT_MODELS") {
         return Ok(Path::new(&dir).to_path_buf());
     }
     let home = std::env::var("HOME").context("HOME not set")?;
-    Ok(Path::new(&home).join(".local/share/clickbait/voices"))
+    Ok(Path::new(&home).join(".cache/clickbait/voices"))
 }

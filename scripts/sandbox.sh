@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 echo "=== Building skill ==="
 cargo build --release
 npm run build:skill
+npm run build
 
 echo ""
 echo "=== Populating sandbox ==="

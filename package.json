@@ -2,13 +2,27 @@
   "name": "clickbait",
   "version": "0.1.0-beta.1",
   "type": "module",
+  "files": [
+    "src/",
+    "assets/",
+    "bin/",
+    "dist/"
+  ],
+  "bin": {
+    "clickbait-generate": "./bin/generate.mjs",
+    "clickbait-teleprompter": "./bin/teleprompter.mjs"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./dsongl": "./src/dsongl/index.ts"
+  },
   "workspaces": [
-    "packages/*",
     "songs/*"
   ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "build": "node scripts/build.mjs",
     "generate": "npx tsx src/generate.ts",
     "teleprompter": "npx tsx scripts/teleprompter.ts",
     "build:skill": "node scripts/render-skill.mjs",
@@ -23,12 +37,12 @@
     "@types/nunjucks": "^3.2.6",
     "@types/qrcode": "^1.5.6",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.25.0",
     "nunjucks": "^3.2.4",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "@clickbait/dsongl": "~0.1.0",
     "nodejs-whisper": "^0.2.9",
     "osc": "^2.4.5",
     "qrcode": "^1.5.4",

@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use rustfft::{num_complex::Complex, FftPlanner};
+use std::fs;
+use std::path::{Path, PathBuf};
 use serde::Serialize;
 use std::f64::consts::PI;
 
@@ -10,7 +12,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Onset {
     pub time: f64,
@@ -21,6 +23,7 @@ pub struct Onset {
 #[serde(rename_all = "camelCase")]
 pub struct AnalyzeResult {
     pub bpm: f64,
+    pub raw_bpm: f64,     // before tempo folding — human can verify the fold was correct
     pub onsets: Vec<Onset>,
     pub duration: f64,
     pub sample_rate: u32,
@@ -290,7 +293,6 @@ pub fn detect_onsets(samples: &[f32], sample_rate: u32) -> Vec<Onset> {
                 // Keep the stronger one
                 if !onsets.is_empty() && flux[i] > onsets.last().map(|o: &Onset| o.strength).unwrap_or(0.0) {
                     onsets.pop();
-                    last_onset = Some(i);
                 } else {
                     continue;
                 }
@@ -307,22 +309,73 @@ pub fn detect_onsets(samples: &[f32], sample_rate: u32) -> Vec<Onset> {
     onsets
 }
 
-/// Estimate BPM from onset times using median inter-onset interval.
-pub fn estimate_bpm(onsets: &[Onset]) -> f64 {
+/// Estimate BPM from onset times.
+///
+/// Returns `(bpm, raw_bpm)` where `bpm` is folded into the musical range
+/// (60–160) and `raw_bpm` is the unfolded histogram peak — useful for
+/// human verification in the sidecar.
+///
+/// Uses only the stronger half of onsets: strong spectral flux events cluster
+/// on beats rather than sub-beats, reducing the 2x doubling problem.
+pub fn estimate_bpm(onsets: &[Onset]) -> (f64, f64) {
     if onsets.len() < 3 {
-        return 0.0;
+        return (0.0, 0.0);
     }
 
-    let ibis: Vec<f64> = onsets.windows(2).map(|w| w[1].time - w[0].time).collect();
+    // Take only the stronger half — beats tend to be stronger than sub-beats
+    let mut by_strength = onsets.to_vec();
+    by_strength.sort_by(|a, b| b.strength.partial_cmp(&a.strength).unwrap_or(std::cmp::Ordering::Equal));
+    let strong_count = (onsets.len() / 2).max(4);
+    let mut strong: Vec<&Onset> = by_strength[..strong_count].iter().collect();
+    strong.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap_or(std::cmp::Ordering::Equal));
 
-    let mut sorted = ibis.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let median_ibi = sorted[sorted.len() / 2];
+    let ibis: Vec<f64> = strong.windows(2).map(|w| w[1].time - w[0].time).collect();
+    if ibis.is_empty() {
+        return (0.0, 0.0);
+    }
 
-    60.0 / median_ibi
+    // IBI histogram (10ms buckets, 0–2s)
+    const BUCKET_S: f64 = 0.010;
+    const MAX_IBI: f64 = 2.0;
+    let n = (MAX_IBI / BUCKET_S) as usize;
+    let mut hist = vec![0u32; n];
+    for &ibi in &ibis {
+        if ibi > 0.0 && ibi < MAX_IBI {
+            let b = (ibi / BUCKET_S) as usize;
+            if b < n { hist[b] += 1; }
+        }
+    }
+
+    let peak = hist.iter().enumerate()
+        .max_by_key(|(_, &c)| c)
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+
+    let raw_bpm = 60.0 / ((peak as f64 + 0.5) * BUCKET_S);
+
+    // Fold into 60–160 BPM (covers virtually all pop/rock/country)
+    let mut bpm = raw_bpm;
+    while bpm > 160.0 { bpm /= 2.0; }
+    while bpm < 60.0  { bpm *= 2.0; }
+
+    (bpm, raw_bpm)
+}
+
+fn sidecar_path(file: &str) -> PathBuf {
+    let p = Path::new(file);
+    let stem = p.file_stem().unwrap_or_default().to_str().unwrap_or_default();
+    p.with_file_name(format!("{stem}.analysis.json"))
 }
 
 pub fn run(file: &str) -> Result<()> {
+    let sidecar = sidecar_path(file);
+
+    if sidecar.exists() {
+        eprintln!("Using cached analysis: {}", sidecar.display());
+        print!("{}", fs::read_to_string(&sidecar)?);
+        return Ok(());
+    }
+
     eprintln!("Decoding {}...", file);
     let (samples, sample_rate) = decode_audio(file)?;
     let duration = samples.len() as f64 / sample_rate as f64;
@@ -335,17 +388,22 @@ pub fn run(file: &str) -> Result<()> {
 
     eprintln!("Detecting onsets (spectral flux)...");
     let onsets = detect_onsets(&samples, sample_rate);
-    let bpm = estimate_bpm(&onsets);
+    let (bpm, raw_bpm) = estimate_bpm(&onsets);
 
-    eprintln!("Found {} onsets, estimated {:.1} BPM", onsets.len(), bpm);
+    eprintln!("Found {} onsets, estimated {:.1} BPM (raw: {:.1})", onsets.len(), bpm, raw_bpm);
 
     let output = AnalyzeResult {
         bpm,
+        raw_bpm,
         onsets,
         duration,
         sample_rate,
     };
 
-    println!("{}", serde_json::to_string_pretty(&output)?);
+    let json = serde_json::to_string_pretty(&output)?;
+    fs::write(&sidecar, &json)
+        .with_context(|| format!("Failed to write sidecar: {}", sidecar.display()))?;
+    eprintln!("Saved: {}", sidecar.display());
+    println!("{json}");
     Ok(())
 }

@@ -65,3 +65,10 @@ clickbait-workspace/
 
 # Demo recordings (generated)
 demo/output/
+
+# Skill: generated file and downloaded binary
+.claude/skills/clickbait/SKILL.md
+skill/bin/
+
+# Sandbox: simulated fresh user install for skill testing
+sandbox/

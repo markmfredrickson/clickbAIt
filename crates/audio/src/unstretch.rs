@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::analyze::{decode_audio, detect_onsets, Onset};
+use crate::analyze::{decode_audio, detect_onsets};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

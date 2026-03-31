@@ -25,18 +25,31 @@ jobs:
       - name: Build
         run: cargo build --release
 
-      - name: Package binary
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Render SKILL.md
+        run: |
+          npm install
+          npm run build:skill
+
+      - name: Package skill bundle
         run: |
           chmod +x target/release/clickbait-audio
-          tar czf clickbait-audio-macos-arm64.tar.gz -C target/release clickbait-audio
+          mkdir -p skill/bin
+          cp target/release/clickbait-audio skill/bin/clickbait-audio
+          cp .claude/skills/clickbait/SKILL.md skill/SKILL.md
+          tar czf clickbait-skill-macos-arm64.tar.gz skill/
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: clickbait-audio-macos-arm64.tar.gz
+          subject-path: clickbait-skill-macos-arm64.tar.gz
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: clickbait-audio-macos-arm64.tar.gz
+          files: clickbait-skill-macos-arm64.tar.gz
           generate_release_notes: true

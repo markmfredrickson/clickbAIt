@@ -7,6 +7,7 @@ struct SearchResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SearchTrack {
     id: u64,
     title: String,
@@ -38,6 +39,7 @@ struct Album {
 pub struct DeezerResult {
     pub title: String,
     pub artist: String,
+    #[allow(dead_code)]
     pub album: Option<String>,
     pub duration_sec: u32,
     pub bpm: Option<f64>,

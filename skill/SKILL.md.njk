@@ -100,84 +100,13 @@ Import from `@clickbait/dsongl`. Types and builder signatures below are generate
 ### Types
 
 ```typescript
-export type Duration = { beats: number } | { bars: number };
-
-export interface Event {
-  kind: "event";
-  offset?: number;  // beats relative to parent; default 0; can be negative
-  type: "chord" | "lyric" | "cue" | "marker";
-  value: string;
-  tag?: string;     // grouping label — could map to a track, person, instrument, whatever
-}
-
-export interface Span {
-  kind: "span";
-  name?: string;
-  offset?: number;            // beats relative to parent; default 0; can be negative
-  bpm?: number;
-  timeSignature?: [number, number];
-  duration?: Duration;
-  tag?: string;               // inherited by children unless overridden
-  cue?: boolean;              // if true, buildRpp auto-places a TTS cue before this section
-  children?: Node[];
-}
-
-export interface Sequence {
-  kind: "sequence";
-  name?: string;
-  offset?: number;
-  bpm?: number;
-  timeSignature?: [number, number];
-  duration?: Duration;
-  tag?: string;
-  children?: Node[];
-}
-
-export interface Song {
-  kind: "song";
-  title: string;
-  artist?: string;
-  key?: string;
-  bpm: number;
-  timeSignature: [number, number];
-  children: Node[];
-}
-
-export interface Audio {
-  kind: "audio";
-  name: string;       // track name (e.g. "Guitars", "Bass")
-  file: string;       // path to audio file
-  offset?: number;    // beats relative to parent; default 0
-  soffs?: number;     // source offset in seconds (trim from start of file)
-}
-
-export type Node = Event | Span | Sequence | Song | Audio;
-
-export interface Word {
-  text: string;
-  startMs: number;
-  endMs: number;
-  confidence?: number;
-}
-
-export type Phrase = Word[];
+{{ dsongl_types }}
 ```
 
 ### Builder functions
 
 ```typescript
-export function bars(n: number): Duration ;
-export function beats(n: number): Duration ;
-export function cue(value: string, offset?: number, tag?: string): Event ;
-export function chord(value: string, offset?: number, tag?: string): Event ;
-export function lyric(value: string, offset?: number, tag?: string): Event ;
-export function marker(value: string, offset?: number, tag?: string): Event ;
-export function span(name: string, duration: Duration, children?: Node[]): Span;
-export function span(name: string, duration: Duration, opts: SpanOptions, children?: Node[]): Span;
-export function span(name: string, duration: Duration, third?: Node[] | SpanOptions, fourth?: Node[]): Span ;
-export function audio(name: string, file: string, opts?: AudioOptions): Audio ;
-export function seq(...children: Node[]): Sequence ;
-export function song(title: string, bpm: number, ...children: Node[]): Song;
+{{ dsongl_builders }}
 ```
 
 ## Step 4: Write the DS(ong)L file

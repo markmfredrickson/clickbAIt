@@ -182,6 +182,40 @@ npm run test:watch
 
 Tests use [Vitest](https://vitest.dev/). The project follows TDD — write tests first, then implement.
 
+### Skill development
+
+The Claude Code skill lives in `skill/`. Editable sources:
+
+| File | Purpose |
+|---|---|
+| `skill/SKILL.md.njk` | Nunjucks template — edit this, not the generated file |
+| `skill/stems.md` | Stem splitting and analysis workflow |
+| `skill/teleprompter.md` | Teleprompter architecture and REAPER setup |
+
+The generated `SKILL.md` is built at release time and gitignored. To regenerate locally:
+
+```bash
+npm run build:skill
+```
+
+This injects live DSongL types and builder signatures from `packages/dsongl/src/` into the template.
+
+### Testing the skill end-to-end
+
+`sandbox/` simulates a fresh user install. To populate it with current build products:
+
+```bash
+scripts/sandbox.sh
+```
+
+This runs `cargo build --release`, renders the skill, then copies everything into `sandbox/`. Open a separate Claude Code session there to test as a user would:
+
+```bash
+cd sandbox && claude
+```
+
+The sandbox is gitignored — re-run `scripts/sandbox.sh` whenever you want a fresh snapshot.
+
 ## Known issues
 
 - **Audio stem import is experimental** — stems land in the RPP but LENGTH and path handling have edge cases

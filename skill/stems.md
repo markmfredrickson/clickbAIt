@@ -5,8 +5,10 @@
 When the user provides a full mix (MP3, WAV, etc.) and wants stems:
 
 ```bash
-$CLICKBAIT_AUDIO split "<audio-file>" --output-dir "<dir>" --model 6stem
+$CLICKBAIT_AUDIO split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
 ```
+
+**Always split into the song's project directory** (`songs/<artist-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the song file.
 
 Models: `6stem` (default — vocals, drums, bass, guitar, piano, other), `4stem` (vocals, drums, bass, other), `finetune` (best quality 4-stem, slower). The model auto-downloads on first use (~84-333 MB, cached).
 

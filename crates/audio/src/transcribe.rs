@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use serde::Serialize;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
@@ -77,7 +78,21 @@ fn decode_audio_f32(file: &str) -> Result<Vec<f32>> {
     Ok(samples)
 }
 
+fn sidecar_path(file: &str) -> PathBuf {
+    let p = Path::new(file);
+    let stem = p.file_stem().unwrap_or_default().to_str().unwrap_or_default();
+    p.with_file_name(format!("{stem}.words.json"))
+}
+
 pub fn run(file: &str, model: &str) -> Result<()> {
+    let sidecar = sidecar_path(file);
+
+    if sidecar.exists() {
+        eprintln!("Using cached transcription: {}", sidecar.display());
+        print!("{}", fs::read_to_string(&sidecar)?);
+        return Ok(());
+    }
+
     eprintln!("Transcribing {file} with model {model}...");
 
     // 1. Resolve model path
@@ -141,9 +156,13 @@ pub fn run(file: &str, model: &str) -> Result<()> {
 
     eprintln!("Transcribed {} words", words.len());
 
-    // 6. Output JSON to stdout
+    // 6. Write sidecar and print to stdout
     let result = TranscribeResult { words };
-    println!("{}", serde_json::to_string_pretty(&result)?);
+    let json = serde_json::to_string_pretty(&result)?;
+    fs::write(&sidecar, &json)
+        .with_context(|| format!("Failed to write sidecar: {}", sidecar.display()))?;
+    eprintln!("Saved: {}", sidecar.display());
+    println!("{json}");
 
     Ok(())
 }

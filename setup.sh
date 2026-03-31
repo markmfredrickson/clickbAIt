@@ -25,13 +25,12 @@ fi
 
 echo "Latest release: $LATEST"
 
-# Download universal binary
-BINARY_URL="https://github.com/$REPO/releases/download/$LATEST/clickbait-audio-macos-arm64.tar.gz"
-echo "Downloading clickbait-audio..."
-mkdir -p target/release
-curl -fL "$BINARY_URL" | tar xz -C target/release/
-chmod +x target/release/clickbait-audio
-echo "  → target/release/clickbait-audio"
+# Download skill bundle (binary + docs + SKILL.md)
+BUNDLE_URL="https://github.com/$REPO/releases/download/$LATEST/clickbait-skill-macos-arm64.tar.gz"
+echo "Downloading skill bundle..."
+curl -fL "$BUNDLE_URL" | tar xz
+chmod +x skill/bin/clickbait-audio
+echo "  → skill/"
 
 # Piper TTS voice model
 VOICE_DIR="$HOME/.local/share/clickbait/voices"
@@ -60,7 +59,7 @@ fi
 # Better to take this hit at install than mid-session
 echo "Warming up stem splitter (downloads model, compiles GPU shaders — takes a minute)..."
 mkdir -p /tmp/clickbait-warmup
-target/release/clickbait-audio split assets/warmup.wav --output /tmp/clickbait-warmup 2>&1 | grep -v "^$"
+skill/bin/clickbait-audio split assets/warmup.wav --output /tmp/clickbait-warmup 2>&1 | grep -v "^$"
 rm -rf /tmp/clickbait-warmup
 echo "  → GPU ready"
 
@@ -74,6 +73,10 @@ if [ -d "$REAPER_OSC_DIR" ]; then
     echo "REAPER OSC config already installed, skipping."
   fi
 fi
+
+echo ""
+echo "=== Checking dependencies ==="
+bash scripts/check-deps.sh
 
 echo ""
 echo "=== Done ==="

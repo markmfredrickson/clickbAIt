@@ -19,6 +19,7 @@ fn slugify(text: &str) -> String {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct HooktheoryResult {
     pub title: String,
     pub artist: String,

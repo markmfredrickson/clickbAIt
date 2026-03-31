@@ -13,6 +13,7 @@ struct Recording {
     #[serde(default)]
     length: Option<u64>,
     #[serde(default)]
+    #[allow(dead_code)]
     score: u32,
     #[serde(default, rename = "artist-credit")]
     artist_credit: Vec<ArtistCredit>,
@@ -37,7 +38,9 @@ pub struct MusicBrainzResult {
     pub title: String,
     pub artist: Option<String>,
     pub album: Option<String>,
+    #[allow(dead_code)]
     pub mbid: String,
+    #[allow(dead_code)]
     pub duration_ms: Option<u64>,
     pub duration: Option<String>,
 }

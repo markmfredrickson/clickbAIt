@@ -48,6 +48,39 @@ This project follows the **Last Will and Attestament** workflow for AI-generated
 - Tests live in `tests/` mirroring the package structure
 - Coverage: ``.venv/bin/pytest tests/ --cov=clickbait --cov-report=term-missing``
 
+## Audio Analysis CLI (`clickbait-audio`)
+
+Rust binary at `crates/audio/`. Build with `cargo build` (from repo root or `crates/audio/`).
+
+### Beat detection (`beats` command)
+
+Uses a **DBN (Dynamic Bayesian Network) beat tracker** ported from madmom (Böck et al. 2016, BSD-2). Two-stage pipeline:
+
+1. **Activation function** — converts audio to a 1-D beat-likelihood signal at 100fps
+   - `energy` (default): RMS energy envelope derivative. Best for **drum stems**.
+   - `spectral-flux`: FFT-based spectral change. Better for full mixes.
+2. **DBN Viterbi decoder** — finds the optimal beat sequence given the activation signal. Models tempo as a hidden state, strongly prefers constant tempo.
+
+```sh
+# Drum stem (best results)
+clickbait-audio beats drums.wav
+
+# Full mix — use spectral-flux and constrain BPM range
+clickbait-audio beats mix.mp3 --activation spectral-flux --min-bpm 60 --max-bpm 90
+
+# All options
+clickbait-audio beats <file> [--activation energy|spectral-flux] [--min-bpm N] [--max-bpm N]
+```
+
+Output: JSON with `beats` array (time, strength) and estimated `bpm`.
+
+**Key insight:** Energy activation on a full mix gives bad results (picks up every transient). For full mixes, use spectral-flux with a BPM hint. For drum stems, energy is simpler and more accurate.
+
+### Legacy commands
+
+- `analyze` — old spectral flux onset detection + naive BPM estimation (being replaced)
+- `duration`, `transcribe`, `lookup`, `unstretch`, `split`, `speak` — other audio tools
+
 ## Prior Art
 
 - **`../Band/cue_maker/`** — Earlier R-based version. Useful for understanding the domain (structure.csv format, section numbering, dual REAPER markers) but not a code model to follow. The RPP format knowledge there is partial; a purpose-built REAPER example project will be the authoritative format reference.

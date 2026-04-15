@@ -1,6 +1,5 @@
 pub mod deezer;
 pub mod genius;
-pub mod hooktheory;
 pub mod musicbrainz;
 
 use anyhow::Result;
@@ -11,15 +10,9 @@ pub async fn run(title: &str, artist: Option<&str>) -> Result<()> {
     eprintln!("Looking up: \"{}\"{}...", title, artist.map_or(String::new(), |a| format!(" by {}", a)));
 
     // Run all sources in parallel
-    let (dz, mb, ht, ge) = tokio::join!(
+    let (dz, mb, ge) = tokio::join!(
         deezer::search_track(title, artist),
         musicbrainz::search_recording(title, artist),
-        async {
-            match artist {
-                Some(a) => hooktheory::lookup_song(title, a).await,
-                None => Ok(None),
-            }
-        },
         genius::search_lyrics(title, artist),
     );
 
@@ -52,24 +45,6 @@ pub async fn run(title: &str, artist: Option<&str>) -> Result<()> {
         }
         Ok(None) => lines.push("Deezer: not found".to_string()),
         Err(e) => lines.push(format!("Deezer: error — {}", e)),
-    }
-
-    match ht {
-        Ok(Some(r)) => {
-            lines.push("Hooktheory TheoryTab:".to_string());
-            if !r.keys.is_empty() {
-                lines.push(format!("  Keys: {}", r.keys.join(", ")));
-            }
-            if !r.sections.is_empty() {
-                lines.push(format!("  Sections: {}", r.sections.join(", ")));
-            }
-        }
-        Ok(None) => {
-            if artist.is_some() {
-                lines.push("Hooktheory: not found".to_string());
-            }
-        }
-        Err(e) => lines.push(format!("Hooktheory: error — {}", e)),
     }
 
     match ge {

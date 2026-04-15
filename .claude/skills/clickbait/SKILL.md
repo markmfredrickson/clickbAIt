@@ -74,7 +74,7 @@ If the user mentions stems, audio files, or backing tracks:
 .claude/skills/clickbait/bin/clickbait-audio lookup "<title>" -a "<artist>" > "songs/<artist-slug>/<song-slug>.lookup.json"
 ```
 
-This fetches from Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel. Saving to a sidecar lets you `Read` it directly and re-use it without re-fetching.
+This fetches from Deezer (BPM), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel. Saving to a sidecar lets you `Read` it directly and re-use it without re-fetching.
 
 **When audio is available**, online data serves as a bumper — it cross-checks stem analysis but never overrides it:
 - If Deezer BPM agrees with drum stem BPM → high confidence
@@ -94,17 +94,28 @@ This fetches from Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with s
 
   If this file already exists, use it as-is — it's the human-edited version. Never overwrite it.
 
-**When no audio is available**, online sources are primary: Deezer for BPM, Hooktheory for key/structure, Genius for lyrics and song structure markers.
+**When no audio is available**, online sources are primary: Deezer for BPM, Genius for lyrics and song structure markers.
 
 ## Step 3: Present findings and confirm
 
-Show the user:
-- **BPM** — stem analysis (primary when available), Deezer as cross-check
-- **Key** — audio analysis or Hooktheory
-- **Song structure** — Genius section markers and Hooktheory
-- **Duration** — audio file or MusicBrainz/Deezer
+**Source-attribution rule (inviolate):** Every fact you present MUST be verbatim from a tool output, with the source named. Never claim a source confirms something unless the tool output literally contains that data. If a source returned nothing for a field, say "[source] returned no [field]." If you fill in a gap from your own musical knowledge, label it **"estimate"** — never dress it up as a confirmed finding.
 
-If BPM or key data is missing, use your musical knowledge but flag it as an estimate. Never default to round-number BPMs (120, 140) without evidence.
+Present findings in a table with a **Source** column so the user can verify each claim against the tool output:
+
+| Field | Value | Source |
+|---|---|---|
+| **BPM** | 71.4 | drum stem DBN tracker (`beats` command) |
+| **BPM cross-check** | 143.6 (÷2 = 71.8) | Deezer via `lookup` |
+| **Key** | — | not returned by any source |
+| **Key** | G minor | **estimate** (user/musical knowledge) |
+| **Structure** | [Chorus], [Verse 2], [Chorus], [Bridge], [Chorus], [Outro] | Genius section markers via `lookup` |
+| **Duration** | 4:34 | MusicBrainz via `lookup` |
+
+Rules:
+- If BPM or key data is missing from all sources, say so explicitly. Offer an estimate only if you have genuine musical knowledge, clearly labeled.
+- Never default to round-number BPMs (120, 140) without evidence.
+- When stem analysis and Deezer diverge, flag it and trust the stem.
+- The user should be able to cross-check every row against the raw tool output. If they can't, you're doing it wrong.
 
 Ask the user to confirm or adjust before proceeding.
 
@@ -199,11 +210,12 @@ In this step, do all of the following together as one output:
 - Set the `key` option on the song if known
 - Add `audio()` nodes for each stem if stems are available
 
-**Intro rules (inviolate):**
-- Every song MUST start with an Intro span of at least 4 bars. This is where the title TTS cue and count-in go. No audio, no lyrics, no backing tracks in the Intro — just the slug region and click.
-- Do NOT put `cue: true` on the Intro — there's nothing before it to announce.
-- Audio/backing tracks go inside the FIRST section after the Intro (e.g., inside the Verse span), never as top-level siblings of `seq()` and never in the Intro.
-- buildRpp auto-places: title cue at beat 0, section cue 2 bars before each `cue: true` section, count-in 1 bar before. With a 4-bar intro these never overlap.
+**Preamble rules (inviolate):**
+- Every song MUST start with a preamble span of at least 4 bars. Name it `"Title - Artist"` (e.g. `span("Save Me - Aimee Mann", bars(4))`). This is the clickbait region — title TTS cue and count-in go here. No audio, no lyrics, no backing tracks.
+- Do NOT put `cue: true` on the preamble — there's nothing before it to announce.
+- The preamble is NOT the song's intro — it's padding before the music starts. The actual musical intro (e.g. guitar figure) is a separate span named "Intro" that follows the preamble.
+- Audio/backing tracks go inside the FIRST musical section (e.g., inside the Intro or Verse span), never as top-level siblings of `seq()` and never in the preamble.
+- buildRpp auto-places: title cue at beat 0, section cue 2 bars before each `cue: true` section, count-in 1 bar before. With a 4-bar preamble these never overlap.
 
 The goal is a complete, reviewable dsongl file in one shot. The user will read the code and tell you what to adjust.
 

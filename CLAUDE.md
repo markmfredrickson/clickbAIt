@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Working Style
+
+**Don't race ahead.** The user communicates in short messages. Multiple messages may be part of one thought. Do NOT immediately edit files or run commands after each message. Wait until it's clear the user is done and you understand the full picture before acting. When in doubt, ask.
+
 ## Project Overview
 
 **clickbAIt** uses an AI-driven interface, audio processing, and a web-based lyrics display to create **show tracks** for cover bands:

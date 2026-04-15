@@ -10,10 +10,12 @@
 
 import { execSync } from "child_process";
 import { resolve, dirname } from "path";
+import { readFileSync } from "fs";
 import type { Song } from "./dsongl/index.js";
 import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.js";
 import { extractSections, type Section } from "./sections.js";
 import { songSlug } from "./dsongl/index.js";
+import { beatsToStretchMarkers, formatStretchMarkers, type Beat } from "./stretch-markers.js";
 
 import { accessSync, constants } from "fs";
 
@@ -129,33 +131,47 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   const masterTs = song.timeSignature;
 
   // --- Tempo envelope points ---
+  // Merge tempo and timesig changes into a single sorted list of envelope points.
+  // REAPER needs a tempo envelope point at every BPM or timesig change.
+  const allChanges: { beat: number; bpm?: number; num?: number }[] = [];
+  for (const tp of tempoMap) allChanges.push({ beat: tp.beat, bpm: tp.bpm });
+  for (const ts of timesigMap) allChanges.push({ beat: ts.beat, num: ts.num });
+  allChanges.sort((a, b) => a.beat - b.beat);
+
   const tempoPoints: string[] = [];
-  let lastBpm: number | null = null;
-  let lastTs: number | null = null;
+  let currentBpm = masterBpm;
+  let currentTs = masterTs[0];
 
-  for (const tp of tempoMap) {
-    const sec = beatToSeconds(tp.beat, tempoMap);
-    const tsAtBeat = timesigMap.filter(t => t.beat <= tp.beat).pop();
-    const beats = tsAtBeat?.num ?? masterTs[0];
-
-    if (tp.bpm !== lastBpm || beats !== lastTs) {
-      const flags = timesigFlags(beats);
-      const pNum = patternNum(beats);
-      const pStr = patternStr(beats);
-      tempoPoints.push(
-        `PT ${fmtPos(sec)} ${fmtBpm(tp.bpm)} 1 ${flags} 0 1 0 "" 0 ${pNum} 0 ${pStr}`
-      );
-      lastBpm = tp.bpm;
-      lastTs = beats;
-    }
+  // Dedupe by beat — merge bpm and timesig at the same beat
+  const byBeat = new Map<number, { bpm: number; num: number }>();
+  for (const c of allChanges) {
+    const existing = byBeat.get(c.beat) ?? { bpm: currentBpm, num: currentTs };
+    if (c.bpm !== undefined) existing.bpm = c.bpm;
+    if (c.num !== undefined) existing.num = c.num;
+    byBeat.set(c.beat, existing);
+    if (c.bpm !== undefined) currentBpm = c.bpm;
+    if (c.num !== undefined) currentTs = c.num;
   }
 
-  // If no tempo points, add one at the start
-  if (tempoPoints.length === 0) {
-    const beats = masterTs[0];
-    tempoPoints.push(
-      `PT ${fmtPos(0)} ${fmtBpm(masterBpm)} 1 ${timesigFlags(beats)} 0 1 0 "" 0 ${patternNum(beats)} 0 ${patternStr(beats)}`
-    );
+  // Ensure beat 0 is always present
+  if (!byBeat.has(0)) {
+    byBeat.set(0, { bpm: masterBpm, num: masterTs[0] });
+  }
+
+  let lastBpm: number | null = null;
+  let lastTs: number | null = null;
+  for (const [beat, { bpm, num }] of [...byBeat.entries()].sort((a, b) => a[0] - b[0])) {
+    if (bpm !== lastBpm || num !== lastTs) {
+      const sec = beatToSeconds(beat, tempoMap);
+      const flags = timesigFlags(num);
+      const pNum = patternNum(num);
+      const pStr = patternStr(num);
+      tempoPoints.push(
+        `PT ${fmtPos(sec)} ${fmtBpm(bpm)} 1 ${flags} 0 1 0 "" 0 ${pNum} 0 ${pStr}`
+      );
+      lastBpm = bpm;
+      lastTs = num;
+    }
   }
 
   // --- Region markers ---
@@ -220,8 +236,8 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     }
   }
 
-  // Counts: 1 bar before each section (sections already padded)
-  for (const sec of sections) {
+  // Counts: 1 bar before each cue section (sections already padded)
+  for (const sec of sections.filter(s => s.cue)) {
     const beatsPerBar = sec.timeSignature[0];
     const barStartBeat = sec.beat - beatsPerBar;
     if (barStartBeat < 0) continue;
@@ -293,6 +309,12 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   rppLines.push(buildTrack("Cues & Counts", 0.8, buildWaveItems(trackItems), { beat: -1 }));
 
   // Audio tracks (stems, backing tracks, etc.)
+  // Calculate project end time so audio items can be trimmed
+  const lastSection = sections[sections.length - 1];
+  const projectEndSec = lastSection
+    ? beatToSeconds(lastSection.beat + lastSection.durationBeats, tempoMap)
+    : 0;
+
   const audioByTrack = new Map<string, typeof events>();
   for (const e of events) {
     if (e.type === "audio") {
@@ -302,7 +324,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     }
   }
   for (const [trackName, audioEvents] of audioByTrack) {
-    const items = buildAudioFileItems(audioEvents, tempoMap);
+    const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec);
     rppLines.push(buildTrack(trackName, 1, items, { beat: -1 }));
   }
 
@@ -426,6 +448,8 @@ function sourceType(file: string): string {
 function buildAudioFileItems(
   audioEvents: LinearEvent[],
   tempoMap: { beat: number; bpm: number }[],
+  groupId?: number,
+  projectEndSec?: number,
 ): string {
   const lines: string[] = [];
   for (const e of audioEvents) {
@@ -434,7 +458,34 @@ function buildAudioFileItems(
     const absFile = resolve(e.file!);
     const srcType = sourceType(absFile);
     const totalDur = audioDuration(absFile);
-    const length = totalDur - soffs;
+    let length = totalDur - soffs;
+
+    // Load stretch markers from beats sidecar if available
+    let smLines: string[] = [];
+    if (e.beatsFile) {
+      const bpm = tempoMap[0]?.bpm ?? 120;
+      const beatsData = JSON.parse(readFileSync(e.beatsFile, "utf8"));
+      const beats: Beat[] = beatsData.beats;
+      const markers = beatsToStretchMarkers(beats, {
+        bpm,
+        sourceAnchor: beats[0]?.time ?? 0,
+        itemAnchor: 0,
+      });
+      if (markers.length > 0) {
+        smLines = formatStretchMarkers(markers, soffs, 0);
+        // Item length = last marker's grid position (stretched timeline)
+        length = markers[markers.length - 1].itemPosition;
+      }
+    }
+
+    // Trim to project end so REAPER stops playback cleanly
+    if (projectEndSec !== undefined) {
+      const maxLength = projectEndSec - position;
+      if (maxLength > 0 && length > maxLength) {
+        length = maxLength;
+      }
+    }
+
     lines.push(`    <ITEM`);
     lines.push(`      POSITION ${fmtPos(position)}`);
     lines.push(`      LENGTH ${fmtPos(length)}`);
@@ -443,11 +494,15 @@ function buildAudioFileItems(
     lines.push(`      FADEIN 1 0 0 1 0 0 0`);
     lines.push(`      FADEOUT 1 0 0 1 0 0 0`);
     lines.push(`      MUTE 0 0`);
+    if (groupId !== undefined) lines.push(`      GROUP ${groupId}`);
     lines.push(`      VOLPAN 1 0 1 -1`);
     lines.push(`      SOFFS ${fmtPos(soffs)}`);
     lines.push(`      PLAYRATE 1 1 0 -1 0 0.0025`);
     lines.push(`      CHANMODE 0`);
     lines.push(`      GUID ${newGuid()}`);
+    for (const sm of smLines) {
+      lines.push(`      ${sm}`);
+    }
     lines.push(`      <SOURCE ${srcType}`);
     lines.push(`        FILE ${rppStr(absFile)} 1`);
     lines.push(`      >`);

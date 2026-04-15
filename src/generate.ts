@@ -63,18 +63,25 @@ const allEvents = linearize(song);
 const autoCueNames = sections.filter(s => s.cue).map(s => s.name);
 const manualCueNames = allEvents.filter(e => e.type === "cue").map(e => e.value);
 const cueNames = [...new Set([song.title, ...autoCueNames, ...manualCueNames])];
-console.log(`\nGenerating ${cueNames.length} cue WAVs...`);
+// Count WAVs (spoken "1", "2", etc.) — generated via TTS so they match the project sample rate
+const maxBeatsPerBar = Math.max(...sections.map(s => s.timeSignature[0]), song.timeSignature[0]);
+const countNames = Array.from({ length: maxBeatsPerBar }, (_, i) => String(i + 1));
+
+console.log(`\nGenerating ${cueNames.length} cue WAVs + ${countNames.length} count WAVs...`);
 
 for (const name of cueNames) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
   generateWav(name, resolve(cueDir, `${slug}.wav`));
+}
+for (const num of countNames) {
+  generateWav(num, resolve(cueDir, `${num}.wav`));
 }
 
 // Now build RPP (cue WAVs exist on disk for duration measurement)
 console.log(`\nBuilding RPP...`);
 const { rpp, cueWavsNeeded } = buildRpp(song, {
   cueDir,
-  countDir,
+  countDir: cueDir,  // counts are now generated alongside cues
   clickDir,
 });
 

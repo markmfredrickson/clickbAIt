@@ -242,6 +242,32 @@ This tool helps musicians build practice materials for their own use. Freely fet
 
 Use full words in section names — no abbreviations. TTS reads these aloud: "Intro (continued)" not "Intro (cont.)".
 
+## Useful notes
+
+Hard-won lessons from building real songs. Check these before making assumptions.
+
+**BPM detection:**
+- Run `beats` with a wide range first (e.g. 60–150) to find the ballpark, then rerun with ±2 BPM to eliminate ghost beat false positives from drum fills.
+- Run both drums (energy) and full mix (spectral-flux) and compare. If they disagree on a beat, that's a problem area.
+- Deezer frequently returns double-time BPM. Always check if halving matches the drum tracker.
+
+**Audio alignment & pickups:**
+- Songs commonly have pickup beats before the intro or other sections. Use negative `offset` on audio nodes to place stems before a section's downbeat (e.g. `offset: -1` for a 1-beat pickup during the count-in).
+- The first beat of audio rarely lands on beat 1 of bar 1. Expect to nudge the offset.
+
+**Section boundaries:**
+- Spectral flux energy-per-bar can help estimate section boundaries but isn't reliable for dynamically uniform songs.
+- Whisper phrase timing + Genius section names is the primary approach.
+- Songsterr is a useful reference for bar counts and structure when our tools can't determine boundaries.
+
+**Endings:**
+- Use `cue: true` on the Ending span for an auto count-in, plus manual `cue("1", 0)` for the final hit.
+- For "end on 1, 2, 3" patterns, use manual cues with offsets (e.g. `cue("end on", -1)`, `cue("1", 0)`, `cue("2", 1)`, `cue("3", 2)`).
+- Songs often need a short Ending span (1–4 bars) after the last musical section for the final hit + ring-out.
+
+**Post-chorus / instrumental sections:**
+- Songs often have instrumental bars between chorus and verse that don't fit either label. Use "Post-Chorus" or "Instrumental" as section names — TTS reads them to the band.
+
 ## Component docs
 
 Read these when you need detail on a subsystem:

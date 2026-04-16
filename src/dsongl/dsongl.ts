@@ -85,6 +85,9 @@ interface SongOptions {
   timeSignature?: [number, number];
   artist?: string;
   key?: string;
+  /** Seconds of silence at the start of stem audio files. Applied as default
+   *  soffs to every audio() node so file-time beat 0 aligns with bar 1. */
+  preRollSeconds?: number;
 }
 
 export function song(title: string, bpm: number, ...children: Node[]): Song;
@@ -101,6 +104,7 @@ export function song(title: string, bpm: number, ...args: (Node | SongOptions)[]
     ...opts.key !== undefined && { key: opts.key },
     bpm,
     timeSignature: opts.timeSignature ?? [4, 4],
+    ...opts.preRollSeconds !== undefined && { preRollSeconds: opts.preRollSeconds },
     children,
   };
 }

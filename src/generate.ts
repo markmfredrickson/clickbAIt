@@ -4,7 +4,7 @@
  * Usage: npx tsx src/generate.ts <song-file.ts> [output-dir]
  */
 
-import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, statSync, readdirSync } from "fs";
 import { execSync } from "child_process";
 import { resolve, dirname } from "path";
 import { buildRpp } from "./build-rpp.js";
@@ -12,6 +12,37 @@ import { extractSections } from "./sections.js";
 import { songSlug } from "./dsongl/index.js";
 import { exportSongPayload } from "./teleprompter/export.js";
 import type { Song } from "./dsongl/index.js";
+
+/**
+ * Warn if this script is running from a bundled bin/*.mjs that's older than
+ * the source it was built from. Stale bundles silently miss newly-added
+ * features — we hit this during dev when stretch markers went missing.
+ */
+function checkBundleFreshness(): void {
+  const selfPath = new URL(import.meta.url).pathname;
+  if (!selfPath.includes("/bin/")) return; // running from source via tsx — always fresh
+  const repoRoot = resolve(dirname(selfPath), "..");
+  const srcDir = resolve(repoRoot, "src");
+  if (!existsSync(srcDir)) return;
+  const bundleMtime = statSync(selfPath).mtimeMs;
+  let newestSrc = 0;
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const p = resolve(dir, name);
+      const s = statSync(p);
+      if (s.isDirectory()) walk(p);
+      else if (p.endsWith(".ts")) newestSrc = Math.max(newestSrc, s.mtimeMs);
+    }
+  };
+  walk(srcDir);
+  if (newestSrc > bundleMtime) {
+    const ageMinutes = Math.round((newestSrc - bundleMtime) / 60000);
+    console.error(
+      `\n⚠ Bundle is ${ageMinutes}m older than src/. Rebuild with: node scripts/build.mjs\n`,
+    );
+  }
+}
+checkBundleFreshness();
 
 const songPath = process.argv[2];
 if (!songPath) {

@@ -8218,6 +8218,15 @@ function songSlug(song2) {
 }
 
 // src/teleprompter/relay.ts
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[c]);
+}
 var MIME_TYPES = {
   ".html": "text/html",
   ".css": "text/css",
@@ -8292,7 +8301,7 @@ function startRelay(opts) {
   const httpPort = opts.httpPort ?? 3e3;
   const oscPort = opts.oscPort ?? 9e3;
   const clientDir = opts.clientDir ?? join(import.meta.dirname ?? ".", "client");
-  const songsDir2 = opts.songsDir ?? process.cwd();
+  const songsDirs2 = opts.songsDirs && opts.songsDirs.length > 0 ? opts.songsDirs : [process.cwd()];
   const ip = getLocalIP();
   const baseUrl = `http://${ip}:${httpPort}`;
   let currentSong = opts.song ?? null;
@@ -8301,14 +8310,16 @@ function startRelay(opts) {
   if (currentSong) songCache.set(currentSlug, currentSong);
   async function loadSong(slug) {
     if (songCache.has(slug)) return songCache.get(slug);
-    try {
-      const data = await readFile(join(songsDir2, slug + ".json"), "utf8");
-      const payload = JSON.parse(data);
-      songCache.set(slug, payload);
-      return payload;
-    } catch {
-      return null;
+    for (const dir of songsDirs2) {
+      try {
+        const data = await readFile(join(dir, slug + ".json"), "utf8");
+        const payload = JSON.parse(data);
+        songCache.set(slug, payload);
+        return payload;
+      } catch {
+      }
     }
+    return null;
   }
   async function switchSong(slug) {
     if (slug === currentSlug) return;
@@ -8337,7 +8348,7 @@ function startRelay(opts) {
       if (!qrSvgCache) {
         qrSvgCache = await import_qrcode.default.toString(baseUrl, { type: "svg" });
       }
-      const songLine = currentSong ? `${currentSong.title}${currentSong.artist ? ` \u2014 ${currentSong.artist}` : ""}` : "Waiting for song\u2026";
+      const songLine = currentSong ? `${escapeHtml(currentSong.title)}${currentSong.artist ? ` \u2014 ${escapeHtml(currentSong.artist)}` : ""}` : "Waiting for song\u2026";
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(`<!DOCTYPE html>
 <html lang="en">
@@ -8405,15 +8416,18 @@ function startRelay(opts) {
       return;
     }
     if (url === "/songs") {
-      try {
-        const files = await readdir(songsDir2);
-        const songs = files.filter((f) => f.endsWith(".json")).map((f) => f.replace(".json", ""));
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(songs));
-      } catch {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end("[]");
+      const seen = /* @__PURE__ */ new Set();
+      for (const dir of songsDirs2) {
+        try {
+          const files = await readdir(dir);
+          for (const f of files) {
+            if (f.endsWith(".json")) seen.add(f.replace(".json", ""));
+          }
+        } catch {
+        }
       }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify([...seen]));
       return;
     }
     const filePath = url === "/lyrics" ? "index.html" : url.slice(1);
@@ -8549,7 +8563,8 @@ function walk(node, ctx, out) {
         value: node.name,
         // track name
         file: node.file,
-        soffs: node.soffs
+        soffs: node.soffs,
+        beatsFile: node.beatsFile
       });
       break;
     }
@@ -8641,7 +8656,8 @@ function computePadding(events, ts) {
 function linearize(root, opts) {
   const events = [];
   walk(root, { beatOffset: 0, bpm: root.bpm, timeSignature: root.timeSignature }, events);
-  const shift = computePadding(events, root.timeSignature);
+  const computed = computePadding(events, root.timeSignature);
+  const shift = Math.max(computed, opts?.minPaddingBeats ?? 0);
   if (shift > 0) {
     for (const e of events) {
       e.beat += shift;
@@ -8802,11 +8818,12 @@ async function startTeleprompter(opts) {
   const httpPort = opts.httpPort ?? 3e3;
   const oscPort = opts.oscPort ?? 9e3;
   const payload = opts.song ? exportSongPayload(opts.song) : void 0;
+  const songsDirs2 = opts.songsDirs && opts.songsDirs.length > 0 ? opts.songsDirs : opts.songsDir ? [opts.songsDir] : void 0;
   const relay = startRelay({
     httpPort,
     oscPort,
     song: payload,
-    songsDir: opts.songsDir
+    songsDirs: songsDirs2
   });
   const ip = getLocalIP2();
   const url = `http://${ip}:${httpPort}`;
@@ -8816,22 +8833,26 @@ async function startTeleprompter(opts) {
   if (payload) {
     console.log(`  Now playing: ${payload.title}${payload.artist ? ` \u2014 ${payload.artist}` : ""}`);
   }
-  if (opts.songsDir) {
-    console.log(`  Songs dir: ${opts.songsDir}`);
+  if (songsDirs2 && songsDirs2.length > 0) {
+    console.log(`  Songs dir${songsDirs2.length > 1 ? "s" : ""}:`);
+    for (const d of songsDirs2) console.log(`    ${d}`);
   }
   console.log(`  ${url}`);
   console.log("");
   console.log(qr);
   console.log(`  OSC listening on UDP port ${oscPort}`);
-  if (opts.songsDir) {
-    try {
-      const files = readdirSync(opts.songsDir).filter((f) => f.endsWith(".json"));
-      console.log(`  Songs available (${files.length}):`);
-      for (const f of files) {
-        console.log(`    ${f.replace(".json", "")}`);
+  if (songsDirs2 && songsDirs2.length > 0) {
+    const seen = /* @__PURE__ */ new Set();
+    for (const dir of songsDirs2) {
+      try {
+        for (const f of readdirSync(dir)) {
+          if (f.endsWith(".json")) seen.add(f.replace(".json", ""));
+        }
+      } catch {
       }
-    } catch {
     }
+    console.log(`  Songs available (${seen.size}):`);
+    for (const slug of seen) console.log(`    ${slug}`);
   }
   console.log("");
   return relay;
@@ -8840,19 +8861,20 @@ async function startTeleprompter(opts) {
 // scripts/teleprompter.ts
 var args = process.argv.slice(2);
 var songPath;
-var songsDir;
+var songsDirs = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--songs-dir" && args[i + 1]) {
-    songsDir = resolve(args[++i]);
+    songsDirs.push(resolve(args[++i]));
   } else if (!args[i].startsWith("-")) {
     songPath = args[i];
   }
 }
-if (!songPath && !songsDir) {
+if (!songPath && songsDirs.length === 0) {
   console.error("Usage:");
   console.error("  npx tsx scripts/teleprompter.ts <song-file.ts>");
   console.error("  npx tsx scripts/teleprompter.ts --songs-dir ./output/songs");
+  console.error("  npx tsx scripts/teleprompter.ts --songs-dir ./a --songs-dir ./b");
   process.exit(1);
 }
 var song = songPath ? (await import(resolve(songPath))).default : void 0;
-await startTeleprompter({ song, songsDir });
+await startTeleprompter({ song, songsDirs });

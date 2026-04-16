@@ -53,6 +53,10 @@ export interface Song {
   key?: string;
   bpm: number;
   timeSignature: [number, number];
+  /** Seconds of silence at the start of audio stems (from full-mix analysis).
+   *  Applied as soffs to every audio() node that doesn't set its own soffs,
+   *  so file-time beat 0 aligns with the first user-authored section's downbeat. */
+  preRollSeconds?: number;
   children: Node[];
 }
 

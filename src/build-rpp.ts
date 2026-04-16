@@ -109,7 +109,17 @@ export interface BuildOptions {
 }
 
 export function buildRpp(song: Song, opts: BuildOptions): RppProject {
-  const { events, paddingBeats } = linearize(song, { withPadding: true });
+  // Slug = auto-inserted region at the top of the RPP holding the song-title
+  // TTS announcement. Default 4 bars; grows if the title TTS is long.
+  const beatsPerBar = song.timeSignature[0];
+  const barSeconds = (60 / song.bpm) * beatsPerBar;
+  const titleSlugName = song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+  const titleFile = `${opts.cueDir}/${titleSlugName}.wav`;
+  const titleDur = audioDuration(titleFile);
+  const slugBars = Math.max(4, Math.ceil(titleDur / barSeconds) + 1);
+  const slugBeats = slugBars * beatsPerBar;
+
+  const { events, paddingBeats } = linearize(song, { withPadding: true, minPaddingBeats: slugBeats });
   const rawSections = extractSections(song);
   // Apply the same padding shift to sections
   const sections = rawSections.map(s => ({ ...s, beat: s.beat + paddingBeats }));
@@ -179,15 +189,25 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   let regionId = 1;
   const slug = songSlug(song);
 
+  // Region #1: the slug — auto-inserted pre-song region holding the title TTS.
+  // Named with the song slug so REAPER's /lastregion/name OSC message lets the
+  // teleprompter identify the song on tab switch.
+  {
+    const slugEndSec = beatToSeconds(slugBeats, tempoMap);
+    regionLines.push(
+      `MARKER ${regionId} ${fmt(0)} ${rppStr(slug)} 1 0 1 B ${newGuid()} 0 1`
+    );
+    regionLines.push(
+      `MARKER ${regionId} ${fmt(slugEndSec)} "" 1`
+    );
+    regionId++;
+  }
+
   for (const sec of sections) {
     const startSec = beatToSeconds(sec.beat, tempoMap);
     const endSec = beatToSeconds(sec.beat + sec.durationBeats, tempoMap);
-    // First section gets the song slug as its region name — REAPER sends
-    // this via /lastregion/name on tab switch for teleprompter song switching.
-    // Only the band sees it in REAPER; audience never sees or hears it.
-    const name = regionId === 1 ? slug : sec.name;
     regionLines.push(
-      `MARKER ${regionId} ${fmt(startSec)} ${rppStr(name)} 1 0 1 B ${newGuid()} 0 1`
+      `MARKER ${regionId} ${fmt(startSec)} ${rppStr(sec.name)} 1 0 1 B ${newGuid()} 0 1`
     );
     regionLines.push(
       `MARKER ${regionId} ${fmt(endSec)} "" 1`
@@ -199,10 +219,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   const trackItems: AudioItem[] = [];
   const cueNames = new Set<string>();
 
-  // Title cue at beat 0 — always injected so the band hears the song name
-  const titleSlug = song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
-  const titleFile = `${opts.cueDir}/${titleSlug}.wav`;
-  const titleDur = audioDuration(titleFile);
+  // Title cue at beat 0 (within the auto-slug region)
   cueNames.add(song.title);
   trackItems.push({ position: 0, length: titleDur, file: titleFile });
 
@@ -323,8 +340,18 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
       audioByTrack.set(e.value, list);
     }
   }
+  const defaultSoffs = song.preRollSeconds ?? 0;
+  if (defaultSoffs > 0 && audioByTrack.size > 0) {
+    let applied = 0;
+    for (const evs of audioByTrack.values()) {
+      for (const e of evs) if (e.soffs === undefined) applied++;
+    }
+    if (applied > 0) {
+      console.error(`Applying preRollSeconds=${defaultSoffs}s as soffs to ${applied} audio item${applied === 1 ? "" : "s"}`);
+    }
+  }
   for (const [trackName, audioEvents] of audioByTrack) {
-    const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec);
+    const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs);
     rppLines.push(buildTrack(trackName, 1, items, { beat: -1 }));
   }
 
@@ -448,13 +475,14 @@ function sourceType(file: string): string {
 function buildAudioFileItems(
   audioEvents: LinearEvent[],
   tempoMap: { beat: number; bpm: number }[],
-  groupId?: number,
-  projectEndSec?: number,
+  groupId: number | undefined,
+  projectEndSec: number | undefined,
+  defaultSoffs: number,
 ): string {
   const lines: string[] = [];
   for (const e of audioEvents) {
     const position = e.seconds;
-    const soffs = e.soffs ?? 0;
+    const soffs = e.soffs ?? defaultSoffs;
     const absFile = resolve(e.file!);
     const srcType = sourceType(absFile);
     const totalDur = audioDuration(absFile);
@@ -465,14 +493,18 @@ function buildAudioFileItems(
     if (e.beatsFile) {
       const bpm = tempoMap[0]?.bpm ?? 120;
       const beatsData = JSON.parse(readFileSync(e.beatsFile, "utf8"));
-      const beats: Beat[] = beatsData.beats;
+      // Drop beats that fall inside the soffs trim — their source positions
+      // would be negative relative to the item and REAPER rejects those.
+      const beats: Beat[] = (beatsData.beats as Beat[]).filter(b => b.time >= soffs);
       const markers = beatsToStretchMarkers(beats, {
         bpm,
-        sourceAnchor: beats[0]?.time ?? 0,
+        sourceAnchor: beats[0]?.time ?? soffs,
         itemAnchor: 0,
       });
       if (markers.length > 0) {
-        smLines = formatStretchMarkers(markers, soffs, 0);
+        // REAPER reads SM source positions as file-absolute (not relative to
+        // soffs), so pass 0 here regardless of the item's soffs value.
+        smLines = formatStretchMarkers(markers, 0, 0);
         // Item length = last marker's grid position (stretched timeline)
         length = markers[markers.length - 1].itemPosition;
       }

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
 // src/generate.ts
-import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, statSync, readdirSync } from "fs";
 import { execSync as execSync2 } from "child_process";
 import { resolve as resolve2, dirname as dirname2 } from "path";
 
 // src/build-rpp.ts
 import { execSync } from "child_process";
 import { resolve, dirname } from "path";
+import { readFileSync } from "fs";
 
 // src/linearize.ts
 function durationBeats(d, ts) {
@@ -58,7 +59,8 @@ function walk(node, ctx, out) {
         value: node.name,
         // track name
         file: node.file,
-        soffs: node.soffs
+        soffs: node.soffs,
+        beatsFile: node.beatsFile
       });
       break;
     }
@@ -150,7 +152,8 @@ function computePadding(events, ts) {
 function linearize(root2, opts) {
   const events = [];
   walk(root2, { beatOffset: 0, bpm: root2.bpm, timeSignature: root2.timeSignature }, events);
-  const shift = computePadding(events, root2.timeSignature);
+  const computed = computePadding(events, root2.timeSignature);
+  const shift = Math.max(computed, opts?.minPaddingBeats ?? 0);
   if (shift > 0) {
     for (const e of events) {
       e.beat += shift;
@@ -236,6 +239,41 @@ function songSlug(song2) {
   return toSlug(parts.join("-"));
 }
 
+// src/stretch-markers.ts
+function beatsToStretchMarkers(beats, options) {
+  if (beats.length < 2) return [];
+  const { bpm } = options;
+  const beatLen = 60 / bpm;
+  const sourceAnchor = options.sourceAnchor ?? beats[0].time;
+  const itemAnchor = options.itemAnchor ?? 0;
+  const markers = [];
+  for (let i = 0; i < beats.length; i++) {
+    const sourcePos = beats[i].time;
+    const beatNum = i;
+    const itemPos = itemAnchor + beatNum * beatLen;
+    markers.push({
+      beat: beatNum,
+      itemPosition: itemPos,
+      sourcePosition: sourcePos
+    });
+  }
+  return markers;
+}
+function formatStretchMarkers(markers, itemStartSource, itemStartProject) {
+  const maxPairsPerLine = 34;
+  const pairs = markers.map((m) => {
+    const src = m.sourcePosition - itemStartSource;
+    const item = m.itemPosition - itemStartProject;
+    return `${item.toFixed(9)} ${src.toFixed(9)}`;
+  });
+  const lines = [];
+  for (let i = 0; i < pairs.length; i += maxPairsPerLine) {
+    const chunk = pairs.slice(i, i + maxPairsPerLine);
+    lines.push(`SM ${chunk.join(" + ")}`);
+  }
+  return lines;
+}
+
 // src/build-rpp.ts
 import { accessSync, constants } from "fs";
 function findAudioBin() {
@@ -302,7 +340,14 @@ function beatToSeconds(beat, tempoMap) {
   return seconds;
 }
 function buildRpp(song2, opts) {
-  const { events, paddingBeats } = linearize(song2, { withPadding: true });
+  const beatsPerBar = song2.timeSignature[0];
+  const barSeconds = 60 / song2.bpm * beatsPerBar;
+  const titleSlugName = song2.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+  const titleFile = `${opts.cueDir}/${titleSlugName}.wav`;
+  const titleDur = audioDuration(titleFile);
+  const slugBars = Math.max(4, Math.ceil(titleDur / barSeconds) + 1);
+  const slugBeats = slugBars * beatsPerBar;
+  const { events, paddingBeats } = linearize(song2, { withPadding: true, minPaddingBeats: slugBeats });
   const rawSections = extractSections(song2);
   const sections2 = rawSections.map((s) => ({ ...s, beat: s.beat + paddingBeats }));
   const tempoMap = [];
@@ -317,39 +362,58 @@ function buildRpp(song2, opts) {
   }
   const masterBpm = tempoMap[0]?.bpm ?? song2.bpm;
   const masterTs = song2.timeSignature;
+  const allChanges = [];
+  for (const tp of tempoMap) allChanges.push({ beat: tp.beat, bpm: tp.bpm });
+  for (const ts of timesigMap) allChanges.push({ beat: ts.beat, num: ts.num });
+  allChanges.sort((a, b) => a.beat - b.beat);
   const tempoPoints = [];
+  let currentBpm = masterBpm;
+  let currentTs = masterTs[0];
+  const byBeat = /* @__PURE__ */ new Map();
+  for (const c of allChanges) {
+    const existing = byBeat.get(c.beat) ?? { bpm: currentBpm, num: currentTs };
+    if (c.bpm !== void 0) existing.bpm = c.bpm;
+    if (c.num !== void 0) existing.num = c.num;
+    byBeat.set(c.beat, existing);
+    if (c.bpm !== void 0) currentBpm = c.bpm;
+    if (c.num !== void 0) currentTs = c.num;
+  }
+  if (!byBeat.has(0)) {
+    byBeat.set(0, { bpm: masterBpm, num: masterTs[0] });
+  }
   let lastBpm = null;
   let lastTs = null;
-  for (const tp of tempoMap) {
-    const sec = beatToSeconds(tp.beat, tempoMap);
-    const tsAtBeat = timesigMap.filter((t) => t.beat <= tp.beat).pop();
-    const beats = tsAtBeat?.num ?? masterTs[0];
-    if (tp.bpm !== lastBpm || beats !== lastTs) {
-      const flags = timesigFlags(beats);
-      const pNum = patternNum(beats);
-      const pStr = patternStr(beats);
+  for (const [beat, { bpm, num }] of [...byBeat.entries()].sort((a, b) => a[0] - b[0])) {
+    if (bpm !== lastBpm || num !== lastTs) {
+      const sec = beatToSeconds(beat, tempoMap);
+      const flags = timesigFlags(num);
+      const pNum = patternNum(num);
+      const pStr = patternStr(num);
       tempoPoints.push(
-        `PT ${fmtPos(sec)} ${fmtBpm(tp.bpm)} 1 ${flags} 0 1 0 "" 0 ${pNum} 0 ${pStr}`
+        `PT ${fmtPos(sec)} ${fmtBpm(bpm)} 1 ${flags} 0 1 0 "" 0 ${pNum} 0 ${pStr}`
       );
-      lastBpm = tp.bpm;
-      lastTs = beats;
+      lastBpm = bpm;
+      lastTs = num;
     }
-  }
-  if (tempoPoints.length === 0) {
-    const beats = masterTs[0];
-    tempoPoints.push(
-      `PT ${fmtPos(0)} ${fmtBpm(masterBpm)} 1 ${timesigFlags(beats)} 0 1 0 "" 0 ${patternNum(beats)} 0 ${patternStr(beats)}`
-    );
   }
   const regionLines = [];
   let regionId = 1;
   const slug2 = songSlug(song2);
+  {
+    const slugEndSec = beatToSeconds(slugBeats, tempoMap);
+    regionLines.push(
+      `MARKER ${regionId} ${fmt(0)} ${rppStr(slug2)} 1 0 1 B ${newGuid()} 0 1`
+    );
+    regionLines.push(
+      `MARKER ${regionId} ${fmt(slugEndSec)} "" 1`
+    );
+    regionId++;
+  }
   for (const sec of sections2) {
     const startSec = beatToSeconds(sec.beat, tempoMap);
     const endSec = beatToSeconds(sec.beat + sec.durationBeats, tempoMap);
-    const name = regionId === 1 ? slug2 : sec.name;
     regionLines.push(
-      `MARKER ${regionId} ${fmt(startSec)} ${rppStr(name)} 1 0 1 B ${newGuid()} 0 1`
+      `MARKER ${regionId} ${fmt(startSec)} ${rppStr(sec.name)} 1 0 1 B ${newGuid()} 0 1`
     );
     regionLines.push(
       `MARKER ${regionId} ${fmt(endSec)} "" 1`
@@ -358,16 +422,13 @@ function buildRpp(song2, opts) {
   }
   const trackItems = [];
   const cueNames2 = /* @__PURE__ */ new Set();
-  const titleSlug = song2.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
-  const titleFile = `${opts.cueDir}/${titleSlug}.wav`;
-  const titleDur = audioDuration(titleFile);
   cueNames2.add(song2.title);
   trackItems.push({ position: 0, length: titleDur, file: titleFile });
   let cueTrackFreeAfter = titleDur;
   for (const sec of sections2) {
     if (!sec.cue) continue;
-    const beatsPerBar = sec.timeSignature[0];
-    const cueBeat = sec.beat - beatsPerBar * 2;
+    const beatsPerBar2 = sec.timeSignature[0];
+    const cueBeat = sec.beat - beatsPerBar2 * 2;
     if (cueBeat < 0) continue;
     const cueSec = beatToSeconds(cueBeat, tempoMap);
     if (cueSec < cueTrackFreeAfter) continue;
@@ -386,11 +447,11 @@ function buildRpp(song2, opts) {
       trackItems.push({ position: e.seconds, length: audioDuration(file), file });
     }
   }
-  for (const sec of sections2) {
-    const beatsPerBar = sec.timeSignature[0];
-    const barStartBeat = sec.beat - beatsPerBar;
+  for (const sec of sections2.filter((s) => s.cue)) {
+    const beatsPerBar2 = sec.timeSignature[0];
+    const barStartBeat = sec.beat - beatsPerBar2;
     if (barStartBeat < 0) continue;
-    for (let i = 0; i < beatsPerBar; i++) {
+    for (let i = 0; i < beatsPerBar2; i++) {
       const beatPos = barStartBeat + i;
       const beatSec = beatToSeconds(beatPos, tempoMap);
       const file = `${opts.countDir}/${i + 1}.wav`;
@@ -443,6 +504,8 @@ function buildRpp(song2, opts) {
     mainsend: "1 0"
   }));
   rppLines.push(buildTrack("Cues & Counts", 0.8, buildWaveItems(trackItems), { beat: -1 }));
+  const lastSection = sections2[sections2.length - 1];
+  const projectEndSec = lastSection ? beatToSeconds(lastSection.beat + lastSection.durationBeats, tempoMap) : 0;
   const audioByTrack = /* @__PURE__ */ new Map();
   for (const e of events) {
     if (e.type === "audio") {
@@ -451,8 +514,18 @@ function buildRpp(song2, opts) {
       audioByTrack.set(e.value, list);
     }
   }
+  const defaultSoffs = song2.preRollSeconds ?? 0;
+  if (defaultSoffs > 0 && audioByTrack.size > 0) {
+    let applied = 0;
+    for (const evs of audioByTrack.values()) {
+      for (const e of evs) if (e.soffs === void 0) applied++;
+    }
+    if (applied > 0) {
+      console.error(`Applying preRollSeconds=${defaultSoffs}s as soffs to ${applied} audio item${applied === 1 ? "" : "s"}`);
+    }
+  }
   for (const [trackName, audioEvents] of audioByTrack) {
-    const items = buildAudioFileItems(audioEvents, tempoMap);
+    const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs);
     rppLines.push(buildTrack(trackName, 1, items, { beat: -1 }));
   }
   rppLines.push(`>`);
@@ -548,15 +621,36 @@ function sourceType(file) {
   if (ext === "mp3") return "MP3";
   return "WAVE";
 }
-function buildAudioFileItems(audioEvents, tempoMap) {
+function buildAudioFileItems(audioEvents, tempoMap, groupId, projectEndSec, defaultSoffs) {
   const lines = [];
   for (const e of audioEvents) {
     const position = e.seconds;
-    const soffs = e.soffs ?? 0;
+    const soffs = e.soffs ?? defaultSoffs;
     const absFile = resolve(e.file);
     const srcType = sourceType(absFile);
     const totalDur = audioDuration(absFile);
-    const length = totalDur - soffs;
+    let length = totalDur - soffs;
+    let smLines = [];
+    if (e.beatsFile) {
+      const bpm = tempoMap[0]?.bpm ?? 120;
+      const beatsData = JSON.parse(readFileSync(e.beatsFile, "utf8"));
+      const beats = beatsData.beats.filter((b) => b.time >= soffs);
+      const markers = beatsToStretchMarkers(beats, {
+        bpm,
+        sourceAnchor: beats[0]?.time ?? soffs,
+        itemAnchor: 0
+      });
+      if (markers.length > 0) {
+        smLines = formatStretchMarkers(markers, 0, 0);
+        length = markers[markers.length - 1].itemPosition;
+      }
+    }
+    if (projectEndSec !== void 0) {
+      const maxLength = projectEndSec - position;
+      if (maxLength > 0 && length > maxLength) {
+        length = maxLength;
+      }
+    }
     lines.push(`    <ITEM`);
     lines.push(`      POSITION ${fmtPos(position)}`);
     lines.push(`      LENGTH ${fmtPos(length)}`);
@@ -565,11 +659,15 @@ function buildAudioFileItems(audioEvents, tempoMap) {
     lines.push(`      FADEIN 1 0 0 1 0 0 0`);
     lines.push(`      FADEOUT 1 0 0 1 0 0 0`);
     lines.push(`      MUTE 0 0`);
+    if (groupId !== void 0) lines.push(`      GROUP ${groupId}`);
     lines.push(`      VOLPAN 1 0 1 -1`);
     lines.push(`      SOFFS ${fmtPos(soffs)}`);
     lines.push(`      PLAYRATE 1 1 0 -1 0 0.0025`);
     lines.push(`      CHANMODE 0`);
     lines.push(`      GUID ${newGuid()}`);
+    for (const sm of smLines) {
+      lines.push(`      ${sm}`);
+    }
     lines.push(`      <SOURCE ${srcType}`);
     lines.push(`        FILE ${rppStr(absFile)} 1`);
     lines.push(`      >`);
@@ -649,6 +747,33 @@ function beatsToSeconds(beat, tempoMap) {
 }
 
 // src/generate.ts
+function checkBundleFreshness() {
+  const selfPath = new URL(import.meta.url).pathname;
+  if (!selfPath.includes("/bin/")) return;
+  const repoRoot = resolve2(dirname2(selfPath), "..");
+  const srcDir = resolve2(repoRoot, "src");
+  if (!existsSync(srcDir)) return;
+  const bundleMtime = statSync(selfPath).mtimeMs;
+  let newestSrc = 0;
+  const walk2 = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const p = resolve2(dir, name);
+      const s = statSync(p);
+      if (s.isDirectory()) walk2(p);
+      else if (p.endsWith(".ts")) newestSrc = Math.max(newestSrc, s.mtimeMs);
+    }
+  };
+  walk2(srcDir);
+  if (newestSrc > bundleMtime) {
+    const ageMinutes = Math.round((newestSrc - bundleMtime) / 6e4);
+    console.error(
+      `
+\u26A0 Bundle is ${ageMinutes}m older than src/. Rebuild with: node scripts/build.mjs
+`
+    );
+  }
+}
+checkBundleFreshness();
 var songPath = process.argv[2];
 if (!songPath) {
   console.error("Usage: npx tsx src/generate.ts <song-file.ts> [output-dir]");
@@ -684,17 +809,23 @@ var allEvents = linearize(song);
 var autoCueNames = sections.filter((s) => s.cue).map((s) => s.name);
 var manualCueNames = allEvents.filter((e) => e.type === "cue").map((e) => e.value);
 var cueNames = [.../* @__PURE__ */ new Set([song.title, ...autoCueNames, ...manualCueNames])];
+var maxBeatsPerBar = Math.max(...sections.map((s) => s.timeSignature[0]), song.timeSignature[0]);
+var countNames = Array.from({ length: maxBeatsPerBar }, (_, i) => String(i + 1));
 console.log(`
-Generating ${cueNames.length} cue WAVs...`);
+Generating ${cueNames.length} cue WAVs + ${countNames.length} count WAVs...`);
 for (const name of cueNames) {
   const slug2 = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
   generateWav(name, resolve2(cueDir, `${slug2}.wav`));
+}
+for (const num of countNames) {
+  generateWav(num, resolve2(cueDir, `${num}.wav`));
 }
 console.log(`
 Building RPP...`);
 var { rpp, cueWavsNeeded } = buildRpp(song, {
   cueDir,
-  countDir,
+  countDir: cueDir,
+  // counts are now generated alongside cues
   clickDir
 });
 var slug = songSlug(song);

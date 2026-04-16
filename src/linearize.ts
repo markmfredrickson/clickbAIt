@@ -191,14 +191,22 @@ export interface LinearizeResult {
   paddingBeats: number;
 }
 
+export interface LinearizeOptions {
+  withPadding?: true;
+  /** Minimum padding beats to prepend (e.g. for a slug region). */
+  minPaddingBeats?: number;
+}
+
 export function linearize(root: Song): LinearEvent[];
-export function linearize(root: Song, opts: { withPadding: true }): LinearizeResult;
-export function linearize(root: Song, opts?: { withPadding: true }): LinearEvent[] | LinearizeResult {
+export function linearize(root: Song, opts: LinearizeOptions & { withPadding: true }): LinearizeResult;
+export function linearize(root: Song, opts: LinearizeOptions): LinearEvent[];
+export function linearize(root: Song, opts?: LinearizeOptions): LinearEvent[] | LinearizeResult {
   const events: LinearEvent[] = [];
   walk(root, { beatOffset: 0, bpm: root.bpm, timeSignature: root.timeSignature }, events);
 
-  // Pad for negative offsets
-  const shift = computePadding(events, root.timeSignature);
+  // Pad for negative offsets, plus any caller-requested minimum
+  const computed = computePadding(events, root.timeSignature);
+  const shift = Math.max(computed, opts?.minPaddingBeats ?? 0);
   if (shift > 0) {
     for (const e of events) {
       e.beat += shift;

@@ -53,15 +53,20 @@ If the user mentions stems, audio files, or backing tracks:
    ```
    Stems live alongside the song file — they'll be referenced as audio tracks in REAPER.
 2. Once stems exist, check for cached sidecars before running anything expensive:
-   - `<drums-stem>.analysis.json` — cached BPM/onsets
+   - `<original-file>.analysis.json` — cached BPM/onsets for the full mix (source of pre-roll + cross-check BPM)
+   - `<original-file>.beats.json` — DBN beat positions for the full mix (drives stretch markers for every stem)
+   - `<drums-stem>.analysis.json` — cached BPM/onsets from drum stem (cross-check)
    - `<vocals-stem>.words.json` — cached Whisper transcription
 
    If sidecars exist, use the `Read` tool to read them directly — the binary will also use them automatically. If missing, run:
    ```bash
-   .claude/skills/clickbait/bin/clickbait-audio analyze "<drums-stem>"
-   .claude/skills/clickbait/bin/clickbait-audio transcribe "<vocals-stem>"
    .claude/skills/clickbait/bin/clickbait-audio analyze "<original-file>"
+   .claude/skills/clickbait/bin/clickbait-audio analyze "<drums-stem>"
+   .claude/skills/clickbait/bin/clickbait-audio beats "<original-file>" --activation spectral-flux --min-bpm <low> --max-bpm <high> > "<original-file>.beats.json"
+   .claude/skills/clickbait/bin/clickbait-audio transcribe "<vocals-stem>"
    ```
+   **Always run `beats` on the full mix, not the drum stem.** The full mix carries beat information through drum-silent passages (intros, breakdowns) — drum-stem beats hallucinate onsets in those sections and SMs drift. Every `audio()` node in the DSongL file should point its `beatsFile` at the full-mix beats JSON so all stems share one consistent grid.
+
    Each command writes its sidecar alongside the input file. Read sidecars with the `Read` tool and reason about the JSON content directly. Sidecars are human-editable — if Whisper got a lyric wrong or the BPM is off, edit the JSON and the next run will use your correction.
 
 3. Record stem analysis results — they are the source of truth. Web data supplements, never overrides.
@@ -138,20 +143,38 @@ In this step, do all of the following together as one output:
 - Set the `key` option on the song if known
 - Add `audio()` nodes for each stem if stems are available
 
-**Intro rules (inviolate):**
-- Every song MUST start with an Intro span of at least 4 bars. This is where the title TTS cue and count-in go. No audio, no lyrics, no backing tracks in the Intro — just the slug region and click.
-- Do NOT put `cue: true` on the Intro — there's nothing before it to announce.
-- Audio/backing tracks go inside the FIRST section after the Intro (e.g., inside the Verse span), never as top-level siblings of `seq()` and never in the Intro.
-- buildRpp auto-places: title cue at beat 0, section cue 2 bars before each `cue: true` section, count-in 1 bar before. With a 4-bar intro these never overlap.
+**Slug vs. Intro — do not confuse these:**
+- **Slug** — an auto-inserted region at the top of the RPP (generator-owned). Holds the song-title TTS announcement. Default 4 bars, grows if the title TTS is long. The user never writes it in DSongL; it appears automatically at RPP build time.
+- **Intro** (or whatever you want to call it) — the author's *musical* introduction, if the song has one. This is a regular span like any other. A song can skip it entirely and open on a verse.
+
+**Authoring rules:**
+- Author the song as it actually starts musically. The first section can be `Intro`, `Verse 1`, `Chorus`, or anything else — no reserved bars required.
+- If the first section needs a spoken count-in before its downbeat, put `cue: true` on it. The generator places a section-name TTS 2 bars before and a 4-beat count-in 1 bar before, which plays inside the slug region without collision.
+- Audio/backing tracks should be top-level siblings of `seq()` inside `song()` (not nested inside a section). The generator shifts them by the slug length automatically so the first note lands on the first user-authored section's downbeat.
+- `offset` on audio nodes is relative to the song root (beat 0 of the user-authored music, which lives *after* the slug).
+- If the full-mix audio has **pre-roll silence** before the first musical onset (very common with YouTube/Deezer rips — typically 0.5–2s), set `preRollSeconds` on the `song(...)` options. The generator applies that value as `soffs` to every audio node automatically so file-time beat 0 lands on bar 1. Read the first-onset time from the full-mix `.analysis.json` and pass it through. Individual audio nodes can still override with their own `soffs` if a stem needs a different trim.
 
 The goal is a complete, reviewable dsongl file in one shot. The user will read the code and tell you what to adjust.
+
+## Pre-flight checklist (before writing DSongL)
+
+- [ ] BPM cross-checked between drum-stem analysis, full-mix analysis, and Deezer. Divergences flagged to the user, stem value used as truth.
+- [ ] Full-mix `.beats.json` exists (run `beats` on the original audio file, not a stem). Drives stretch-marker generation and covers drum-silent sections where drum-stem beats hallucinate.
+- [ ] Pre-roll silence measured from the full-mix `.analysis.json` (first onset's `time`). If > ~0.05s, the DSongL file will need `preRollSeconds` set on the `song(...)` options so the builder trims it via soffs uniformly across stems.
+- [ ] If the user wants count-ins to specific mid-song hits (big downbeats, stops, the final hit), those spots are identified so `cue: true` sections or manual `cue("1"/"2"/"3"/"4")` events can be placed.
+
+## Post-flight checklist (after generate)
+
+- [ ] `grep -c 'SM ' <rpp>` returns > 0 for songs with `beatsFile`-bearing audio nodes. If zero, stretch markers are missing — investigate before shipping.
+- [ ] Warn the user to close REAPER before opening the regenerated RPP — REAPER does not hot-reload.
+- [ ] Verify the first region in the RPP is the slug (region #1 is the song-title slug, region #2 is the author's first section).
 
 ## Step 5: Generate REAPER project
 
 Once the song file is finalized, generate the RPP:
 
 ```bash
-node_modules/.bin/clickbait-generate songs/<artist-slug>/<song-slug>.ts songs/<artist-slug>
+npx tsx bin/generate.mjs songs/<artist-slug>/<song-slug>.ts songs/<artist-slug>
 ```
 
 This will:

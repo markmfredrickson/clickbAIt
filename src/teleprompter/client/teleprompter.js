@@ -13,7 +13,8 @@
   let ws = null;
   let autoScroll = true;
   let offsetBeats = 0;
-  let currentBeat = -1;
+  let rawBeat = -1;      // most recent beat from OSC (no offset applied)
+  let currentBeat = -1;  // rawBeat + offsetBeats (reading position)
   let sectionElements = [];
   let lyricElements = [];  // flat list of { el, beat, sectionIdx }
   let reconnectTimer = null;
@@ -32,11 +33,20 @@
   const transportLight = document.getElementById("transport-light");
 
   // ── Init ──
+  function renderWaiting() {
+    titleEl.textContent = "Waiting for song…";
+    metaEl.textContent = "Start playback in REAPER, or load a region matching a song slug.";
+    document.title = "clickbAIt: One Simple Track";
+    container.innerHTML = '<div class="waiting-message">No song loaded yet.</div>';
+    sectionElements = [];
+    lyricElements = [];
+  }
+
   async function loadSong() {
     try {
       var res = await fetch("/song.json");
       if (!res.ok) {
-        statusEl.textContent = "Waiting for song…";
+        renderWaiting();
         return;
       }
       song = await res.json();
@@ -166,6 +176,7 @@
 
   // ── Beat update ──
   function onBeatUpdate(beat) {
+    rawBeat = beat;
     var readingBeat = beat + offsetBeats;
     currentBeat = readingBeat;
     beatDisplay.textContent = "Beat: " + Math.round(beat * 10) / 10;
@@ -251,7 +262,7 @@
     offsetSlider.addEventListener("input", function () {
       offsetBeats = parseFloat(this.value);
       offsetValue.textContent = offsetBeats;
-      if (currentBeat >= 0) onBeatUpdate(currentBeat - offsetBeats); // re-apply
+      if (rawBeat >= 0) onBeatUpdate(rawBeat); // re-apply with new offset
     });
 
     // Auto-scroll toggle

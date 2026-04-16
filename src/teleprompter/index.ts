@@ -17,6 +17,8 @@ export interface TeleprompterOptions {
   song?: Song;
   /** Directory containing song JSON files for multi-song mode */
   songsDir?: string;
+  /** One or more directories containing song JSON files (takes precedence over songsDir) */
+  songsDirs?: string[];
   httpPort?: number;
   oscPort?: number;
 }
@@ -36,11 +38,14 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   const oscPort = opts.oscPort ?? 9000;
 
   const payload = opts.song ? exportSongPayload(opts.song) : undefined;
+  const songsDirs = opts.songsDirs && opts.songsDirs.length > 0
+    ? opts.songsDirs
+    : (opts.songsDir ? [opts.songsDir] : undefined);
   const relay = startRelay({
     httpPort,
     oscPort,
     song: payload,
-    songsDir: opts.songsDir,
+    songsDirs,
   });
 
   const ip = getLocalIP();
@@ -52,22 +57,26 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   if (payload) {
     console.log(`  Now playing: ${payload.title}${payload.artist ? ` — ${payload.artist}` : ""}`);
   }
-  if (opts.songsDir) {
-    console.log(`  Songs dir: ${opts.songsDir}`);
+  if (songsDirs && songsDirs.length > 0) {
+    console.log(`  Songs dir${songsDirs.length > 1 ? "s" : ""}:`);
+    for (const d of songsDirs) console.log(`    ${d}`);
   }
   console.log(`  ${url}`);
   console.log("");
   console.log(qr);
   console.log(`  OSC listening on UDP port ${oscPort}`);
 
-  if (opts.songsDir) {
-    try {
-      const files = readdirSync(opts.songsDir).filter(f => f.endsWith(".json"));
-      console.log(`  Songs available (${files.length}):`);
-      for (const f of files) {
-        console.log(`    ${f.replace(".json", "")}`);
-      }
-    } catch { /* dir doesn't exist yet */ }
+  if (songsDirs && songsDirs.length > 0) {
+    const seen = new Set<string>();
+    for (const dir of songsDirs) {
+      try {
+        for (const f of readdirSync(dir)) {
+          if (f.endsWith(".json")) seen.add(f.replace(".json", ""));
+        }
+      } catch { /* dir doesn't exist yet */ }
+    }
+    console.log(`  Songs available (${seen.size}):`);
+    for (const slug of seen) console.log(`    ${slug}`);
   }
 
   console.log("");

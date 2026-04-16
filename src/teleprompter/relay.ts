@@ -21,12 +21,18 @@ export interface RelayOptions {
   httpPort?: number;
   /** UDP port for incoming OSC messages (default 9000) */
   oscPort?: number;
-  /** Directory containing song JSON files (default: cwd) */
-  songsDir?: string;
+  /** Directories containing song JSON files (default: [cwd]). Searched in order; first match wins. */
+  songsDirs?: string[];
   /** Initial song payload (optional — can also load from songsDir) */
   song?: SongPayload;
   /** Directory containing the static client files */
   clientDir?: string;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]!));
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -141,7 +147,7 @@ export function startRelay(opts: RelayOptions) {
   const httpPort = opts.httpPort ?? 3000;
   const oscPort = opts.oscPort ?? 9000;
   const clientDir = opts.clientDir ?? join(import.meta.dirname ?? ".", "client");
-  const songsDir = opts.songsDir ?? process.cwd();
+  const songsDirs = opts.songsDirs && opts.songsDirs.length > 0 ? opts.songsDirs : [process.cwd()];
   const ip = getLocalIP();
   const baseUrl = `http://${ip}:${httpPort}`;
 
@@ -155,14 +161,17 @@ export function startRelay(opts: RelayOptions) {
 
   async function loadSong(slug: string): Promise<SongPayload | null> {
     if (songCache.has(slug)) return songCache.get(slug)!;
-    try {
-      const data = await readFile(join(songsDir, slug + ".json"), "utf8");
-      const payload = JSON.parse(data) as SongPayload;
-      songCache.set(slug, payload);
-      return payload;
-    } catch {
-      return null;
+    for (const dir of songsDirs) {
+      try {
+        const data = await readFile(join(dir, slug + ".json"), "utf8");
+        const payload = JSON.parse(data) as SongPayload;
+        songCache.set(slug, payload);
+        return payload;
+      } catch {
+        // try next dir
+      }
     }
+    return null;
   }
 
   async function switchSong(slug: string) {
@@ -199,7 +208,7 @@ export function startRelay(opts: RelayOptions) {
         qrSvgCache = await QRCode.toString(baseUrl, { type: "svg" });
       }
       const songLine = currentSong
-        ? `${currentSong.title}${currentSong.artist ? ` — ${currentSong.artist}` : ""}`
+        ? `${escapeHtml(currentSong.title)}${currentSong.artist ? ` — ${escapeHtml(currentSong.artist)}` : ""}`
         : "Waiting for song…";
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(`<!DOCTYPE html>
@@ -268,17 +277,19 @@ export function startRelay(opts: RelayOptions) {
       return;
     }
 
-    // List available songs
+    // List available songs (merged across all songsDirs, first dir wins on slug collision)
     if (url === "/songs") {
-      try {
-        const files = await readdir(songsDir);
-        const songs = files.filter(f => f.endsWith(".json")).map(f => f.replace(".json", ""));
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(songs));
-      } catch {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end("[]");
+      const seen = new Set<string>();
+      for (const dir of songsDirs) {
+        try {
+          const files = await readdir(dir);
+          for (const f of files) {
+            if (f.endsWith(".json")) seen.add(f.replace(".json", ""));
+          }
+        } catch { /* dir missing — skip */ }
       }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify([...seen]));
       return;
     }
 

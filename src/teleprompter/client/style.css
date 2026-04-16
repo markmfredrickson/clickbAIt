@@ -180,6 +180,13 @@ body {
 .connected { color: #4a4; }
 .disconnected { color: #a44; }
 
+.waiting-message {
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+}
+
 /* ── Print ── */
 @media print {
   #header, #status-bar, #controls { display: none; }

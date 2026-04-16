@@ -121,17 +121,35 @@ fn parse_lyrics_html(html: &str) -> Vec<LyricsSection> {
 
     for line in raw_text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            // Save previous section
-            if let Some(name) = current_name.take() {
-                let lyrics = current_lines.join("\n").trim().to_string();
-                if !lyrics.is_empty() {
-                    sections.push(LyricsSection { name, lyrics });
+        // Section markers may be glued to preceding metadata text
+        // (e.g. "78 ContributorsTranslations...Lyrics[Verse 1]")
+        // so search for [Name] anywhere in the line, not just at boundaries.
+        if let (Some(open), Some(close)) = (trimmed.rfind('['), trimmed.rfind(']')) {
+            if open < close {
+                let candidate = &trimmed[open + 1..close];
+                // Only treat as a section if it looks like a song section
+                let lower = candidate.to_lowercase();
+                let is_section = ["verse", "chorus", "bridge", "intro", "outro",
+                    "hook", "pre-chorus", "pre chorus", "post-chorus", "post chorus",
+                    "refrain", "interlude", "solo", "instrumental", "break", "coda",
+                    "skit", "spoken", "outro"]
+                    .iter()
+                    .any(|kw| lower.contains(kw));
+                if is_section {
+                    // Save previous section
+                    if let Some(name) = current_name.take() {
+                        let lyrics = current_lines.join("\n").trim().to_string();
+                        if !lyrics.is_empty() {
+                            sections.push(LyricsSection { name, lyrics });
+                        }
+                    }
+                    current_name = Some(candidate.to_string());
+                    current_lines.clear();
+                    continue;
                 }
             }
-            current_name = Some(trimmed[1..trimmed.len() - 1].to_string());
-            current_lines.clear();
-        } else if current_name.is_some() && !trimmed.is_empty() {
+        }
+        if current_name.is_some() && !trimmed.is_empty() {
             current_lines.push(trimmed.to_string());
         }
     }

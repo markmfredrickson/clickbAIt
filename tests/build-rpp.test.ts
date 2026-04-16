@@ -1,12 +1,17 @@
 import { describe, it, expect } from "vitest";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import { buildRpp } from "../src/build-rpp.js";
 import { linearize } from "../src/linearize.js";
 import { song, seq, span, bars, cue, marker, audio } from "@clickbait/dsongl";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const fixturesDir = resolve(__dirname, "fixtures");
+
 const defaultOpts = {
-  cueDir: "/tmp/cues",
-  countDir: "/tmp/counts",
-  clickDir: "/tmp/clicks",
+  cueDir: resolve(fixturesDir, "cues"),
+  countDir: resolve(__dirname, "..", "assets", "counts"),
+  clickDir: resolve(__dirname, "..", "assets", "clicks"),
   cueDuration: 0.8,
   countDuration: 0.4,
 };
@@ -44,9 +49,11 @@ describe("buildRpp", () => {
       ),
     );
     const { rpp } = buildRpp(s, defaultOpts);
-    expect(rpp).toContain("Intro");
+    // First region uses the song slug (for teleprompter song switching)
+    expect(rpp).toContain("MARKER 1");
+    expect(rpp).toContain("test");
     expect(rpp).toContain("Verse");
-    expect(rpp).toContain("MARKER");
+    expect(rpp).toContain("MARKER 2");
   });
 
   it("places DSL cue events as audio items", () => {
@@ -59,36 +66,36 @@ describe("buildRpp", () => {
     );
     const { rpp } = buildRpp(s, defaultOpts);
     expect(rpp).toContain('"Cues & Counts"');
-    expect(rpp).toContain("/tmp/cues/verse.wav");
-    expect(rpp).toContain("/tmp/cues/chorus.wav");
+    expect(rpp).toContain(`${defaultOpts.cueDir}/verse.wav`);
+    expect(rpp).toContain(`${defaultOpts.cueDir}/chorus.wav`);
   });
 
-  it("places count beat numbers 1 bar before sections on same track", () => {
+  it("places count beat numbers 1 bar before cue sections", () => {
     const s = song("Test", 120,
       seq(
         span("Intro", bars(4)),  // 16 beats
-        span("Verse", bars(4)),  // starts beat 16
+        span("Verse", bars(4), { cue: true }),  // starts beat 16
       ),
     );
     const { rpp } = buildRpp(s, defaultOpts);
     // Count for Verse: 1 bar before = beat 12, at 120bpm = 6s
     // Should have 4 count items (4/4 time): beats 12, 13, 14, 15
-    expect(rpp).toContain("/tmp/counts/1.wav");
-    expect(rpp).toContain("/tmp/counts/2.wav");
-    expect(rpp).toContain("/tmp/counts/3.wav");
-    expect(rpp).toContain("/tmp/counts/4.wav");
+    expect(rpp).toContain(`${defaultOpts.countDir}/1.wav`);
+    expect(rpp).toContain(`${defaultOpts.countDir}/2.wav`);
+    expect(rpp).toContain(`${defaultOpts.countDir}/3.wav`);
+    expect(rpp).toContain(`${defaultOpts.countDir}/4.wav`);
   });
 
   it("handles 5/4 time signature for counts", () => {
     const s = song("Test", 120, { timeSignature: [5, 4] },
       seq(
         span("Intro", bars(2)),  // 10 beats
-        span("Head", bars(4)),   // starts beat 10
+        span("Head", bars(4), { cue: true }),   // starts beat 10
       ),
     );
     const { rpp } = buildRpp(s, defaultOpts);
     // Count should have 5 beats
-    expect(rpp).toContain("/tmp/counts/5.wav");
+    expect(rpp).toContain(`${defaultOpts.countDir}/5.wav`);
   });
 
   it("reports unique cue WAVs needed from DSL cue events", () => {
@@ -102,7 +109,8 @@ describe("buildRpp", () => {
       ),
     );
     const { cueWavsNeeded } = buildRpp(s, defaultOpts);
-    expect(cueWavsNeeded.sort()).toEqual(["Chorus", "Verse"]);
+    // Title cue "Test" is always auto-injected
+    expect(cueWavsNeeded.sort()).toEqual(["Chorus", "Test", "Verse"]);
   });
 
   it("skips cue/count placement when it would go before beat 0", () => {
@@ -115,7 +123,7 @@ describe("buildRpp", () => {
     // Intro starts at beat 0, cue would be at -8, count at -4 — both skipped
     // Should still have tracks but no items for Intro
     expect(rpp).toContain('"Cues & Counts"');
-    expect(rpp).not.toContain("/tmp/cues/intro.wav");
+    expect(rpp).not.toContain(`${defaultOpts.cueDir}/intro.wav`);
   });
 
   it("cue with negative offset on first section pads and appears in RPP", () => {
@@ -128,8 +136,8 @@ describe("buildRpp", () => {
     const { rpp, cueWavsNeeded } = buildRpp(s, defaultOpts);
     expect(cueWavsNeeded).toContain("Title");
     expect(cueWavsNeeded).toContain("Intro");
-    expect(rpp).toContain("/tmp/cues/title.wav");
-    expect(rpp).toContain("/tmp/cues/intro.wav");
+    expect(rpp).toContain(`${defaultOpts.cueDir}/title.wav`);
+    expect(rpp).toContain(`${defaultOpts.cueDir}/intro.wav`);
     // Verify they're at different seconds by checking linearize directly
     const events = linearize(s);
     const titleCue = events.find(e => e.type === "cue" && e.value === "Title")!;
@@ -151,43 +159,47 @@ describe("buildRpp", () => {
     expect(rpp).toContain("NAME Click");
     expect(rpp).toContain("<SOURCE CLICK");
     expect(rpp).toContain("AUTO 1 0");
-    expect(rpp).toContain("/tmp/clicks/accent.wav");
-    expect(rpp).toContain("/tmp/clicks/beat.wav");
+    expect(rpp).toContain(`${defaultOpts.clickDir}/accent.wav`);
+    expect(rpp).toContain(`${defaultOpts.clickDir}/beat.wav`);
   });
 
-  it("generates SOURCE MP3 track for audio node with mp3 file", () => {
+  it("generates SOURCE WAVE track for audio node", () => {
+    const guitarsPath = resolve(fixturesDir, "stems", "guitars.wav");
     const s = song("Test", 120,
       seq(
         span("Intro", bars(2)),
         span("Verse", bars(4)),
       ),
-      audio("Guitars", "stems/guitars.mp3"),
+      audio("Guitars", guitarsPath),
     );
     const { rpp } = buildRpp(s, defaultOpts);
     expect(rpp).toContain("NAME Guitars");
-    expect(rpp).toContain("<SOURCE MP3");
-    expect(rpp).toContain("FILE stems/guitars.mp3 1");
+    expect(rpp).toContain("<SOURCE WAVE");
+    expect(rpp).toContain(`FILE ${guitarsPath} 1`);
   });
 
-  it("generates SOURCE WAVE track for audio node with wav file", () => {
+  it("generates SOURCE WAVE track for audio node with wav extension", () => {
+    const padPath = resolve(fixturesDir, "stems", "pad.wav");
     const s = song("Test", 120,
       span("Intro", bars(2)),
-      audio("Pad", "stems/pad.wav"),
+      audio("Pad", padPath),
     );
     const { rpp } = buildRpp(s, defaultOpts);
     expect(rpp).toContain("NAME Pad");
     expect(rpp).toContain("<SOURCE WAVE");
-    expect(rpp).toContain("FILE stems/pad.wav 1");
+    expect(rpp).toContain(`FILE ${padPath} 1`);
   });
 
   it("groups multiple audio nodes by track name", () => {
+    const guitarsPath = resolve(fixturesDir, "stems", "guitars.wav");
+    const bassPath = resolve(fixturesDir, "stems", "bass.wav");
     const s = song("Test", 120,
       seq(
         span("Intro", bars(2)),
         span("Verse", bars(4)),
       ),
-      audio("Guitars", "stems/guitars.mp3"),
-      audio("Bass", "stems/bass.mp3"),
+      audio("Guitars", guitarsPath),
+      audio("Bass", bassPath),
     );
     const { rpp } = buildRpp(s, defaultOpts);
     expect(rpp).toContain("NAME Guitars");
@@ -198,9 +210,10 @@ describe("buildRpp", () => {
   });
 
   it("includes SOFFS when audio has source offset", () => {
+    const vocalsPath = resolve(fixturesDir, "stems", "vocals.wav");
     const s = song("Test", 120,
       span("Intro", bars(2)),
-      audio("Vocals", "stems/vocals.mp3", { soffs: 0.164 }),
+      audio("Vocals", vocalsPath, { soffs: 0.164 }),
     );
     const { rpp } = buildRpp(s, defaultOpts);
     expect(rpp).toContain("SOFFS 0.164");

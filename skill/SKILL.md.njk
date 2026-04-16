@@ -49,7 +49,7 @@ The user provides a song title and optionally an artist: `$ARGUMENTS`
 If the user mentions stems, audio files, or backing tracks:
 1. If they have a full mix (not yet split), split it into the song's project directory. The binary accepts WAV, MP3, and M4A — pass the file directly, no conversion needed:
    ```bash
-   $CLICKBAIT_AUDIO split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
+   .claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
    ```
    Stems live alongside the song file — they'll be referenced as audio tracks in REAPER.
 2. Once stems exist, check for cached sidecars before running anything expensive:
@@ -74,7 +74,7 @@ If the user mentions stems, audio files, or backing tracks:
 .claude/skills/clickbait/bin/clickbait-audio lookup "<title>" -a "<artist>" > "songs/<artist-slug>/<song-slug>.lookup.json"
 ```
 
-This fetches from Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel. Saving to a sidecar lets you `Read` it directly and re-use it without re-fetching.
+This fetches from Deezer (BPM), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel. Saving to a sidecar lets you `Read` it directly and re-use it without re-fetching.
 
 **When audio is available**, online data serves as a bumper — it cross-checks stem analysis but never overrides it:
 - If Deezer BPM agrees with drum stem BPM → high confidence
@@ -94,14 +94,14 @@ This fetches from Deezer (BPM), Hooktheory (key/sections), Genius (lyrics with s
 
   If this file already exists, use it as-is — it's the human-edited version. Never overwrite it.
 
-**When no audio is available**, online sources are primary: Deezer for BPM, Hooktheory for key/structure, Genius for lyrics and song structure markers.
+**When no audio is available**, online sources are primary: Deezer for BPM, Genius for lyrics and song structure markers, MusicBrainz for metadata.
 
 ## Step 3: Present findings and confirm
 
 Show the user:
 - **BPM** — stem analysis (primary when available), Deezer as cross-check
-- **Key** — audio analysis or Hooktheory
-- **Song structure** — Genius section markers and Hooktheory
+- **Key** — audio analysis or user knowledge
+- **Song structure** — Genius section markers, audio analysis
 - **Duration** — audio file or MusicBrainz/Deezer
 
 If BPM or key data is missing, use your musical knowledge but flag it as an estimate. Never default to round-number BPMs (120, 140) without evidence.
@@ -175,4 +175,4 @@ Read these when you need detail on a subsystem:
 
 - **Stems** (`skill/stems.md`) — splitting, parallel analysis, grid fitting, unstretch
 - **Teleprompter** (`skill/teleprompter.md`) — browser lyrics display, OSC relay, REAPER setup
-- **TTS / cue generation** — `$CLICKBAIT_AUDIO speak` (Piper TTS, lessac voice)
+- **TTS / cue generation** — `.claude/skills/clickbait/bin/clickbait-audio speak` (Piper TTS, lessac voice)

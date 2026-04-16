@@ -39,15 +39,11 @@ echo ""
 # --- Required ---
 echo "Required:"
 
-check "skill/bin/clickbait-audio" \
-  "$([ -x skill/bin/clickbait-audio ] && echo true || echo false)" \
+check "clickbait-audio binary" \
+  "$([ -x .claude/skills/clickbait/bin/clickbait-audio ] && echo true || echo false)" \
   "Run setup.sh to download the binary"
 
-check "ffmpeg on PATH" \
-  "$(command -v ffmpeg >/dev/null 2>&1 && echo true || echo false)" \
-  "Install: brew install ffmpeg"
-
-VOICE="$HOME/.local/share/clickbait/voices/en_US-lessac-medium.onnx"
+VOICE="$HOME/.cache/clickbait/voices/en_US-lessac-medium.onnx"
 check "Piper TTS voice model" \
   "$([ -f "$VOICE" ] && echo true || echo false)" \
   "Run setup.sh to download the voice model"

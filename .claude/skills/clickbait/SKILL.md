@@ -49,7 +49,7 @@ The user provides a song title and optionally an artist: `$ARGUMENTS`
 If the user mentions stems, audio files, or backing tracks:
 1. If they have a full mix (not yet split), split it into the song's project directory. The binary accepts WAV, MP3, and M4A — pass the file directly, no conversion needed:
    ```bash
-   $CLICKBAIT_AUDIO split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
+   .claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
    ```
    Stems live alongside the song file — they'll be referenced as audio tracks in REAPER.
 2. Once stems exist, check for cached sidecars before running anything expensive:
@@ -94,28 +94,17 @@ This fetches from Deezer (BPM), Genius (lyrics with section markers), and MusicB
 
   If this file already exists, use it as-is — it's the human-edited version. Never overwrite it.
 
-**When no audio is available**, online sources are primary: Deezer for BPM, Genius for lyrics and song structure markers.
+**When no audio is available**, online sources are primary: Deezer for BPM, Genius for lyrics and song structure markers, MusicBrainz for metadata.
 
 ## Step 3: Present findings and confirm
 
-**Source-attribution rule (inviolate):** Every fact you present MUST be verbatim from a tool output, with the source named. Never claim a source confirms something unless the tool output literally contains that data. If a source returned nothing for a field, say "[source] returned no [field]." If you fill in a gap from your own musical knowledge, label it **"estimate"** — never dress it up as a confirmed finding.
+Show the user:
+- **BPM** — stem analysis (primary when available), Deezer as cross-check
+- **Key** — audio analysis or user knowledge
+- **Song structure** — Genius section markers, audio analysis
+- **Duration** — audio file or MusicBrainz/Deezer
 
-Present findings in a table with a **Source** column so the user can verify each claim against the tool output:
-
-| Field | Value | Source |
-|---|---|---|
-| **BPM** | 71.4 | drum stem DBN tracker (`beats` command) |
-| **BPM cross-check** | 143.6 (÷2 = 71.8) | Deezer via `lookup` |
-| **Key** | — | not returned by any source |
-| **Key** | G minor | **estimate** (user/musical knowledge) |
-| **Structure** | [Chorus], [Verse 2], [Chorus], [Bridge], [Chorus], [Outro] | Genius section markers via `lookup` |
-| **Duration** | 4:34 | MusicBrainz via `lookup` |
-
-Rules:
-- If BPM or key data is missing from all sources, say so explicitly. Offer an estimate only if you have genuine musical knowledge, clearly labeled.
-- Never default to round-number BPMs (120, 140) without evidence.
-- When stem analysis and Deezer diverge, flag it and trust the stem.
-- The user should be able to cross-check every row against the raw tool output. If they can't, you're doing it wrong.
+If BPM or key data is missing, use your musical knowledge but flag it as an estimate. Never default to round-number BPMs (120, 140) without evidence.
 
 Ask the user to confirm or adjust before proceeding.
 
@@ -175,6 +164,7 @@ export interface Audio {
   file: string;       // path to audio file
   offset?: number;    // beats relative to parent; default 0
   soffs?: number;     // source offset in seconds (trim from start of file)
+  beatsFile?: string; // path to .beats.json sidecar for stretch marker generation
 }
 
 export type Node = Event | Span | Sequence | Song | Audio;
@@ -185,10 +175,10 @@ export type Node = Event | Span | Sequence | Song | Audio;
 ```typescript
 export function bars(n: number): Duration ;
 export function beats(n: number): Duration ;
-export function cue(value: string, offset?: number, tag?: string): Event ;
-export function chord(value: string, offset?: number, tag?: string): Event ;
-export function lyric(value: string, offset?: number, tag?: string): Event ;
-export function marker(value: string, offset?: number, tag?: string): Event ;
+export function cue(value: string, offset?: number | Duration, tag?: string): Event ;
+export function chord(value: string, offset?: number | Duration, tag?: string): Event ;
+export function lyric(value: string, offset?: number | Duration, tag?: string): Event ;
+export function marker(value: string, offset?: number | Duration, tag?: string): Event ;
 export function span(name: string, duration: Duration, children?: Node[]): Span;
 export function span(name: string, duration: Duration, opts: SpanOptions, children?: Node[]): Span;
 export function audio(name: string, file: string, opts?: AudioOptions): Audio ;
@@ -210,12 +200,11 @@ In this step, do all of the following together as one output:
 - Set the `key` option on the song if known
 - Add `audio()` nodes for each stem if stems are available
 
-**Preamble rules (inviolate):**
-- Every song MUST start with a preamble span of at least 4 bars. Name it `"Title - Artist"` (e.g. `span("Save Me - Aimee Mann", bars(4))`). This is the clickbait region — title TTS cue and count-in go here. No audio, no lyrics, no backing tracks.
-- Do NOT put `cue: true` on the preamble — there's nothing before it to announce.
-- The preamble is NOT the song's intro — it's padding before the music starts. The actual musical intro (e.g. guitar figure) is a separate span named "Intro" that follows the preamble.
-- Audio/backing tracks go inside the FIRST musical section (e.g., inside the Intro or Verse span), never as top-level siblings of `seq()` and never in the preamble.
-- buildRpp auto-places: title cue at beat 0, section cue 2 bars before each `cue: true` section, count-in 1 bar before. With a 4-bar preamble these never overlap.
+**Intro rules (inviolate):**
+- Every song MUST start with an Intro span of at least 4 bars. This is where the title TTS cue and count-in go. No audio, no lyrics, no backing tracks in the Intro — just the slug region and click.
+- Do NOT put `cue: true` on the Intro — there's nothing before it to announce.
+- Audio/backing tracks go inside the FIRST section after the Intro (e.g., inside the Verse span), never as top-level siblings of `seq()` and never in the Intro.
+- buildRpp auto-places: title cue at beat 0, section cue 2 bars before each `cue: true` section, count-in 1 bar before. With a 4-bar intro these never overlap.
 
 The goal is a complete, reviewable dsongl file in one shot. The user will read the code and tell you what to adjust.
 
@@ -242,36 +231,10 @@ This tool helps musicians build practice materials for their own use. Freely fet
 
 Use full words in section names — no abbreviations. TTS reads these aloud: "Intro (continued)" not "Intro (cont.)".
 
-## Useful notes
-
-Hard-won lessons from building real songs. Check these before making assumptions.
-
-**BPM detection:**
-- Run `beats` with a wide range first (e.g. 60–150) to find the ballpark, then rerun with ±2 BPM to eliminate ghost beat false positives from drum fills.
-- Run both drums (energy) and full mix (spectral-flux) and compare. If they disagree on a beat, that's a problem area.
-- Deezer frequently returns double-time BPM. Always check if halving matches the drum tracker.
-
-**Audio alignment & pickups:**
-- Songs commonly have pickup beats before the intro or other sections. Use negative `offset` on audio nodes to place stems before a section's downbeat (e.g. `offset: -1` for a 1-beat pickup during the count-in).
-- The first beat of audio rarely lands on beat 1 of bar 1. Expect to nudge the offset.
-
-**Section boundaries:**
-- Spectral flux energy-per-bar can help estimate section boundaries but isn't reliable for dynamically uniform songs.
-- Whisper phrase timing + Genius section names is the primary approach.
-- Songsterr is a useful reference for bar counts and structure when our tools can't determine boundaries.
-
-**Endings:**
-- Use `cue: true` on the Ending span for an auto count-in, plus manual `cue("1", 0)` for the final hit.
-- For "end on 1, 2, 3" patterns, use manual cues with offsets (e.g. `cue("end on", -1)`, `cue("1", 0)`, `cue("2", 1)`, `cue("3", 2)`).
-- Songs often need a short Ending span (1–4 bars) after the last musical section for the final hit + ring-out.
-
-**Post-chorus / instrumental sections:**
-- Songs often have instrumental bars between chorus and verse that don't fit either label. Use "Post-Chorus" or "Instrumental" as section names — TTS reads them to the band.
-
 ## Component docs
 
 Read these when you need detail on a subsystem:
 
 - **Stems** (`skill/stems.md`) — splitting, parallel analysis, grid fitting, unstretch
 - **Teleprompter** (`skill/teleprompter.md`) — browser lyrics display, OSC relay, REAPER setup
-- **TTS / cue generation** — `$CLICKBAIT_AUDIO speak` (Piper TTS, lessac voice)
+- **TTS / cue generation** — `.claude/skills/clickbait/bin/clickbait-audio speak` (Piper TTS, lessac voice)

@@ -20,20 +20,27 @@ if [ -z "$LATEST" ]; then
   echo ""
   echo "No release found. Build from source instead:"
   echo "  cargo build --release"
+  echo "  npm run build:skill"
   exit 1
 fi
 
 echo "Latest release: $LATEST"
 
-# Download skill bundle (binary + docs + SKILL.md)
+# Download skill bundle (binary + SKILL.md)
 BUNDLE_URL="https://github.com/$REPO/releases/download/$LATEST/clickbait-skill-macos-arm64.tar.gz"
 echo "Downloading skill bundle..."
 curl -fL "$BUNDLE_URL" | tar xz
 chmod +x skill/bin/clickbait-audio
 echo "  → skill/"
 
+# Install into where Claude Code reads skills
+mkdir -p .claude/skills/clickbait/bin
+cp skill/SKILL.md .claude/skills/clickbait/SKILL.md
+cp skill/bin/clickbait-audio .claude/skills/clickbait/bin/clickbait-audio
+echo "  → .claude/skills/clickbait/"
+
 # Piper TTS voice model
-VOICE_DIR="$HOME/.local/share/clickbait/voices"
+VOICE_DIR="$HOME/.cache/clickbait/voices"
 VOICE_MODEL="$VOICE_DIR/en_US-lessac-medium.onnx"
 if [ ! -f "$VOICE_MODEL" ]; then
   echo "Downloading Piper TTS voice model (~65 MB)..."
@@ -49,7 +56,9 @@ fi
 # Whitelist the binary in Claude Code project settings
 if [ ! -f .claude/settings.json ]; then
   mkdir -p .claude
-  echo '{"permissions":{"allow":["Bash(skill/bin/clickbait-audio *)"]}}' > .claude/settings.json
+  cat > .claude/settings.json <<'EOF'
+{"permissions":{"allow":["Bash(.claude/skills/clickbait/bin/clickbait-audio *)","Bash(mkdir *)"]}}
+EOF
   echo "Created .claude/settings.json (binary whitelisted)."
 else
   echo ".claude/settings.json already exists, skipping."
@@ -65,10 +74,9 @@ else
 fi
 
 # Warm up demucs GPU (downloads model weights ~84MB, compiles shaders)
-# Better to take this hit at install than mid-session
 echo "Warming up stem splitter (downloads model, compiles GPU shaders — takes a minute)..."
 mkdir -p /tmp/clickbait-warmup
-skill/bin/clickbait-audio split assets/warmup.wav --output /tmp/clickbait-warmup 2>&1 | grep -v "^$"
+.claude/skills/clickbait/bin/clickbait-audio split assets/warmup.wav --output /tmp/clickbait-warmup 2>&1 | grep -v "^$"
 rm -rf /tmp/clickbait-warmup
 echo "  → GPU ready"
 
@@ -92,6 +100,7 @@ echo "=== Done ==="
 echo ""
 echo "Next steps:"
 echo "  1. Edit .env and add your ANTHROPIC_API_KEY"
-echo "  2. Open this directory in Claude Code"
-echo "  3. Run /clickbait to build your first song"
+echo "  2. (Optional) Add GENIUS_API_TOKEN for lyrics lookup"
+echo "  3. Open this directory in Claude Code"
+echo "  4. Run /clickbait to build your first song"
 echo ""

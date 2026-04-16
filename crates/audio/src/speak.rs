@@ -36,9 +36,44 @@ pub fn run(text: &str, output: &str, voice: &str) -> Result<()> {
         (samples, sample_rate)
     };
 
-    write_wav(output, &out_samples, out_rate)?;
+    let trimmed = trim_silence(&out_samples, out_rate);
+    if trimmed.len() != out_samples.len() {
+        let removed_ms = ((out_samples.len() - trimmed.len()) as f32 / out_rate as f32) * 1000.0;
+        eprintln!("Trimmed {:.0}ms of silence", removed_ms);
+    }
+
+    write_wav(output, &trimmed, out_rate)?;
     eprintln!("Written: {output}");
     Ok(())
+}
+
+/// Trim leading and trailing silence from a PCM buffer.
+///
+/// Piper emits a short lead-in and tail before/after the spoken content.
+/// For cue WAVs placed on a beat grid this makes the audible "word" land
+/// late. Scan for the first and last sample with |amplitude| > threshold
+/// and return that window, keeping a tiny pre-roll so there's no click.
+fn trim_silence(samples: &[f32], sample_rate: u32) -> Vec<f32> {
+    // ~-50 dB from full scale. Piper's silence is effectively zero but
+    // resampling can introduce tiny numerical noise, so use a small floor.
+    const THRESHOLD: f32 = 0.003;
+    // Keep ~2ms of pre-roll so the attack isn't clipped.
+    let pre_roll = (sample_rate as f32 * 0.002) as usize;
+
+    let first = samples.iter().position(|s| s.abs() > THRESHOLD);
+    let last = samples.iter().rposition(|s| s.abs() > THRESHOLD);
+
+    match (first, last) {
+        (Some(f), Some(l)) => {
+            let start = f.saturating_sub(pre_roll);
+            // Add a few ms of tail padding so the release isn't clipped either.
+            let end = (l + pre_roll).min(samples.len());
+            samples[start..end].to_vec()
+        }
+        // All silence — shouldn't happen with a real TTS output, but fall back
+        // to returning the input unchanged so we never write an empty WAV.
+        _ => samples.to_vec(),
+    }
 }
 
 fn write_wav(path: &str, samples: &[f32], sample_rate: u32) -> Result<()> {

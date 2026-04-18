@@ -7,7 +7,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -155,35 +155,83 @@ export function startRelay(opts: RelayOptions) {
   let currentSong: SongPayload | null = opts.song ?? null;
   let currentSlug = currentSong?.slug ?? "";
 
-  // Song cache: slug → payload
-  const songCache = new Map<string, SongPayload>();
-  if (currentSong) songCache.set(currentSlug, currentSong);
+  // Song cache: slug → {payload, filePath, mtimeMs}
+  interface CacheEntry { payload: SongPayload; filePath: string; mtimeMs: number }
+  const songCache = new Map<string, CacheEntry>();
+  let currentCacheEntry: CacheEntry | null = null;
+  if (currentSong) {
+    currentCacheEntry = { payload: currentSong, filePath: "", mtimeMs: 0 };
+    songCache.set(currentSlug, currentCacheEntry);
+  }
 
-  async function loadSong(slug: string): Promise<SongPayload | null> {
-    if (songCache.has(slug)) return songCache.get(slug)!;
+  /** Load song by slug, returning a cache entry. Re-reads from disk if the
+   *  file's mtime is newer than the cached copy. */
+  async function loadSong(slug: string): Promise<CacheEntry | null> {
+    // Find the file on disk (first matching dir wins)
+    let filePath: string | null = null;
+    let mtimeMs = 0;
     for (const dir of songsDirs) {
+      const candidate = join(dir, slug + ".json");
       try {
-        const data = await readFile(join(dir, slug + ".json"), "utf8");
-        const payload = JSON.parse(data) as SongPayload;
-        songCache.set(slug, payload);
-        return payload;
-      } catch {
-        // try next dir
-      }
+        const s = await stat(candidate);
+        filePath = candidate;
+        mtimeMs = s.mtimeMs;
+        break;
+      } catch { /* try next dir */ }
     }
-    return null;
+    if (!filePath) {
+      // Not on disk. Return any stale cache entry (e.g. in-memory only) if present.
+      return songCache.get(slug) ?? null;
+    }
+
+    const cached = songCache.get(slug);
+    if (cached && cached.filePath === filePath && cached.mtimeMs >= mtimeMs) {
+      return cached;
+    }
+
+    try {
+      const data = await readFile(filePath, "utf8");
+      const payload = JSON.parse(data) as SongPayload;
+      const entry = { payload, filePath, mtimeMs };
+      songCache.set(slug, entry);
+      return entry;
+    } catch {
+      return cached ?? null;
+    }
   }
 
   async function switchSong(slug: string) {
     if (slug === currentSlug) return;
-    const song = await loadSong(slug);
-    if (!song) return; // not a song slug — just a section name, ignore silently
-    currentSong = song;
+    const entry = await loadSong(slug);
+    if (!entry) return; // not a song slug — just a section name, ignore silently
+    currentSong = entry.payload;
     currentSlug = slug;
+    currentCacheEntry = entry;
     qrSvgCache = null; // reset QR (song title changed)
-    console.log(`  Switched to: ${song.title}${song.artist ? ` — ${song.artist}` : ""}`);
+    console.log(`  Switched to: ${entry.payload.title}${entry.payload.artist ? ` — ${entry.payload.artist}` : ""}`);
     broadcast(JSON.stringify({ type: "song-changed", slug }));
   }
+
+  /** Poll the currently loaded song's file for mtime changes. If the file was
+   *  regenerated, reload and tell connected browsers to refresh. */
+  const pollIntervalMs = 2000;
+  const pollTimer = setInterval(async () => {
+    if (!currentCacheEntry || !currentCacheEntry.filePath) return;
+    try {
+      const s = await stat(currentCacheEntry.filePath);
+      if (s.mtimeMs > currentCacheEntry.mtimeMs) {
+        songCache.delete(currentSlug);
+        const entry = await loadSong(currentSlug);
+        if (entry) {
+          currentSong = entry.payload;
+          currentCacheEntry = entry;
+          console.log(`  Reloaded (file changed): ${entry.payload.title}`);
+          broadcast(JSON.stringify({ type: "song-changed", slug: currentSlug }));
+        }
+      }
+    } catch { /* file gone or unreadable — ignore */ }
+  }, pollIntervalMs);
+  pollTimer.unref();
 
   // Pre-generate QR code as SVG
   let qrSvgCache: string | null = null;
@@ -382,6 +430,7 @@ export function startRelay(opts: RelayOptions) {
     wss,
     udp,
     close() {
+      clearInterval(pollTimer);
       udp.close();
       wss.close();
       server.close();

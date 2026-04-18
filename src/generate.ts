@@ -110,7 +110,7 @@ for (const num of countNames) {
 
 // Now build RPP (cue WAVs exist on disk for duration measurement)
 console.log(`\nBuilding RPP...`);
-const { rpp, cueWavsNeeded } = buildRpp(song, {
+const { rpp, cueWavsNeeded, slugBeats } = buildRpp(song, {
   cueDir,
   countDir: cueDir,  // counts are now generated alongside cues
   clickDir,
@@ -120,8 +120,10 @@ const slug = songSlug(song);
 const rppPath = resolve(outDir, `${slug}.rpp`);
 writeFileSync(rppPath, rpp);
 
-// Write teleprompter sidecar JSON for One Simple Track
-const payload = exportSongPayload(song);
+// Write teleprompter sidecar JSON for One Simple Track. Pass slugBeats so the
+// teleprompter's beat frame matches REAPER's project timeline (which includes
+// the slug region at the top).
+const payload = exportSongPayload(song, { minPaddingBeats: slugBeats });
 const jsonPath = resolve(outDir, `${slug}.json`);
 writeFileSync(jsonPath, JSON.stringify(payload, null, 2));
 

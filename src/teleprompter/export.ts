@@ -12,9 +12,17 @@ import { extractSections } from "../sections.js";
 
 export { toSlug, songSlug };
 
-export function exportSongPayload(song: Song): SongPayload {
-  const events = linearize(song);
-  const sections = extractSections(song);
+export interface ExportOptions {
+  /** Beats of slug padding to prepend (matches buildRpp's slugBeats so the
+   *  teleprompter's beat frame aligns with REAPER's project timeline). */
+  minPaddingBeats?: number;
+}
+
+export function exportSongPayload(song: Song, opts: ExportOptions = {}): SongPayload {
+  const { events } = linearize(song, { withPadding: true, minPaddingBeats: opts.minPaddingBeats ?? 0 });
+  const rawSections = extractSections(song);
+  const shift = opts.minPaddingBeats ?? 0;
+  const sections = rawSections.map(s => ({ ...s, beat: s.beat + shift }));
 
   // Build a tempo map so we can convert beats→seconds for section boundaries
   const tempoMap = buildTempoMap(events);

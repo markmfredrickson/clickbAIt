@@ -8189,7 +8189,7 @@ import { readdirSync } from "node:fs";
 
 // src/teleprompter/relay.ts
 import { createServer } from "node:http";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join, extname } from "node:path";
 import { createSocket } from "node:dgram";
 
@@ -8307,30 +8307,71 @@ function startRelay(opts) {
   let currentSong = opts.song ?? null;
   let currentSlug = currentSong?.slug ?? "";
   const songCache = /* @__PURE__ */ new Map();
-  if (currentSong) songCache.set(currentSlug, currentSong);
+  let currentCacheEntry = null;
+  if (currentSong) {
+    currentCacheEntry = { payload: currentSong, filePath: "", mtimeMs: 0 };
+    songCache.set(currentSlug, currentCacheEntry);
+  }
   async function loadSong(slug) {
-    if (songCache.has(slug)) return songCache.get(slug);
+    let filePath = null;
+    let mtimeMs = 0;
     for (const dir of songsDirs2) {
+      const candidate = join(dir, slug + ".json");
       try {
-        const data = await readFile(join(dir, slug + ".json"), "utf8");
-        const payload = JSON.parse(data);
-        songCache.set(slug, payload);
-        return payload;
+        const s = await stat(candidate);
+        filePath = candidate;
+        mtimeMs = s.mtimeMs;
+        break;
       } catch {
       }
     }
-    return null;
+    if (!filePath) {
+      return songCache.get(slug) ?? null;
+    }
+    const cached = songCache.get(slug);
+    if (cached && cached.filePath === filePath && cached.mtimeMs >= mtimeMs) {
+      return cached;
+    }
+    try {
+      const data = await readFile(filePath, "utf8");
+      const payload = JSON.parse(data);
+      const entry = { payload, filePath, mtimeMs };
+      songCache.set(slug, entry);
+      return entry;
+    } catch {
+      return cached ?? null;
+    }
   }
   async function switchSong(slug) {
     if (slug === currentSlug) return;
-    const song2 = await loadSong(slug);
-    if (!song2) return;
-    currentSong = song2;
+    const entry = await loadSong(slug);
+    if (!entry) return;
+    currentSong = entry.payload;
     currentSlug = slug;
+    currentCacheEntry = entry;
     qrSvgCache = null;
-    console.log(`  Switched to: ${song2.title}${song2.artist ? ` \u2014 ${song2.artist}` : ""}`);
+    console.log(`  Switched to: ${entry.payload.title}${entry.payload.artist ? ` \u2014 ${entry.payload.artist}` : ""}`);
     broadcast(JSON.stringify({ type: "song-changed", slug }));
   }
+  const pollIntervalMs = 2e3;
+  const pollTimer = setInterval(async () => {
+    if (!currentCacheEntry || !currentCacheEntry.filePath) return;
+    try {
+      const s = await stat(currentCacheEntry.filePath);
+      if (s.mtimeMs > currentCacheEntry.mtimeMs) {
+        songCache.delete(currentSlug);
+        const entry = await loadSong(currentSlug);
+        if (entry) {
+          currentSong = entry.payload;
+          currentCacheEntry = entry;
+          console.log(`  Reloaded (file changed): ${entry.payload.title}`);
+          broadcast(JSON.stringify({ type: "song-changed", slug: currentSlug }));
+        }
+      }
+    } catch {
+    }
+  }, pollIntervalMs);
+  pollTimer.unref();
   let qrSvgCache = null;
   const server = createServer(async (req, res) => {
     const url = req.url ?? "/";
@@ -8507,6 +8548,7 @@ function startRelay(opts) {
     wss,
     udp,
     close() {
+      clearInterval(pollTimer);
       udp.close();
       wss.close();
       server.close();
@@ -8734,9 +8776,11 @@ function walkChildren(children, ctx, out, isSequence) {
 }
 
 // src/teleprompter/export.ts
-function exportSongPayload(song2) {
-  const events = linearize(song2);
-  const sections = extractSections(song2);
+function exportSongPayload(song2, opts = {}) {
+  const { events } = linearize(song2, { withPadding: true, minPaddingBeats: opts.minPaddingBeats ?? 0 });
+  const rawSections = extractSections(song2);
+  const shift = opts.minPaddingBeats ?? 0;
+  const sections = rawSections.map((s) => ({ ...s, beat: s.beat + shift }));
   const tempoMap = buildTempoMap(events);
   const exportedSections = sections.map((sec, i) => {
     const nextBeat = i < sections.length - 1 ? sections[i + 1].beat : sec.beat + sec.durationBeats;

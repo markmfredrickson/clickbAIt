@@ -346,8 +346,8 @@ function buildRpp(song2, opts) {
   const titleFile = `${opts.cueDir}/${titleSlugName}.wav`;
   const titleDur = audioDuration(titleFile);
   const slugBars = Math.max(4, Math.ceil(titleDur / barSeconds) + 1);
-  const slugBeats = slugBars * beatsPerBar;
-  const { events, paddingBeats } = linearize(song2, { withPadding: true, minPaddingBeats: slugBeats });
+  const slugBeats2 = slugBars * beatsPerBar;
+  const { events, paddingBeats } = linearize(song2, { withPadding: true, minPaddingBeats: slugBeats2 });
   const rawSections = extractSections(song2);
   const sections2 = rawSections.map((s) => ({ ...s, beat: s.beat + paddingBeats }));
   const tempoMap = [];
@@ -400,7 +400,7 @@ function buildRpp(song2, opts) {
   let regionId = 1;
   const slug2 = songSlug(song2);
   {
-    const slugEndSec = beatToSeconds(slugBeats, tempoMap);
+    const slugEndSec = beatToSeconds(slugBeats2, tempoMap);
     regionLines.push(
       `MARKER ${regionId} ${fmt(0)} ${rppStr(slug2)} 1 0 1 B ${newGuid()} 0 1`
     );
@@ -531,7 +531,8 @@ function buildRpp(song2, opts) {
   rppLines.push(`>`);
   return {
     rpp: rppLines.join("\n"),
-    cueWavsNeeded: [...cueNames2]
+    cueWavsNeeded: [...cueNames2],
+    slugBeats: slugBeats2
   };
 }
 function buildClickItem(song2, sections2, tempoMap, opts) {
@@ -677,9 +678,11 @@ function buildAudioFileItems(audioEvents, tempoMap, groupId, projectEndSec, defa
 }
 
 // src/teleprompter/export.ts
-function exportSongPayload(song2) {
-  const events = linearize(song2);
-  const sections2 = extractSections(song2);
+function exportSongPayload(song2, opts = {}) {
+  const { events } = linearize(song2, { withPadding: true, minPaddingBeats: opts.minPaddingBeats ?? 0 });
+  const rawSections = extractSections(song2);
+  const shift = opts.minPaddingBeats ?? 0;
+  const sections2 = rawSections.map((s) => ({ ...s, beat: s.beat + shift }));
   const tempoMap = buildTempoMap(events);
   const exportedSections = sections2.map((sec, i) => {
     const nextBeat = i < sections2.length - 1 ? sections2[i + 1].beat : sec.beat + sec.durationBeats;
@@ -822,7 +825,7 @@ for (const num of countNames) {
 }
 console.log(`
 Building RPP...`);
-var { rpp, cueWavsNeeded } = buildRpp(song, {
+var { rpp, cueWavsNeeded, slugBeats } = buildRpp(song, {
   cueDir,
   countDir: cueDir,
   // counts are now generated alongside cues
@@ -831,7 +834,7 @@ var { rpp, cueWavsNeeded } = buildRpp(song, {
 var slug = songSlug(song);
 var rppPath = resolve2(outDir, `${slug}.rpp`);
 writeFileSync(rppPath, rpp);
-var payload = exportSongPayload(song);
+var payload = exportSongPayload(song, { minPaddingBeats: slugBeats });
 var jsonPath = resolve2(outDir, `${slug}.json`);
 writeFileSync(jsonPath, JSON.stringify(payload, null, 2));
 console.log(`

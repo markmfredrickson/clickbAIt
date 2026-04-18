@@ -47,6 +47,9 @@ export interface AudioItem {
 export interface RppProject {
   rpp: string;
   cueWavsNeeded: string[];  // unique cue values that need TTS WAVs
+  /** Beats of slug padding prepended to the song. Pass this to exportSongPayload
+   *  so the teleprompter's beat frame matches REAPER's. */
+  slugBeats: number;
 }
 
 
@@ -360,6 +363,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   return {
     rpp: rppLines.join("\n"),
     cueWavsNeeded: [...cueNames],
+    slugBeats,
   };
 }
 

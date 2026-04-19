@@ -50,11 +50,9 @@ pub async fn run(title: &str, artist: Option<&str>) -> Result<()> {
     match ge {
         Ok(Some(r)) => {
             lines.push(format!("Genius: {} by {}", r.title, r.artist));
-            lines.push(format!("  Sections found: {}", r.sections.len()));
-            for section in &r.sections {
-                lines.push(format!("\n  [{}]", section.name));
-                lines.push(format!("  {}", section.lyrics));
-            }
+            lines.push("  ---lyrics-raw---".to_string());
+            lines.push(r.raw_text.clone());
+            lines.push("  ---end-lyrics-raw---".to_string());
         }
         Ok(None) => lines.push("Genius: not found (GENIUS_API_TOKEN may not be set)".to_string()),
         Err(e) => lines.push(format!("Genius: error — {}", e)),

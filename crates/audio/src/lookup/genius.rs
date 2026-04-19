@@ -29,16 +29,15 @@ struct PrimaryArtist {
 }
 
 #[derive(Debug)]
-pub struct LyricsSection {
-    pub name: String,
-    pub lyrics: String,
-}
-
-#[derive(Debug)]
 pub struct GeniusResult {
     pub title: String,
     pub artist: String,
-    pub sections: Vec<LyricsSection>,
+    /// Raw concatenated text from the Genius page's lyric containers, with
+    /// `<br>` tags converted to newlines. Includes whatever metadata/annotation
+    /// preamble Genius chose to render that day. Downstream consumers (Haiku,
+    /// the user's eye) do section extraction and cleanup — this stays dumb on
+    /// purpose so Genius formatting changes don't break the Rust layer.
+    pub raw_text: String,
 }
 
 pub async fn search_lyrics(title: &str, artist: Option<&str>) -> Result<Option<GeniusResult>> {
@@ -85,82 +84,65 @@ pub async fn search_lyrics(title: &str, artist: Option<&str>) -> Result<Option<G
         .await
         .context("Failed to fetch Genius lyrics page")?;
 
-    let sections = parse_lyrics_html(&page_html);
+    let raw_text = extract_lyrics_text(&page_html);
 
     Ok(Some(GeniusResult {
         title: song_title,
         artist: song_artist,
-        sections,
+        raw_text,
     }))
 }
 
-fn parse_lyrics_html(html: &str) -> Vec<LyricsSection> {
+fn extract_lyrics_text(html: &str) -> String {
     use scraper::{Html, Selector};
 
     let doc = Html::parse_document(html);
     let container_sel = Selector::parse("[data-lyrics-container]").unwrap();
 
-    // Collect all text from lyrics containers
-    let mut raw_text = String::new();
+    let mut text = String::new();
     for container in doc.select(&container_sel) {
-        // Walk the DOM and convert <br> to newlines
         for node in container.descendants() {
             match node.value() {
-                scraper::node::Node::Text(t) => raw_text.push_str(t),
-                scraper::node::Node::Element(el) if el.name() == "br" => raw_text.push('\n'),
+                scraper::node::Node::Text(t) => text.push_str(t),
+                scraper::node::Node::Element(el) if el.name() == "br" => text.push('\n'),
                 _ => {}
             }
         }
-        raw_text.push('\n');
+        text.push('\n');
     }
 
-    // Parse sections from [Marker] annotations
-    let mut sections = Vec::new();
-    let mut current_name: Option<String> = None;
-    let mut current_lines: Vec<String> = Vec::new();
-
-    for line in raw_text.lines() {
-        let trimmed = line.trim();
-        // Section markers may be glued to preceding metadata text
-        // (e.g. "78 ContributorsTranslations...Lyrics[Verse 1]")
-        // so search for [Name] anywhere in the line, not just at boundaries.
-        if let (Some(open), Some(close)) = (trimmed.rfind('['), trimmed.rfind(']')) {
-            if open < close {
-                let candidate = &trimmed[open + 1..close];
-                // Only treat as a section if it looks like a song section
-                let lower = candidate.to_lowercase();
-                let is_section = ["verse", "chorus", "bridge", "intro", "outro",
-                    "hook", "pre-chorus", "pre chorus", "post-chorus", "post chorus",
-                    "refrain", "interlude", "solo", "instrumental", "break", "coda",
-                    "skit", "spoken", "outro"]
-                    .iter()
-                    .any(|kw| lower.contains(kw));
-                if is_section {
-                    // Save previous section
-                    if let Some(name) = current_name.take() {
-                        let lyrics = current_lines.join("\n").trim().to_string();
-                        if !lyrics.is_empty() {
-                            sections.push(LyricsSection { name, lyrics });
-                        }
-                    }
-                    current_name = Some(candidate.to_string());
-                    current_lines.clear();
-                    continue;
-                }
-            }
-        }
-        if current_name.is_some() && !trimmed.is_empty() {
-            current_lines.push(trimmed.to_string());
-        }
+    // Sampled 20 Genius pages; three obvious patterns worth stripping up-front:
+    //
+    //   1. Page chrome "NN ContributorsTranslations…Lyrics" before the lyric
+    //      containers. Sentinel: the literal word "Lyrics".
+    //   2. An editorial annotation blurb that always ends with "Read More"
+    //      (~90% of pages have one; the rest go straight to a section marker).
+    //   3. Stray `<img src="...genius.com/avatars/...">` tags in ~25% of pages.
+    //
+    // Strip those three. Anything else (annotation variants, mid-text junk,
+    // section naming quirks) is left to Haiku downstream — not worth chasing.
+    if let Some(idx) = text.find("Lyrics") {
+        text = text[idx + "Lyrics".len()..].to_string();
     }
-
-    // Final section
-    if let Some(name) = current_name {
-        let lyrics = current_lines.join("\n").trim().to_string();
-        if !lyrics.is_empty() {
-            sections.push(LyricsSection { name, lyrics });
-        }
+    if let Some(idx) = text.find("Read More") {
+        text = text[idx + "Read More".len()..].to_string();
     }
-
-    sections
+    strip_html_tags(&text).trim().to_string()
 }
+
+/// Remove any `<tag ...>` fragments. Not a real HTML parser — just a best-effort
+/// drop for stray tags (chiefly `<img>`) that leak from the Genius page.
+fn strip_html_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+

@@ -58,27 +58,34 @@ if (bpm === null) {
   process.exit(2);
 }
 
-// Trim lookup to just the Genius portion — strip the Deezer/MusicBrainz header
-const geniusStart = lookupText.search(/\n\s*\[/);
-const lyricsPortion = geniusStart >= 0 ? lookupText.slice(geniusStart).trim() : lookupText;
+// Extract the raw Genius block. The CLI wraps it in --- markers; fall back to
+// the whole file if the markers aren't present (older lookup output).
+const rawMatch = lookupText.match(/---lyrics-raw---\s*([\s\S]*?)\s*---end-lyrics-raw---/);
+const lyricsPortion = rawMatch ? rawMatch[1].trim() : lookupText.trim();
 
-const SYSTEM = `You are a structural alignment tool.
+const SYSTEM = `You are a lyric extraction + alignment tool.
 
-Task: given a published lyrics text (with [Section] markers) and a Whisper transcription of an audio recording of the same song (word-level, with timestamps), determine which transcribed words correspond to each published lyric line. This is a text-to-text alignment problem — the transcription has errors, so fuzzy/phonetic matching is expected. The published lyrics are the canonical text.
+You'll receive:
+  1. Raw text scraped from a lyrics page. It may contain [Section] markers, editorial annotations, or stray formatting. Identify the actual lyric content — ignore annotation prose, metadata, and anything that isn't a lyric line.
+  2. A Whisper word-level transcription of an audio recording of the same song.
+  3. A BPM value for the song.
 
-For each published lyric line:
-  1. Find the best-matching consecutive sequence of Whisper words.
-  2. Use the first matched word's startMs as the line's start time.
-  3. Return startMs, computed beat, and a confidence score.
+Do two things in one pass:
 
-Rules:
-  - Preserve the exact section names from the [brackets] in the published text.
-  - Preserve each published line verbatim — do not paraphrase, merge, or reorder.
-  - If a line cannot be confidently located in the transcription, put it in "unmatched" with a brief reason (e.g. "no matching words in transcription" or "ambiguous — multiple candidate positions").
-  - confidence: 1.0 = exact token match; ~0.7 = minor phonetic error (e.g. "off" heard as "ball"); ~0.4 = many errors but pattern recognizable; <0.3 = speculative.
-  - beat = (startMs / 1000) * bpm / 60, rounded to the nearest 0.25.
+A. Extract the canonical lyrics as a sequence of (section, line) pairs:
+   - Use the [Section] markers to label sections. Preserve their names exactly as written (e.g. "Verse 1", "Chorus", "Bridge", "Outro").
+   - Split lines on newlines. Preserve each line verbatim.
+   - Drop anything that isn't a lyric line: annotation prose, page chrome, parenthetical editorial notes. When in doubt, prefer to include rather than drop.
+   - If a song has lyrics before any [Section] marker, group them into a synthetic "Verse 1".
 
-Return strict JSON matching the provided schema. Do not include commentary.`;
+B. For each extracted line, align it to the Whisper transcription:
+   - Find the best-matching consecutive sequence of Whisper words (fuzzy/phonetic matching is expected — Whisper has errors).
+   - Use the first matched word's startMs as the line's start time.
+   - Compute beat = (startMs / 1000) * bpm / 60, rounded to the nearest 0.25.
+   - Return a confidence score: 1.0 = exact token match; ~0.7 = minor phonetic error (e.g. "off" heard as "ball"); ~0.4 = many errors but pattern recognizable; <0.3 = speculative.
+   - If a line cannot be confidently located in the transcription, put it in "unmatched" with a brief reason.
+
+Return strict JSON matching the provided schema. No commentary.`;
 
 const cachedBlocks = [
   {
@@ -86,7 +93,7 @@ const cachedBlocks = [
     content: JSON.stringify(wordsJson),
   },
   {
-    label: "Published lyrics with section markers",
+    label: "Raw lyrics text (contains [Section] markers; may include annotations to ignore)",
     content: lyricsPortion,
   },
 ];

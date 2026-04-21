@@ -75,16 +75,16 @@ send_osc_action() {
   local action_id="$1"
   # REAPER listens for OSC on configurable port (default 8000)
   # Send /_action/{id} with value 1.0
-  python3 -c "
-import socket, struct
-addr = '/_action/$action_id\x00'
-addr_padded = addr + '\x00' * (4 - len(addr) % 4)
-tag = ',f\x00\x00'
-val = struct.pack('>f', 1.0)
-msg = addr_padded.encode('ascii') + tag.encode('ascii') + val
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.sendto(msg, ('${REAPER_OSC_HOST:-127.0.0.1}', ${REAPER_OSC_PORT:-8000}))
-sock.close()
+  node -e "
+const dgram = require('dgram');
+const addr = '/_action/$action_id';
+const padLen = 4 - ((addr.length + 1) % 4 || 4);
+const addrBuf = Buffer.concat([Buffer.from(addr, 'ascii'), Buffer.alloc(1 + padLen)]);
+const tagBuf = Buffer.from(',f\0\0', 'ascii');
+const valBuf = Buffer.alloc(4); valBuf.writeFloatBE(1.0, 0);
+const msg = Buffer.concat([addrBuf, tagBuf, valBuf]);
+const sock = dgram.createSocket('udp4');
+sock.send(msg, ${REAPER_OSC_PORT:-8000}, '${REAPER_OSC_HOST:-127.0.0.1}', () => sock.close());
 " 2>/dev/null || true
 }
 

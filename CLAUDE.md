@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Don't race ahead.** The user communicates in short messages. Multiple messages may be part of one thought. Do NOT immediately edit files or run commands after each message. Wait until it's clear the user is done and you understand the full picture before acting. When in doubt, ask.
 
+**Editing the clickbait skill.** When the user says "edit the skill" (or anything equivalent), they mean edit the source template under `skill/` (e.g. `skill/SKILL.md.njk`, `skill/stems.md`, `skill/teleprompter.md`) and then rebuild with `npm run build:skill`. Never hand-edit `.claude/skills/clickbait/SKILL.md` directly — it is a generated artifact and will be overwritten.
+
+**No Python for end-user tasks.** End users are not expected to have Python installed. Do as much as possible with the `clickbait-audio` binary and the TypeScript/JS code in this repo. If a one-off script is needed, write it in JS or TS (use `npx tsx` for TS). Python is fine for internal development tooling that only the maintainer runs, but never for anything on the user's path.
+
 ## Project Overview
 
 **clickbAIt** uses an AI-driven interface, audio processing, and a web-based lyrics display to create **show tracks** for cover bands:
@@ -16,8 +20,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Technical Direction
 
-- **Python** project — uses existing libraries for REAPER's RPP format
-- AI features use **Anthropic's Claude** model family (AI chat for song design, BPM detection, structure development)
+- **TypeScript / Node** project for the orchestration, CLI, and teleprompter
+- **Rust** for the `clickbait-audio` binary (audio analysis, beat tracking, stem splitting, TTS) — source in `crates/audio/`, prebuilt binary at `.claude/skills/clickbait/bin/clickbait-audio`
+- **No Python anywhere on the user path.** Audio feature analysis, OSC sending, file parsing — all of it lives in the Rust binary or TS/JS. If a one-off script is needed, it is written in JS/TS. Python reappearing in user-facing code is a smell: either the binary should grow the feature, or the logic belongs in TS.
+- AI features use **Anthropic's Claude** model family (AI chat for song design, BPM detection, structure development). Claude handles the fuzzy/per-song judgment; anything frequent and deterministic gets prebaked into the binary or TS code.
 - Initial target DAW: **REAPER** — reads and writes **.rpp files**
 - Bi-directional: edits made in REAPER can be recovered and modified in clickbAIt
 - Future scope: tighter REAPER integration, other DAW targets, scrolling lyrics/sheet music via mobile apps, MIDI output for equipment control (e.g. digital mixer faders)
@@ -47,10 +53,9 @@ This project follows the **Last Will and Attestament** workflow for AI-generated
 
 **Human in the loop on tests:** Before writing tests, discuss the test plan with the user. The user should review and agree on what's being tested and why — don't just generate tests and run them. TDD is a thinking tool, not just a code generation pattern. The user's involvement in test design is what keeps the AI-assisted development deliberate rather than reactive.
 
-- `pytest` for testing: ``.venv/bin/pytest tests/ -v``
-- `ruff` for linting: ``.venv/bin/ruff check .``
-- Tests live in `tests/` mirroring the package structure
-- Coverage: ``.venv/bin/pytest tests/ --cov=clickbait --cov-report=term-missing``
+- `vitest` for TS tests: `npm test` (or `npm run test:watch`)
+- `cargo test` for Rust tests in `crates/audio/`
+- Tests live in `tests/` (TS) and alongside sources in the Rust crate
 
 ## Audio Analysis CLI (`clickbait-audio`)
 

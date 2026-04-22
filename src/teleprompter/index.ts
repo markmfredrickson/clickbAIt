@@ -37,7 +37,10 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   const httpPort = opts.httpPort ?? 3000;
   const oscPort = opts.oscPort ?? 9000;
 
-  const payload = opts.song ? exportSongPayload(opts.song) : undefined;
+  // Default to 16 beats (4-bar) slug padding so the teleprompter's beat frame
+  // matches REAPER's project timeline (which includes the auto-slug region).
+  // Matches buildRpp's slugBars minimum.
+  const payload = opts.song ? exportSongPayload(opts.song, { minPaddingBeats: 16 }) : undefined;
   const songsDirs = opts.songsDirs && opts.songsDirs.length > 0
     ? opts.songsDirs
     : (opts.songsDir ? [opts.songsDir] : undefined);

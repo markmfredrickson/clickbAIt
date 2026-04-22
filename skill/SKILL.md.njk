@@ -63,9 +63,11 @@ If the user mentions stems, audio files, or backing tracks:
    .claude/skills/clickbait/bin/clickbait-audio analyze "<original-file>"
    .claude/skills/clickbait/bin/clickbait-audio analyze "<drums-stem>"
    .claude/skills/clickbait/bin/clickbait-audio beats "<original-file>" --activation spectral-flux --min-bpm <low> --max-bpm <high> > "<original-file>.beats.json"
-   .claude/skills/clickbait/bin/clickbait-audio transcribe "<vocals-stem>"
+   .claude/skills/clickbait/bin/clickbait-audio transcribe --model large-v3 "<vocals-stem>"
    ```
    **Always run `beats` on the full mix, not the drum stem.** The full mix carries beat information through drum-silent passages (intros, breakdowns) — drum-stem beats hallucinate onsets in those sections and SMs drift. Every `audio()` node in the DSongL file should point its `beatsFile` at the full-mix beats JSON so all stems share one consistent grid.
+
+   **Whisper model choice.** The binary's default is `base.en`, which hallucinates `[Silence]`/`[Music]` tags and can miss entire verses during long instrumental intros (VAD lock-in). Ask the user which model they want before transcribing — `large-v3` (~2.9GB, best accuracy, English+multilingual), `large-v3-turbo` (~1.5GB, near-large quality, faster), `medium.en` (~1.5GB, English-only sweet spot), or `small.en` (~466MB, decent). Transcription is a one-time cost per song so the larger models are usually worth it. Pass via `--model <name>`. If a `.words.json` sidecar already exists, `transcribe` reuses it *regardless of model* — delete the sidecar before upgrading model quality.
 
    Each command writes its sidecar alongside the input file. Read sidecars with the `Read` tool and reason about the JSON content directly. Sidecars are human-editable — if Whisper got a lyric wrong or the BPM is off, edit the JSON and the next run will use your correction.
 

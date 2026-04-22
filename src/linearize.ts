@@ -12,6 +12,8 @@ export interface LinearEvent {
   soffs?: number;
   /** For audio events: path to .beats.json sidecar for stretch markers */
   beatsFile?: string;
+  /** For audio events: emit a stretch marker every Nth beat (default 1) */
+  smStride?: number;
 }
 
 interface Context {
@@ -76,6 +78,7 @@ function walk(node: Node, ctx: Context, out: LinearEvent[]): void {
         file: node.file,
         soffs: node.soffs,
         beatsFile: node.beatsFile,
+        smStride: node.smStride,
       });
       break;
     }

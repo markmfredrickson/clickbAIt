@@ -8606,7 +8606,8 @@ function walk(node, ctx, out) {
         // track name
         file: node.file,
         soffs: node.soffs,
-        beatsFile: node.beatsFile
+        beatsFile: node.beatsFile,
+        smStride: node.smStride
       });
       break;
     }

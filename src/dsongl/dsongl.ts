@@ -64,6 +64,7 @@ interface AudioOptions {
   offset?: number;
   soffs?: number;
   beatsFile?: string;
+  smStride?: number;
 }
 
 export function audio(name: string, file: string, opts?: AudioOptions): Audio {
@@ -74,6 +75,7 @@ export function audio(name: string, file: string, opts?: AudioOptions): Audio {
     ...opts?.offset !== undefined && { offset: opts.offset },
     ...opts?.soffs !== undefined && { soffs: opts.soffs },
     ...opts?.beatsFile !== undefined && { beatsFile: opts.beatsFile },
+    ...opts?.smStride !== undefined && { smStride: opts.smStride },
   };
 }
 

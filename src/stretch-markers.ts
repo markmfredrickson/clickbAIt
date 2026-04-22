@@ -28,6 +28,10 @@ export interface StretchMarkerOptions {
   itemAnchor?: number;
   /** Target BPM for the grid. */
   bpm: number;
+  /** Emit a stretch marker every Nth beat (default 1 = every beat).
+   *  Useful for songs with busy subdivisions where DBN picks up off-beat
+   *  onsets — stride=4 in 4/4 keeps only downbeats. */
+  stride?: number;
 }
 
 /**
@@ -48,10 +52,11 @@ export function beatsToStretchMarkers(
   const beatLen = 60 / bpm;
   const sourceAnchor = options.sourceAnchor ?? beats[0].time;
   const itemAnchor = options.itemAnchor ?? 0;
+  const stride = options.stride ?? 1;
 
   const markers: StretchMarker[] = [];
 
-  for (let i = 0; i < beats.length; i++) {
+  for (let i = 0; i < beats.length; i += stride) {
     const sourcePos = beats[i].time;
     const beatNum = i;
     const itemPos = itemAnchor + beatNum * beatLen;

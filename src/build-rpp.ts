@@ -504,6 +504,7 @@ function buildAudioFileItems(
         bpm,
         sourceAnchor: beats[0]?.time ?? soffs,
         itemAnchor: 0,
+        stride: e.smStride,
       });
       if (markers.length > 0) {
         // REAPER reads SM source positions as file-absolute (not relative to

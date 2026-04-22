@@ -60,7 +60,8 @@ function walk(node, ctx, out) {
         // track name
         file: node.file,
         soffs: node.soffs,
-        beatsFile: node.beatsFile
+        beatsFile: node.beatsFile,
+        smStride: node.smStride
       });
       break;
     }
@@ -246,8 +247,9 @@ function beatsToStretchMarkers(beats, options) {
   const beatLen = 60 / bpm;
   const sourceAnchor = options.sourceAnchor ?? beats[0].time;
   const itemAnchor = options.itemAnchor ?? 0;
+  const stride = options.stride ?? 1;
   const markers = [];
-  for (let i = 0; i < beats.length; i++) {
+  for (let i = 0; i < beats.length; i += stride) {
     const sourcePos = beats[i].time;
     const beatNum = i;
     const itemPos = itemAnchor + beatNum * beatLen;
@@ -639,7 +641,8 @@ function buildAudioFileItems(audioEvents, tempoMap, groupId, projectEndSec, defa
       const markers = beatsToStretchMarkers(beats, {
         bpm,
         sourceAnchor: beats[0]?.time ?? soffs,
-        itemAnchor: 0
+        itemAnchor: 0,
+        stride: e.smStride
       });
       if (markers.length > 0) {
         smLines = formatStretchMarkers(markers, 0, 0);

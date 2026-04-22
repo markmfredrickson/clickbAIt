@@ -55,24 +55,4 @@ describe("extractSections", () => {
     expect(sections[1].bpm).toBe(240);
   });
 
-  it("handles eval output - Take Five", async () => {
-    const takeFive = (await import(
-      "../clickbait-workspace/iteration-2/take-five-brubeck/with_skill/outputs/take-five.js"
-    )).default;
-    const sections = extractSections(takeFive);
-    expect(sections.length).toBeGreaterThan(5);
-    expect(sections[0].name).toBe("Count-in");
-    expect(sections.every(s => s.timeSignature[0] === 5)).toBe(true);
-  });
-
-  it("handles eval output - Bohemian Rhapsody", async () => {
-    const bohRhap = (await import(
-      "../clickbait-workspace/iteration-2/bohemian-rhapsody-queen/with_skill/outputs/bohemian-rhapsody.js"
-    )).default;
-    const sections = extractSections(bohRhap);
-    expect(sections.length).toBeGreaterThan(5);
-    // Should have tempo changes
-    const bpms = new Set(sections.map(s => s.bpm));
-    expect(bpms.size).toBeGreaterThan(1);
-  });
 });

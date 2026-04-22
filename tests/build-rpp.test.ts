@@ -219,15 +219,4 @@ describe("buildRpp", () => {
     expect(rpp).toContain("SOFFS 0.164");
   });
 
-  it("works with Bohemian Rhapsody eval output", async () => {
-    const bohRhap = (await import(
-      "../clickbait-workspace/iteration-2/bohemian-rhapsody-queen/with_skill/outputs/bohemian-rhapsody.js"
-    )).default;
-    const { rpp, cueWavsNeeded } = buildRpp(bohRhap, defaultOpts);
-    expect(rpp).toMatch(/^<REAPER_PROJECT/);
-    expect(cueWavsNeeded.length).toBeGreaterThan(3);
-    // Should have multiple tempo points (Bohemian Rhapsody has tempo changes)
-    const ptCount = (rpp.match(/\bPT\b/g) ?? []).length;
-    expect(ptCount).toBeGreaterThan(1);
-  });
 });

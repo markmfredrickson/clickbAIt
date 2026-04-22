@@ -13,7 +13,6 @@
     "clickbait-teleprompter": "./bin/teleprompter.mjs"
   },
   "exports": {
-    ".": "./src/index.ts",
     "./dsongl": "./src/dsongl/index.ts"
   },
   "workspaces": [

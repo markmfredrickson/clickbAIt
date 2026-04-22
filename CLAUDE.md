@@ -96,4 +96,4 @@ Output: JSON with `beats` array (time, strength) and estimated `bpm`.
 
 ## Project Status
 
-Early stage — second attempt (earlier versions lost). Planning notes in `notes.md`.
+Early stage — second attempt (earlier versions lost).

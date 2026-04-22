@@ -18,7 +18,6 @@ clickbAIt generates show tracks for cover bands — click tracks, spoken section
 ## What's rough
 
 - **macOS only** (Apple Silicon). Intel Macs need to build from source.
-- **BYOK** — you need your own Claude API key. Costs a few cents per song.
 - TTS voices sound like a GPS, not a bandmate
 - Stretch marker alignment is functional but not yet perfect for every song
 - AI-written code, human-reviewed. It works on my machine.
@@ -29,7 +28,6 @@ clickbAIt generates show tracks for cover bands — click tracks, spoken section
 - **REAPER** installed
 - **Node.js** 18+ (`brew install node`)
 - **Claude Code** installed ([claude.ai/code](https://claude.ai/code))
-- An **Anthropic API key** ([console.anthropic.com](https://console.anthropic.com))
 - A **Genius API token** (optional but recommended — free at [genius.com/api-clients](https://genius.com/api-clients))
 
 ## Install
@@ -41,11 +39,10 @@ git clone https://github.com/markmfredrickson/clickbAIt && cd clickbAIt
 
 setup.sh handles: Node dependencies, pre-built binary, TTS voice model, Demucs model download + GPU shader compilation, and REAPER OSC config.
 
-After it finishes, edit `.env` and add your keys:
+After it finishes, optionally edit `.env` and add:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...
-GENIUS_API_TOKEN=...          # optional but gets you lyrics
+GENIUS_API_TOKEN=...          # optional, gets you lyrics
 ```
 
 ### Verify your install
@@ -54,7 +51,7 @@ GENIUS_API_TOKEN=...          # optional but gets you lyrics
 bash scripts/check-deps.sh
 ```
 
-This checks that the binary, voice model, API key, and optional dependencies are all in place.
+This checks the binary, voice model, and optional dependencies.
 
 ## Build your first song
 
@@ -122,8 +119,6 @@ Features: dark/light mode, adjustable text size, beat offset slider for lookahea
 **No lyrics scrolling** — Check that REAPER's OSC output is configured (step 3 above). The relay listens on UDP port 9000.
 
 **Song structure looks wrong** — You can edit the `.ts` song file directly — it's just TypeScript. Change section names, bar counts, lyrics, then re-run the generate step. Claude can help.
-
-**"ANTHROPIC_API_KEY not set"** — Edit `.env` in the project root.
 
 ## Building from source (Intel Macs or advanced users)
 

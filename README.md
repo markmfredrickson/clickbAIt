@@ -32,7 +32,6 @@ All of this feeds into **DSongL**, a domain-specific language that programmatica
 - **macOS** (Apple Silicon — Intel Macs need to build from source)
 - **Node.js** 18+ and npm
 - **REAPER** (for playback — not needed for generation)
-- **Anthropic API key** (for AI-assisted song building via Claude Code / Cowork)
 - **Genius API token** (optional, for lyrics lookup — free at genius.com/api-clients)
 
 ## Install
@@ -44,7 +43,7 @@ git clone https://github.com/markmfredrickson/clickbAIt && cd clickbAIt
 
 `setup.sh` handles everything: Node dependencies, pre-built binary from [Releases](https://github.com/markmfredrickson/clickbAIt/releases), TTS voice model, Demucs/Whisper model downloads, and REAPER OSC config.
 
-Then edit `.env` and add your `ANTHROPIC_API_KEY` (required) and `GENIUS_API_TOKEN` (optional).
+Then edit `.env` and add your `GENIUS_API_TOKEN` (optional, free, enables lyrics lookup).
 
 <details>
 <summary>Manual install (or building from source)</summary>
@@ -63,7 +62,7 @@ target/release/clickbait-audio setup
 
 # Set up environment
 cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY and GENIUS_API_TOKEN
+# Edit .env and add your GENIUS_API_TOKEN (optional)
 
 # Copy the REAPER OSC config (for teleprompter)
 cp src/teleprompter/clickbait.ReaperOSC ~/Library/Application\ Support/REAPER/OSC/

@@ -44,7 +44,6 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.90.0",
     "nodejs-whisper": "^0.2.9",
     "osc": "^2.4.5",
     "qrcode": "^1.5.4",

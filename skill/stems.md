@@ -5,7 +5,7 @@
 When the user provides a full mix (MP3, WAV, etc.) and wants stems:
 
 ```bash
-$CLICKBAIT_AUDIO split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
+.claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
 ```
 
 **Always split into the song's project directory** (`songs/<artist-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the song file.
@@ -20,17 +20,17 @@ Once stems exist, run targeted analysis in parallel for better results:
 
 1. **Vocals stem -> Whisper transcription** (much cleaner than full mix)
    ```bash
-   $CLICKBAIT_AUDIO transcribe "<dir>/<song>_vocals.wav"
+   .claude/skills/clickbait/bin/clickbait-audio transcribe "<dir>/<song>_vocals.wav"
    ```
 
 2. **Drums stem -> BPM/tempo detection** (cleanest rhythmic signal)
    ```bash
-   $CLICKBAIT_AUDIO analyze "<dir>/<song>_drums.wav"
+   .claude/skills/clickbait/bin/clickbait-audio analyze "<dir>/<song>_drums.wav"
    ```
 
 3. **Full mix -> BPM/tempo for comparison**
    ```bash
-   $CLICKBAIT_AUDIO analyze "<original-file>"
+   .claude/skills/clickbait/bin/clickbait-audio analyze "<original-file>"
    ```
 
 Compare drum-stem BPM with full-mix BPM and online lookups. Agreement = high confidence. Divergence = flag to user.
@@ -54,7 +54,7 @@ Look for:
 Run the onset detector on the most useful stems (click first, then drums):
 
 ```bash
-$CLICKBAIT_AUDIO analyze "<path-to-stem>"
+.claude/skills/clickbait/bin/clickbait-audio analyze "<path-to-stem>"
 ```
 
 Output JSON: `bpm` (rough estimate), `onsets` (array of `{ time, strength }`), `duration`, `sampleRate`.
@@ -94,7 +94,7 @@ If grid fitting reveals variable tempo and user wants to flatten:
 
 1. Run unstretch analyzer:
    ```bash
-   $CLICKBAIT_AUDIO unstretch "<path-to-stem>"
+   .claude/skills/clickbait/bin/clickbait-audio unstretch "<path-to-stem>"
    ```
 2. Report: detected BPM, estimated recording BPM, tempo deviation map
 3. Unstretching happens in REAPER (for now) — tell user the recording BPM and to use REAPER's stretch markers or time-stretch

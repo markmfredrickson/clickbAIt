@@ -12,7 +12,7 @@ This downloads all required models (~300 MB total) to `~/.cache/clickbait/`. Saf
 
 ## Genius API token (optional, recommended)
 
-Genius provides lyrics with section markers ([Verse], [Chorus], etc.), which are used to build the song structure. Without it, you can still use Hooktheory and Deezer data, but lyrics lookup will be limited.
+Genius provides lyrics with section markers ([Verse], [Chorus], etc.), which are used to build the song structure. Without it, Deezer and MusicBrainz metadata still work, but lyrics lookup is unavailable.
 
 **Get a token:**
 

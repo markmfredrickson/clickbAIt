@@ -84,22 +84,23 @@ This fetches from Deezer (BPM), Genius (lyrics with section markers), and MusicB
 **When audio is available**, online data serves as a bumper — it cross-checks stem analysis but never overrides it:
 - If Deezer BPM agrees with drum stem BPM → high confidence
 - If they diverge → flag to user and trust the stem
-- Genius lyrics are the truth on words; Whisper provides the timing. Merge them: align Genius phrases to Whisper word timestamps using fuzzy matching. Auto-correct obvious phonetic near-misses (Whisper: "I will sublime" → Genius: "I Will Survive" → use Genius, say nothing). Only ask the user when a match is genuinely ambiguous — a line Genius doesn't have, or a section where timing is too far off to align confidently.
-
-  If the merge is clean enough to be useful, offer to write `songs/<artist-slug>/<song-slug>.lyrics.csv`:
-  ```
-  section,beat,text,tag
-  Verse 1,0,"At first I was afraid",Lead Vocal
-  Verse 1,4,"I was petrified",Lead Vocal
-  ```
-  - `section` — matches the span name in the DSongL file
-  - `beat` — beat offset from the start of that section (derived from Whisper timestamps + BPM)
-  - `text` — Genius-corrected lyric line
-  - `tag` — vocalist role (default "Lead Vocal")
-
-  If this file already exists, use it as-is — it's the human-edited version. Never overwrite it.
+- Genius lyrics are the truth on words; Whisper provides the timing. They need to be merged — delegate that to a Haiku subagent (see next section).
 
 **When no audio is available**, online sources are primary: Deezer for BPM, Genius for lyrics and song structure markers, MusicBrainz for metadata.
+
+## Haiku delegations
+
+Fuzzy per-song judgment is delegated to Haiku subagents via the built-in `Agent` tool. Each task has a prompt template and JSON shape in `skill/haiku-tasks.md` — read that file to run any of these.
+
+| Task | When to run | Output sidecar |
+| --- | --- | --- |
+| Lyric alignment | Genius lyrics + Whisper `words.json` both exist | `<slug>.lyrics.json` |
+| Pronunciation map | Generating TTS cues and something in title/artist/lyrics would mispronounce | `<slug>.pronunciation.json` |
+| Structure detection | Need section boundaries in beats for DSongL authoring | `<slug>.structure.json` |
+
+How-to mechanics (Agent invocation, JSON validation, retry-once rule) are also in `skill/haiku-tasks.md`. Do not put this logic in the skill flow itself — consult the task file when you need it.
+
+If a lyrics/pronunciation/structure sidecar already exists, treat it as the human-edited version. Never overwrite.
 
 ## Step 3: Present findings and confirm
 
@@ -198,4 +199,5 @@ Read these when you need detail on a subsystem:
 
 - **Stems** (`skill/stems.md`) — splitting, parallel analysis, grid fitting, unstretch
 - **Teleprompter** (`skill/teleprompter.md`) — browser lyrics display, OSC relay, REAPER setup
+- **Haiku delegations** (`skill/haiku-tasks.md`) — prompt templates + JSON shapes for lyric alignment, pronunciation maps, structure detection
 - **TTS / cue generation** — `.claude/skills/clickbait/bin/clickbait-audio speak` (Piper TTS, lessac voice)

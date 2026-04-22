@@ -67,8 +67,7 @@ fi
 # .env
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo ""
-  echo "Created .env — open it and add your ANTHROPIC_API_KEY before running."
+  echo "Created .env — GENIUS_API_TOKEN is optional (free; adds lyrics lookup)."
 else
   echo ".env already exists, skipping."
 fi
@@ -99,8 +98,7 @@ echo ""
 echo "=== Done ==="
 echo ""
 echo "Next steps:"
-echo "  1. Edit .env and add your ANTHROPIC_API_KEY"
-echo "  2. (Optional) Add GENIUS_API_TOKEN for lyrics lookup"
-echo "  3. Open this directory in Claude Code"
-echo "  4. Run /clickbait to build your first song"
+echo "  1. (Optional) Edit .env and add GENIUS_API_TOKEN for lyrics lookup"
+echo "  2. Open this directory in Claude Code"
+echo "  3. Run /clickbait to build your first song"
 echo ""

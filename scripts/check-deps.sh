@@ -48,10 +48,6 @@ check "Piper TTS voice model" \
   "$([ -f "$VOICE" ] && echo true || echo false)" \
   "Run setup.sh to download the voice model"
 
-check ".env with ANTHROPIC_API_KEY" \
-  "$([ -f .env ] && grep -q 'ANTHROPIC_API_KEY=.' .env && echo true || echo false)" \
-  "Copy .env.example to .env and add your key"
-
 echo ""
 echo "Optional:"
 

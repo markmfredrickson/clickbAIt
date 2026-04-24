@@ -19,6 +19,39 @@
   let lyricElements = [];  // flat list of { el, beat, sectionIdx }
   let reconnectTimer = null;
 
+  // ── Clock (pub/sub) ──
+  // Beat updates flow through a small bus. Today there's one subscriber
+  // (the teleprompter display); later phases add more (chord pane, stage
+  // banner, sheet viewer, etc.) without changing the clock. Source of
+  // beats is either the WebSocket relay (server mode) or the <audio>
+  // element's currentTime (bundle mode).
+  const clock = (function () {
+    const subs = new Set();
+    return {
+      subscribe: function (cb) { subs.add(cb); return function () { subs.delete(cb); }; },
+      emit: function (beat) { subs.forEach(function (cb) { cb(beat); }); },
+    };
+  })();
+
+  // Port of src/teleprompter/relay.ts:secondsToBeats — piecewise-linear
+  // accumulation along the tempo map.
+  function secondsToBeats(seconds, s) {
+    const map = s.tempoMap || [];
+    if (map.length === 0) return (seconds / 60) * s.bpm;
+    let beat = 0, prevSec = 0, bpm = map[0].bpm;
+    for (let i = 0; i < map.length; i++) {
+      const tp = map[i];
+      if (tp.seconds >= seconds) break;
+      if (tp.seconds > prevSec) {
+        beat += ((tp.seconds - prevSec) / 60) * bpm;
+        prevSec = tp.seconds;
+      }
+      bpm = tp.bpm;
+    }
+    beat += ((seconds - prevSec) / 60) * bpm;
+    return beat;
+  }
+
   // ── DOM refs ──
   const titleEl = document.getElementById("song-title");
   const metaEl = document.getElementById("song-meta");
@@ -44,7 +77,7 @@
 
   async function loadSong() {
     try {
-      var res = await fetch("/song.json");
+      var res = await fetch("song.json");
       if (!res.ok) {
         renderWaiting();
         return;
@@ -59,8 +92,38 @@
 
   async function init() {
     await loadSong();
-    connectWebSocket();
+    // Single subscriber for now: the teleprompter display.
+    clock.subscribe(onBeatUpdate);
+    if (song && song.bundle) {
+      startAudioClock();
+    } else {
+      connectWebSocket();
+    }
     setupControls();
+  }
+
+  // ── Bundle-mode clock: drive from <audio id="mix-audio"> ──
+  function startAudioClock() {
+    const audio = document.getElementById("mix-audio");
+    if (!audio) {
+      statusEl.textContent = "No <audio id=\"mix-audio\"> element found";
+      statusEl.className = "disconnected";
+      return;
+    }
+    statusEl.textContent = "Bundle mode";
+    statusEl.className = "connected";
+    audio.addEventListener("play",  function () { transportLight.className = "playing"; });
+    audio.addEventListener("pause", function () { transportLight.className = "stopped"; });
+    audio.addEventListener("ended", function () { transportLight.className = "stopped"; });
+
+    function tick() {
+      if (song) {
+        const beat = secondsToBeats(audio.currentTime || 0, song);
+        clock.emit(beat);
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
   }
 
   // ── Render full song ──
@@ -153,7 +216,7 @@
       var msg;
       try { msg = JSON.parse(event.data); } catch (e) { return; }
       if (msg.type === "position") {
-        onBeatUpdate(msg.beat);
+        clock.emit(msg.beat);
       } else if (msg.type === "stop") {
         transportLight.className = "stopped";
       } else if (msg.type === "play") {

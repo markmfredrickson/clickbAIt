@@ -8862,7 +8862,7 @@ function getLocalIP2() {
 async function startTeleprompter(opts) {
   const httpPort = opts.httpPort ?? 3e3;
   const oscPort = opts.oscPort ?? 9e3;
-  const payload = opts.song ? exportSongPayload(opts.song) : void 0;
+  const payload = opts.song ? exportSongPayload(opts.song, { minPaddingBeats: 16 }) : void 0;
   const songsDirs2 = opts.songsDirs && opts.songsDirs.length > 0 ? opts.songsDirs : opts.songsDir ? [opts.songsDir] : void 0;
   const relay = startRelay({
     httpPort,

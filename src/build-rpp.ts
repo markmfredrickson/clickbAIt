@@ -485,7 +485,7 @@ function buildAudioFileItems(
 ): string {
   const lines: string[] = [];
   for (const e of audioEvents) {
-    const position = e.seconds;
+    let position = e.seconds;
     const soffs = e.soffs ?? defaultSoffs;
     const absFile = resolve(e.file!);
     const srcType = sourceType(absFile);
@@ -500,13 +500,30 @@ function buildAudioFileItems(
       // Drop beats that fall inside the soffs trim — their source positions
       // would be negative relative to the item and REAPER rejects those.
       const beats: Beat[] = (beatsData.beats as Beat[]).filter(b => b.time >= soffs);
+      // If the first beat isn't at source 0, there's leading source audio
+      // before the first beat (e.g. a quiet arpeggio or room noise) that
+      // would otherwise be clipped — the first SM at (item 0, source
+      // beats[0].time) treats source 0→beats[0].time as "before the item".
+      // Fix: anchor the first-beat marker at an identity point (item=source=
+      // beats[0].time) and shift the item earlier in project time by
+      // beats[0].time, so source 0 now plays at item-time 0 at 1:1 rate and
+      // the first beat still lands at the user-authored project position.
+      const preRegion = soffs === 0 && beats.length > 0 ? beats[0].time : 0;
       const markers = beatsToStretchMarkers(beats, {
         bpm,
         sourceAnchor: beats[0]?.time ?? soffs,
-        itemAnchor: 0,
+        itemAnchor: preRegion,
         stride: e.smStride,
       });
       if (markers.length > 0) {
+        if (preRegion > 0) {
+          // Prepend identity SM at (item 0, source 0) so the pre-first-beat
+          // audio plays 1:1 from the start of the item.
+          markers.unshift({ beat: -1, itemPosition: 0, sourcePosition: 0 });
+          // Move the item earlier in the project so the first beat still
+          // lands at its authored position.
+          position -= preRegion;
+        }
         // REAPER reads SM source positions as file-absolute (not relative to
         // soffs), so pass 0 here regardless of the item's soffs value.
         smLines = formatStretchMarkers(markers, 0, 0);

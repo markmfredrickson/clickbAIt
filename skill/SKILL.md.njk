@@ -49,27 +49,29 @@ The user provides a song title and optionally an artist: `$ARGUMENTS`
 If the user mentions stems, audio files, or backing tracks:
 1. If they have a full mix (not yet split), split it into the song's project directory. The binary accepts WAV, MP3, and M4A — pass the file directly, no conversion needed:
    ```bash
-   .claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
+   .claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 4stem
    ```
-   Stems live alongside the song file — they'll be referenced as audio tracks in REAPER.
+   Stems live alongside the song file — they'll be referenced as audio tracks in REAPER. Default to `4stem` (vocals/drums/bass/other) unless the user asks for piano/guitar separation, in which case use `6stem`.
 2. Once stems exist, check for cached sidecars before running anything expensive:
    - `<original-file>.analysis.json` — cached BPM/onsets for the full mix (source of pre-roll + cross-check BPM)
    - `<original-file>.beats.json` — DBN beat positions for the full mix (drives stretch markers for every stem)
    - `<drums-stem>.analysis.json` — cached BPM/onsets from drum stem (cross-check)
-   - `<vocals-stem>.words.json` — cached Whisper transcription
+   - `<vocals-stem>.align.json` — cached wav2vec2 forced alignment (word + line timings)
 
    If sidecars exist, use the `Read` tool to read them directly — the binary will also use them automatically. If missing, run:
    ```bash
    .claude/skills/clickbait/bin/clickbait-audio analyze "<original-file>"
    .claude/skills/clickbait/bin/clickbait-audio analyze "<drums-stem>"
    .claude/skills/clickbait/bin/clickbait-audio beats "<original-file>" --activation spectral-flux --min-bpm <low> --max-bpm <high> > "<original-file>.beats.json"
-   .claude/skills/clickbait/bin/clickbait-audio transcribe --model large-v3 "<vocals-stem>"
+   .claude/skills/clickbait/bin/clickbait-audio align "<vocals-stem>" --text "<path-to-lyrics.txt>"
    ```
    **Always run `beats` on the full mix, not the drum stem.** The full mix carries beat information through drum-silent passages (intros, breakdowns) — drum-stem beats hallucinate onsets in those sections and SMs drift. Every `audio()` node in the DSongL file should point its `beatsFile` at the full-mix beats JSON so all stems share one consistent grid.
 
-   **Whisper model choice.** The binary's default is `base.en`, which hallucinates `[Silence]`/`[Music]` tags and can miss entire verses during long instrumental intros (VAD lock-in). Ask the user which model they want before transcribing — `large-v3` (~2.9GB, best accuracy, English+multilingual), `large-v3-turbo` (~1.5GB, near-large quality, faster), `medium.en` (~1.5GB, English-only sweet spot), or `small.en` (~466MB, decent). Transcription is a one-time cost per song so the larger models are usually worth it. Pass via `--model <name>`. If a `.words.json` sidecar already exists, `transcribe` reuses it *regardless of model* — delete the sidecar before upgrading model quality.
+   **Use `align`, not `transcribe`, when lyrics are available.** `align` does CTC forced alignment with wav2vec2 — it maps the supplied text onto the audio and cannot hallucinate. Whisper (`transcribe`) is strictly a fallback for when no lyrics exist (rare).
 
-   Each command writes its sidecar alongside the input file. Read sidecars with the `Read` tool and reason about the JSON content directly. Sidecars are human-editable — if Whisper got a lyric wrong or the BPM is off, edit the JSON and the next run will use your correction.
+   To prepare the `--text` argument: extract the Genius lyrics from `<slug>.lookup.json` (the block between `---lyrics-raw---` markers), strip `[Section]` headers and blank lines, and write to `<slug>.lyrics.txt`. The resulting alignment is saved to `<vocals-stem>.align.json` with `{words: [{text, startMs, endMs, chars}], lines: [...]}` shape.
+
+   Each command writes its sidecar alongside the input file. Read sidecars with the `Read` tool and reason about the JSON content directly. Sidecars are human-editable — if a lyric is wrong or the BPM is off, edit the JSON and the next run will use your correction.
 
 3. Record stem analysis results — they are the source of truth. Web data supplements, never overrides.
 
@@ -86,7 +88,7 @@ This fetches from Deezer (BPM), Genius (lyrics with section markers), and MusicB
 **When audio is available**, online data serves as a bumper — it cross-checks stem analysis but never overrides it:
 - If Deezer BPM agrees with drum stem BPM → high confidence
 - If they diverge → flag to user and trust the stem
-- Genius lyrics are the truth on words; Whisper provides the timing. They need to be merged — delegate that to a Haiku subagent (see next section).
+- Genius lyrics are the truth on words; `align` provides the timing directly. No merging needed — feed Genius lyrics into `align` as the target text and read back `.align.json` for line/word timings.
 
 **When no audio is available**, online sources are primary: Deezer for BPM, Genius for lyrics and song structure markers, MusicBrainz for metadata.
 
@@ -113,6 +115,13 @@ Show the user:
 - **Duration** — audio file or MusicBrainz/Deezer
 
 If BPM or key data is missing, use your musical knowledge but flag it as an estimate. Never default to round-number BPMs (120, 140) without evidence.
+
+### BPM: keep full decimal precision, watch for half/double folds
+
+- **Pass full decimals through to DSongL** (e.g. `107.1429`, not `107`). Humans read "~107" either way, but REAPER's beat grid stays tight against the actual audio when the BPM is precise. Rounding to integers causes the click to drift off the music over the course of a song.
+- **Watch for double-time / half-time detection.** Beat trackers (and Deezer) often lock onto twice or half the felt tempo — especially for slow ballads with busy hi-hats (detected at ~143 when the real beat is ~72) or songs with a strong backbeat at quarter-note vs half-note. If the reported BPM feels off by 2× in either direction, fold it:
+  - For `scripts/build-dsongl.mjs`: pass `CLICKBAIT_BPM_FOLD=half` (or `double`) — the generator folds both the BPM *and* the `beats.json` grid so bar counts and lyric beat-indices come out right at the felt tempo.
+  - Ground check: a 4-bar intro at the felt tempo should last ~the time you'd actually count "one, two, three, four" × 4 while listening. If the beat grid has twice that many beats in the same span, you need `half`; if half that many, you need `double`.
 
 Ask the user to confirm or adjust before proceeding.
 
@@ -149,6 +158,25 @@ In this step, do all of the following together as one output:
 **Slug vs. Intro — do not confuse these:**
 - **Slug** — an auto-inserted region at the top of the RPP (generator-owned). Holds the song-title TTS announcement. Default 4 bars, grows if the title TTS is long. The user never writes it in DSongL; it appears automatically at RPP build time.
 - **Intro** (or whatever you want to call it) — the author's *musical* introduction, if the song has one. This is a regular span like any other. A song can skip it entirely and open on a verse.
+
+### Section patterns Genius doesn't label
+
+Genius only marks sections that contain sung lyrics (`[Verse 1]`, `[Chorus]`, `[Bridge]`, `[Guitar Solo]` if empty, etc.). Everything purely instrumental is invisible to Genius, but bands rely on those sections to know what's coming. When you see a gap of `≥ 2 bars` between two Genius sections (or before the first / after the last), **suggest a synthetic section and ask the user whether to split**. Common patterns, by where the gap sits:
+
+| Where | Typical name | Typical length | Notes |
+| --- | --- | --- | --- |
+| Before first vocal | `Intro` | 4–16 bars | If Genius already opens with `[Intro]` containing a vocal line, extend that section back instead of adding a second "Intro". |
+| Verse → Chorus | `Pre-Chorus` or `Ramp` | 2–4 bars | Short buildup; call it `Ramp` if it's ≤ 2 bars and feels like a transition rather than its own part. |
+| Chorus → Verse | `Post-Chorus` or `Re-intro` | 2–8 bars | `Post-Chorus` if it's a natural tail off the chorus riff; `Re-intro` if it restates the intro motif. |
+| Chorus → Bridge | `Post-Chorus` or `Break` | 2–8 bars | If it's a drum/guitar breakdown, `Break` reads better. |
+| Bridge → Chorus | `Pre-Chorus` or `Ramp` | 2–4 bars | Same as Verse → Chorus. |
+| Verse → Verse (rare) | `Instrumental` | 4–16 bars | Usually means there's an implicit Chorus or Solo the transcriber dropped. |
+| Between two choruses | `Post-Chorus` + `Re-intro` | — | Two separate synthetic sections if the gap is long. |
+| After last vocal | `Outro` | 4–32 bars | Extend to song end. If Genius already labels `[Outro]` with a vocal line, extend that section to song end instead. |
+
+These are starting points — the band's preference wins. When autogenerating, flag each synthetic section to the user with a one-line prompt like: *"Bar 27–44 is 18 bars of instrumental between Verse 1 and Verse 2 — call it `Instrumental`, `Guitar Solo`, or split into multiple?"* — and default to the table above if the user says "you pick."
+
+Use the `scripts/build-dsongl.mjs` helper to emit a first-cut DSongL from `align.json` + `beats.json` + Genius structure. It infers synthetic sections using the rules above; review the output and split further where the band's chart differs.
 
 **Authoring rules:**
 - Author the song as it actually starts musically. The first section can be `Intro`, `Verse 1`, `Chorus`, or anything else — no reserved bars required.

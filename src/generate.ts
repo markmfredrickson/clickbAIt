@@ -117,7 +117,7 @@ const { rpp, cueWavsNeeded, slugBeats } = buildRpp(song, {
 });
 
 const slug = songSlug(song);
-const rppPath = resolve(outDir, `${slug}.rpp`);
+const rppPath = resolve(outDir, `${slug}.RPP`);
 writeFileSync(rppPath, rpp);
 
 // Write teleprompter sidecar JSON for One Simple Track. Pass slugBeats so the

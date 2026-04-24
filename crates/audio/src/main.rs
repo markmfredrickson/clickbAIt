@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use anyhow::Result;
 
 mod activation;
+mod align;
 mod analyze;
 mod dbn;
 mod lookup;
@@ -79,6 +80,20 @@ enum Commands {
     },
     /// Download required models (Whisper, Piper, Demucs) to ~/.cache/clickbait/
     Setup,
+    /// Force-align a known transcript to audio using wav2vec2 CTC.
+    ///
+    /// Unlike `transcribe` (Whisper), this cannot hallucinate — it maps the
+    /// given lyrics onto the audio and reports where each word was uttered.
+    Align {
+        /// Path to audio file (vocals stem strongly recommended)
+        file: String,
+        /// Target text (lyrics). Either a literal string or a path to a file.
+        #[arg(short, long)]
+        text: String,
+        /// Output JSON path (default: <file>.align.json next to the audio)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
     /// Generate spoken audio from text (for cue tracks)
     Speak {
         /// Text to speak
@@ -137,6 +152,7 @@ fn main() -> Result<()> {
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
         Commands::Unstretch { file } => unstretch::run(&file),
         Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),
+        Commands::Align { file, text, output } => align::run(&file, &text, output.as_deref()),
         Commands::Speak { text, output, voice } => speak::run(&text, &output, &voice),
     }
 }

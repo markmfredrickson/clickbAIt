@@ -627,7 +627,7 @@ function sourceType(file) {
 function buildAudioFileItems(audioEvents, tempoMap, groupId, projectEndSec, defaultSoffs) {
   const lines = [];
   for (const e of audioEvents) {
-    const position = e.seconds;
+    let position = e.seconds;
     const soffs = e.soffs ?? defaultSoffs;
     const absFile = resolve(e.file);
     const srcType = sourceType(absFile);
@@ -638,13 +638,18 @@ function buildAudioFileItems(audioEvents, tempoMap, groupId, projectEndSec, defa
       const bpm = tempoMap[0]?.bpm ?? 120;
       const beatsData = JSON.parse(readFileSync(e.beatsFile, "utf8"));
       const beats = beatsData.beats.filter((b) => b.time >= soffs);
+      const preRegion = soffs === 0 && beats.length > 0 ? beats[0].time : 0;
       const markers = beatsToStretchMarkers(beats, {
         bpm,
         sourceAnchor: beats[0]?.time ?? soffs,
-        itemAnchor: 0,
+        itemAnchor: preRegion,
         stride: e.smStride
       });
       if (markers.length > 0) {
+        if (preRegion > 0) {
+          markers.unshift({ beat: -1, itemPosition: 0, sourcePosition: 0 });
+          position -= preRegion;
+        }
         smLines = formatStretchMarkers(markers, 0, 0);
         length = markers[markers.length - 1].itemPosition;
       }
@@ -835,7 +840,7 @@ var { rpp, cueWavsNeeded, slugBeats } = buildRpp(song, {
   clickDir
 });
 var slug = songSlug(song);
-var rppPath = resolve2(outDir, `${slug}.rpp`);
+var rppPath = resolve2(outDir, `${slug}.RPP`);
 writeFileSync(rppPath, rpp);
 var payload = exportSongPayload(song, { minPaddingBeats: slugBeats });
 var jsonPath = resolve2(outDir, `${slug}.json`);

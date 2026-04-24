@@ -1,5 +1,58 @@
 # TODO
 
+## Downbeat detection (CRITICAL — blocks end-to-end auto-gen)
+
+The DBN beat tracker we have finds the beat *pulse* but does not know which
+beat is the drummer's "one." Every heuristic attempt (drum-stem first strong
+onset, floor-to-bar-boundary, bass-first, etc.) fails on at least one of the
+four test songs because the signals that mark a downbeat vary by song:
+
+- Like a Stone: first drum hit = bar 1 ✓ with drum heuristic
+- My Favorite Mistake: pickup line before bar 1 → drum heuristic snaps wrong
+- Seven Nation Army: bass riff = bar 1, drums come in on bar 5 → drum heuristic trims too aggressively
+- Save Me: half-time / triplet feel, no clear drum downbeat → every heuristic off by fractions of a beat
+
+**This is a DSP/ML problem, not an LLM problem.** An LLM cannot reliably
+identify downbeats from audio; the input signal doesn't contain the
+information at the level the LLM reasons about. We need either:
+
+1. **DBNDownBeatTracker port.** madmom's downbeat tracker (BSD-2) does joint
+   beat + downbeat tracking with a larger state space (tempo × bar-position).
+   Port to Rust alongside our current DBN beat tracker. Gets us ~90% of
+   standard 4/4 pop/rock.
+2. **Time-sig-aware tracker.** Extends (1) to handle meter changes and odd
+   phrase lengths (Dirty Work, Dani California). Substantially harder.
+3. **KV-trained model.** Ultimate solution — see below.
+
+Until we have this, the generator requires a per-song manual bar-1 override
+(a single REAPER/source time). That's the operational answer for now but it
+breaks the "10 songs in 30 minutes unattended" goal.
+
+## Train custom models on Karaoke Version (KV) data
+
+KV provides stems *plus* hand-authored section timings and word-level lyric
+timings across thousands of songs. That's exactly the supervised target we
+want: given full-mix audio, output `(sections[], lyrics_with_timings[])` in
+one shot. Today we bolt together wav2vec2 CTC (for word timing) + Genius
+sections + heuristics (for the structure Genius misses); a KV-trained model
+would collapse the pipeline, eliminate Genius as a dependency, and catch
+things Genius never marks (Intros, Pre/Post-Chorus, Ramps, Solos, Breaks,
+Outros).
+
+Pilot: fine-tune wav2vec2-large on KV audio + word timings, eval vs current
+`align` on held-out songs. Section detector: second head on the same backbone,
+or a separate novelty/chroma classifier trained on KV section marks.
+
+Until this lands, `scripts/build-dsongl.mjs` uses gap-based heuristics for
+intro/pre-chorus/post-chorus/outro detection and asks the user to confirm or
+split further.
+
+## Syllable-level alignment (karaoke)
+
+CTC forced alignment already emits character-level frame timings — grouping
+to syllables is mechanical. Needed for true karaoke highlighting. Separate
+from line/word timing, which is already solid enough for show-track use.
+
 ## Improve Whisper timing accuracy
 
 ### Silence-chunked transcription

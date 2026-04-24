@@ -1190,6 +1190,7 @@ dependencies = [
  "demucs-core",
  "dotenvy",
  "hound",
+ "ort",
  "piper-rs",
  "pollster",
  "reqwest",

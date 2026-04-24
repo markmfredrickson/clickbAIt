@@ -5,35 +5,38 @@
 When the user provides a full mix (MP3, WAV, etc.) and wants stems:
 
 ```bash
-.claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 6stem
+.claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 4stem
 ```
 
 **Always split into the song's project directory** (`songs/<artist-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the song file.
 
-Models: `6stem` (default — vocals, drums, bass, guitar, piano, other), `4stem` (vocals, drums, bass, other), `finetune` (best quality 4-stem, slower). The model auto-downloads on first use (~84-333 MB, cached).
+Models: `4stem` (default — vocals, drums, bass, other), `6stem` (vocals, drums, bass, guitar, piano, other — use when piano/guitar separation is needed), `finetune` (best quality 4-stem, slower). The model auto-downloads on first use (~84-333 MB, cached).
 
 Output is JSON with stem file paths. Runs on GPU (Metal) by default, takes a few minutes per song.
 
 ## After splitting: parallel analysis
 
-Once stems exist, run targeted analysis in parallel for better results:
+Run all three of these in parallel — they're independent:
 
-1. **Vocals stem -> Whisper transcription** (much cleaner than full mix)
-   ```bash
-   .claude/skills/clickbait/bin/clickbait-audio transcribe "<dir>/<song>_vocals.wav"
-   ```
-
-2. **Drums stem -> BPM/tempo detection** (cleanest rhythmic signal)
-   ```bash
-   .claude/skills/clickbait/bin/clickbait-audio analyze "<dir>/<song>_drums.wav"
-   ```
-
-3. **Full mix -> BPM/tempo for comparison**
+1. **Full mix -> analyze** (REQUIRED — provides pre-roll silence measurement that feeds `preRollSeconds` on the `song(...)` node, plus a BPM cross-check)
    ```bash
    .claude/skills/clickbait/bin/clickbait-audio analyze "<original-file>"
    ```
 
-Compare drum-stem BPM with full-mix BPM and online lookups. Agreement = high confidence. Divergence = flag to user.
+2. **Drums stem -> analyze** (cleanest rhythmic signal for BPM)
+   ```bash
+   .claude/skills/clickbait/bin/clickbait-audio analyze "<dir>/<song>_drums.wav"
+   ```
+
+3. **Vocals stem -> forced alignment** (when Genius lyrics are available — the normal case)
+   ```bash
+   .claude/skills/clickbait/bin/clickbait-audio align "<dir>/<song>_vocals.wav" --text "<lyrics.txt>"
+   ```
+   Writes `<song>_vocals.align.json` with word + line timings. Uses wav2vec2 CTC — cannot hallucinate, handles long instrumental passages cleanly. Falls back to Whisper `transcribe` only if no lyrics can be fetched.
+
+Compare drum-stem BPM with full-mix BPM and online lookups. Agreement = high confidence. Divergence = flag to user and trust the stem.
+
+Full-mix analyze is not optional — without it, you can't set `preRollSeconds` correctly and every stem will drift by the intro silence.
 
 ## Working with pre-existing stems
 

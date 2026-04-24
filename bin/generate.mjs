@@ -276,6 +276,23 @@ function formatStretchMarkers(markers, itemStartSource, itemStartProject) {
   return lines;
 }
 
+// src/tempo.ts
+function beatToSeconds(beat, tempoMap) {
+  let seconds = 0;
+  let prevBeat = 0;
+  let bpm = tempoMap[0]?.bpm ?? 120;
+  for (const tp of tempoMap) {
+    if (tp.beat >= beat) break;
+    if (tp.beat > prevBeat) {
+      seconds += (tp.beat - prevBeat) / bpm * 60;
+      prevBeat = tp.beat;
+    }
+    bpm = tp.bpm;
+  }
+  seconds += (beat - prevBeat) / bpm * 60;
+  return seconds;
+}
+
 // src/build-rpp.ts
 import { accessSync, constants } from "fs";
 function findAudioBin() {
@@ -327,19 +344,6 @@ function patternStr(beats) {
 }
 function timesigFlags(beats) {
   return 262144 + beats;
-}
-function beatToSeconds(beat, tempoMap) {
-  let seconds = 0;
-  let prevBeat = 0;
-  let prevBpm = tempoMap[0]?.bpm ?? 120;
-  for (const tp of tempoMap) {
-    if (tp.beat > beat) break;
-    seconds += (tp.beat - prevBeat) / prevBpm * 60;
-    prevBeat = tp.beat;
-    prevBpm = tp.bpm;
-  }
-  seconds += (beat - prevBeat) / prevBpm * 60;
-  return seconds;
 }
 function buildRpp(song2, opts) {
   const beatsPerBar = song2.timeSignature[0];
@@ -716,16 +720,16 @@ function exportSongPayload(song2, opts = {}) {
     return {
       name: sec.name,
       beat: sec.beat,
-      seconds: beatsToSeconds(sec.beat, tempoMap),
+      seconds: beatToSeconds(sec.beat, tempoMap),
       durationBeats: sec.durationBeats,
-      durationSeconds: beatsToSeconds(sec.beat + sec.durationBeats, tempoMap) - beatsToSeconds(sec.beat, tempoMap),
+      durationSeconds: beatToSeconds(sec.beat + sec.durationBeats, tempoMap) - beatToSeconds(sec.beat, tempoMap),
       lyrics,
       chords
     };
   });
   const tempoPoints = tempoMap.map((t) => ({
     beat: t.beat,
-    seconds: beatsToSeconds(t.beat, tempoMap),
+    seconds: beatToSeconds(t.beat, tempoMap),
     bpm: t.bpm
   }));
   return {
@@ -740,21 +744,6 @@ function exportSongPayload(song2, opts = {}) {
 }
 function buildTempoMap(events) {
   return events.filter((e) => e.type === "tempo").map((e) => ({ beat: e.beat, bpm: Number(e.value) })).sort((a, b) => a.beat - b.beat);
-}
-function beatsToSeconds(beat, tempoMap) {
-  let seconds = 0;
-  let prevBeat = 0;
-  let bpm = tempoMap[0]?.bpm ?? 120;
-  for (const entry of tempoMap) {
-    if (entry.beat >= beat) break;
-    if (entry.beat > prevBeat) {
-      seconds += (entry.beat - prevBeat) / bpm * 60;
-      prevBeat = entry.beat;
-    }
-    bpm = entry.bpm;
-  }
-  seconds += (beat - prevBeat) / bpm * 60;
-  return seconds;
 }
 
 // src/generate.ts

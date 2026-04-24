@@ -9,6 +9,7 @@ import type { LinearEvent } from "../linearize.js";
 import type { SongPayload, Section, LyricLine, ChordMark, TempoPoint } from "./types.js";
 import { linearize } from "../linearize.js";
 import { extractSections } from "../sections.js";
+import { beatToSeconds } from "../tempo.js";
 
 export { toSlug, songSlug };
 
@@ -57,10 +58,10 @@ export function exportSongPayload(song: Song, opts: ExportOptions = {}): SongPay
     return {
       name: sec.name,
       beat: sec.beat,
-      seconds: beatsToSeconds(sec.beat, tempoMap),
+      seconds: beatToSeconds(sec.beat, tempoMap),
       durationBeats: sec.durationBeats,
-      durationSeconds: beatsToSeconds(sec.beat + sec.durationBeats, tempoMap)
-        - beatsToSeconds(sec.beat, tempoMap),
+      durationSeconds: beatToSeconds(sec.beat + sec.durationBeats, tempoMap)
+        - beatToSeconds(sec.beat, tempoMap),
       lyrics,
       chords,
     };
@@ -69,7 +70,7 @@ export function exportSongPayload(song: Song, opts: ExportOptions = {}): SongPay
   // Build tempo map with seconds for each tempo change
   const tempoPoints: TempoPoint[] = tempoMap.map((t) => ({
     beat: t.beat,
-    seconds: beatsToSeconds(t.beat, tempoMap),
+    seconds: beatToSeconds(t.beat, tempoMap),
     bpm: t.bpm,
   }));
 
@@ -93,20 +94,4 @@ function buildTempoMap(events: LinearEvent[]): TempoEntry[] {
     .sort((a, b) => a.beat - b.beat);
 }
 
-function beatsToSeconds(beat: number, tempoMap: TempoEntry[]): number {
-  let seconds = 0;
-  let prevBeat = 0;
-  let bpm = tempoMap[0]?.bpm ?? 120;
-
-  for (const entry of tempoMap) {
-    if (entry.beat >= beat) break;
-    if (entry.beat > prevBeat) {
-      seconds += ((entry.beat - prevBeat) / bpm) * 60;
-      prevBeat = entry.beat;
-    }
-    bpm = entry.bpm;
-  }
-
-  seconds += ((beat - prevBeat) / bpm) * 60;
-  return seconds;
-}
+// Local beatsToSeconds replaced by the shared beatToSeconds from ../tempo.ts.

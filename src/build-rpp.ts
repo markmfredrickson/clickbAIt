@@ -16,6 +16,7 @@ import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.j
 import { extractSections, type Section } from "./sections.js";
 import { songSlug } from "./dsongl/index.js";
 import { beatsToStretchMarkers, formatStretchMarkers, type Beat } from "./stretch-markers.js";
+import { beatToSeconds } from "./tempo.js";
 
 import { accessSync, constants } from "fs";
 
@@ -86,21 +87,7 @@ function patternStr(beats: number): string { return "A" + "B".repeat(beats - 1);
 /** REAPER's timesig flags encoding. */
 function timesigFlags(beats: number): number { return 262144 + beats; }
 
-/** Convert beat position to seconds using the tempo map. */
-function beatToSeconds(beat: number, tempoMap: { beat: number; bpm: number }[]): number {
-  let seconds = 0;
-  let prevBeat = 0;
-  let prevBpm = tempoMap[0]?.bpm ?? 120;
-
-  for (const tp of tempoMap) {
-    if (tp.beat > beat) break;
-    seconds += ((tp.beat - prevBeat) / prevBpm) * 60;
-    prevBeat = tp.beat;
-    prevBpm = tp.bpm;
-  }
-  seconds += ((beat - prevBeat) / prevBpm) * 60;
-  return seconds;
-}
+// beatToSeconds moved to src/tempo.ts (canonical home for beat↔seconds math).
 
 export interface BuildOptions {
   /** Directory containing pre-generated cue WAVs named `<slug>.wav` */

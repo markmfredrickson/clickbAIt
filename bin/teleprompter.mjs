@@ -8217,6 +8217,45 @@ function songSlug(song2) {
   return toSlug(parts.join("-"));
 }
 
+// src/tempo.ts
+function beatToSeconds(beat, tempoMap) {
+  let seconds = 0;
+  let prevBeat = 0;
+  let bpm = tempoMap[0]?.bpm ?? 120;
+  for (const tp of tempoMap) {
+    if (tp.beat >= beat) break;
+    if (tp.beat > prevBeat) {
+      seconds += (tp.beat - prevBeat) / bpm * 60;
+      prevBeat = tp.beat;
+    }
+    bpm = tp.bpm;
+  }
+  seconds += (beat - prevBeat) / bpm * 60;
+  return seconds;
+}
+function secondsToBeat(seconds, tempoMap) {
+  if (tempoMap.length === 0) return 0;
+  let beat = 0;
+  let prevSec = 0;
+  let tpSeconds = 0;
+  let prevTpBeat = 0;
+  let bpm = tempoMap[0].bpm;
+  for (const tp of tempoMap) {
+    if (tp.beat > prevTpBeat) {
+      tpSeconds += (tp.beat - prevTpBeat) / bpm * 60;
+      prevTpBeat = tp.beat;
+    }
+    if (tpSeconds >= seconds) break;
+    if (tpSeconds > prevSec) {
+      beat += (tpSeconds - prevSec) / 60 * bpm;
+      prevSec = tpSeconds;
+    }
+    bpm = tp.bpm;
+  }
+  beat += (seconds - prevSec) / 60 * bpm;
+  return beat;
+}
+
 // src/teleprompter/relay.ts
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({
@@ -8281,21 +8320,8 @@ function getLocalIP() {
   return "localhost";
 }
 function secondsToBeats(seconds, song2) {
-  const map = song2.tempoMap;
-  if (map.length === 0) return seconds / 60 * song2.bpm;
-  let beat = 0;
-  let prevSec = 0;
-  let bpm = map[0].bpm;
-  for (const tp of map) {
-    if (tp.seconds >= seconds) break;
-    if (tp.seconds > prevSec) {
-      beat += (tp.seconds - prevSec) / 60 * bpm;
-      prevSec = tp.seconds;
-    }
-    bpm = tp.bpm;
-  }
-  beat += (seconds - prevSec) / 60 * bpm;
-  return beat;
+  if (song2.tempoMap.length === 0) return seconds / 60 * song2.bpm;
+  return secondsToBeat(seconds, song2.tempoMap);
 }
 function startRelay(opts) {
   const httpPort = opts.httpPort ?? 3e3;
@@ -8807,16 +8833,16 @@ function exportSongPayload(song2, opts = {}) {
     return {
       name: sec.name,
       beat: sec.beat,
-      seconds: beatsToSeconds(sec.beat, tempoMap),
+      seconds: beatToSeconds(sec.beat, tempoMap),
       durationBeats: sec.durationBeats,
-      durationSeconds: beatsToSeconds(sec.beat + sec.durationBeats, tempoMap) - beatsToSeconds(sec.beat, tempoMap),
+      durationSeconds: beatToSeconds(sec.beat + sec.durationBeats, tempoMap) - beatToSeconds(sec.beat, tempoMap),
       lyrics,
       chords
     };
   });
   const tempoPoints = tempoMap.map((t) => ({
     beat: t.beat,
-    seconds: beatsToSeconds(t.beat, tempoMap),
+    seconds: beatToSeconds(t.beat, tempoMap),
     bpm: t.bpm
   }));
   return {
@@ -8831,21 +8857,6 @@ function exportSongPayload(song2, opts = {}) {
 }
 function buildTempoMap(events) {
   return events.filter((e) => e.type === "tempo").map((e) => ({ beat: e.beat, bpm: Number(e.value) })).sort((a, b) => a.beat - b.beat);
-}
-function beatsToSeconds(beat, tempoMap) {
-  let seconds = 0;
-  let prevBeat = 0;
-  let bpm = tempoMap[0]?.bpm ?? 120;
-  for (const entry of tempoMap) {
-    if (entry.beat >= beat) break;
-    if (entry.beat > prevBeat) {
-      seconds += (entry.beat - prevBeat) / bpm * 60;
-      prevBeat = entry.beat;
-    }
-    bpm = entry.bpm;
-  }
-  seconds += (beat - prevBeat) / bpm * 60;
-  return seconds;
 }
 
 // src/teleprompter/index.ts

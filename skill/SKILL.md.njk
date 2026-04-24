@@ -145,7 +145,37 @@ Import from `@clickbait/dsongl`. Types and builder signatures below are generate
 
 Once the user confirms the structure, write the song as a TypeScript file at `songs/<artist-slug>/<song-slug>.ts`.
 
-In this step, do all of the following together as one output:
+### Auto-generate the first cut (recommended)
+
+Run the helper to produce a draft DSongL from the data you already have:
+
+```bash
+node scripts/build-dsongl.mjs <songDir> <slug> "<title>" "<artist>" [key]
+```
+
+Inputs read:
+- `<songDir>/source.analysis.json` — pre-roll + BPM from full-mix analysis
+- `<songDir>/source.m4a.beats.json` — DBN beat grid (source of truth for timing)
+- `<songDir>/stems/source_vocals.align.json` — wav2vec2 forced-alignment line/word timings
+- `<songDir>/<slug>.lookup.json` — Genius section markers + lyrics
+
+It emits `<songDir>/<slug>.ts` with:
+- Correct BPM and pre-roll
+- Sections laid out on bar boundaries from Genius structure
+- Synthetic instrumental sections (Intro / Pre-Chorus / Post-Chorus / Break / Outro) inferred from gaps (see "Section patterns" table below)
+- Bayesian bar-length snap (strong prior for multiples of 4; non-round lengths kept when the data clearly disagrees)
+- Lyrics placed at their true sung beats
+
+Environment overrides when the defaults miss:
+- `CLICKBAIT_BPM_FOLD=half` (or `double`) — fold detected BPM by 2× when the tracker locked onto the wrong tempo subdivision. Also writes a folded beats sidecar so REAPER stretch markers match.
+- `CLICKBAIT_BPM_PHASE=1` — with `fold=half`, keeps odd-indexed beats instead of even (picks the other "on" vs "off" pulse).
+- `CLICKBAIT_BEAT_ZERO_OFFSET=N` — shifts `beats[0]` N beats earlier in the REAPER timeline when the song opens with a pickup (N=1 → beats[0] lands on REAPER 4.4 instead of 5.1).
+
+Then **review and hand-edit** the generated `.ts`: reshape sections the generator couldn't infer, adjust bar counts (the user knows the song), rename synthetic sections to match the band's chart, add manual `cue()` events for in-song hits.
+
+### Authoring from scratch
+
+If the auto-generator isn't available (no align/beats/lookup data) or the song is too structurally weird, do all of the following together as one output:
 - Define the section structure (Intro, Verse, Chorus, Bridge, etc.) as a sequence of spans
 - Set measure counts for each section
 - Mark sections with `{ cue: true }` so buildRpp auto-places TTS announcements 2 bars before each section and count-ins 1 bar before. Do NOT use manual `cue()` for section announcements — that's only for ad-hoc band notes (e.g. `cue("Hit the flanger pedal", 24)`).
@@ -176,7 +206,7 @@ Genius only marks sections that contain sung lyrics (`[Verse 1]`, `[Chorus]`, `[
 
 These are starting points — the band's preference wins. When autogenerating, flag each synthetic section to the user with a one-line prompt like: *"Bar 27–44 is 18 bars of instrumental between Verse 1 and Verse 2 — call it `Instrumental`, `Guitar Solo`, or split into multiple?"* — and default to the table above if the user says "you pick."
 
-Use the `scripts/build-dsongl.mjs` helper to emit a first-cut DSongL from `align.json` + `beats.json` + Genius structure. It infers synthetic sections using the rules above; review the output and split further where the band's chart differs.
+The auto-generator (see "Auto-generate the first cut" above) applies this table automatically. Review its output and rename/split where the band's chart differs.
 
 **Authoring rules:**
 - Author the song as it actually starts musically. The first section can be `Intro`, `Verse 1`, `Chorus`, or anything else — no reserved bars required.

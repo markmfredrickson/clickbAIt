@@ -15,6 +15,7 @@ import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import type { SongPayload } from "./types.js";
 import { toSlug } from "../dsongl/index.js";
+import { secondsToBeat } from "../tempo.js";
 
 export interface RelayOptions {
   /** HTTP/WebSocket port (default 3000) */
@@ -119,26 +120,15 @@ function getLocalIP(): string {
 
 /**
  * Convert seconds to beats using the song's tempo map.
+ *
+ * Thin wrapper around the canonical `secondsToBeat` in `../tempo.ts`.
+ * The SongPayload's tempoMap carries `seconds` precomputed for each
+ * entry so the server can serve it to clients directly; the generic
+ * helper in tempo.ts only needs `{beat, bpm}`, which is what we pass.
  */
 export function secondsToBeats(seconds: number, song: SongPayload): number {
-  const map = song.tempoMap;
-  if (map.length === 0) return (seconds / 60) * song.bpm;
-
-  let beat = 0;
-  let prevSec = 0;
-  let bpm = map[0].bpm;
-
-  for (const tp of map) {
-    if (tp.seconds >= seconds) break;
-    if (tp.seconds > prevSec) {
-      beat += ((tp.seconds - prevSec) / 60) * bpm;
-      prevSec = tp.seconds;
-    }
-    bpm = tp.bpm;
-  }
-
-  beat += ((seconds - prevSec) / 60) * bpm;
-  return beat;
+  if (song.tempoMap.length === 0) return (seconds / 60) * song.bpm;
+  return secondsToBeat(seconds, song.tempoMap);
 }
 
 // ── Server ──

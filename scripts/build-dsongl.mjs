@@ -73,16 +73,12 @@ if (fs.existsSync(barOneFile)) {
 // beats[1] lands on REAPER 5.1, lyrics/sections are computed from a
 // beatArr whose new index 0 is the original beats[N], and the audio node
 // gets `offset: -N` so the item is placed N beats earlier in the project.
-// Deprecated: CLICKBAIT_BAR_ONE_SHIFT (kept for backwards compat)
-const barOneShift = Number(process.env.CLICKBAIT_BAR_ONE_SHIFT || 0);
-if (barOneShift) {
-  barOneBeatIdx = Math.max(0, barOneBeatIdx + barOneShift);
-  console.error(`  bar-one shift: ${barOneShift > 0 ? '+' : ''}${barOneShift} DBN beats → idx ${barOneBeatIdx}`);
-}
-
-// New: CLICKBAIT_BEAT_ZERO_OFFSET — number of beats (in the effective, post-fold
+// CLICKBAIT_BEAT_ZERO_OFFSET — number of beats (in the effective, post-fold
 // grid) by which to push beats[0] EARLIER in the REAPER timeline. N=1 →
-// beats[0] on REAPER 4.4 instead of 5.1.
+// beats[0] on REAPER 4.4 instead of 5.1; N=3 → beats[0] on REAPER 4.2. Used
+// when the song has a pickup and the drum-anchor heuristic lands bar 1 too
+// late. The shift applies to both the audio offset (stems slide earlier)
+// and the lyric/section positioning (so synced content stays aligned).
 const beatZeroOffset = Math.max(0, Math.floor(Number(process.env.CLICKBAIT_BEAT_ZERO_OFFSET || 0)));
 if (barOneBeatIdx > 0) {
   console.error(`  downbeat anchor: drum-stem onset → DBN beat ${barOneBeatIdx} @ ${beatArr[barOneBeatIdx].time.toFixed(2)}s (was ${beatArr[0].time.toFixed(2)}s)`);

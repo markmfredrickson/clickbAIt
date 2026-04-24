@@ -85,10 +85,18 @@ Output: JSON with `beats` array (time, strength) and estimated `bpm`.
 
 **Key insight:** Energy activation on a full mix gives bad results (picks up every transient). For full mixes, use spectral-flux with a BPM hint. For drum stems, energy is simpler and more accurate.
 
-### Legacy commands
+### Other commands
 
-- `analyze` — old spectral flux onset detection + naive BPM estimation (being replaced)
-- `duration`, `transcribe`, `lookup`, `unstretch`, `split`, `speak` — other audio tools
+- `analyze` — full-mix + drum-stem onset detection, used for pre-roll measurement and BPM cross-check
+- `align` — wav2vec2 CTC forced alignment of known lyrics against a vocal stem (normal path for lyric timing; see `crates/audio/src/align.rs`)
+- `transcribe` — Whisper fallback when no published lyrics are available
+- `split` — Demucs stem separation (default 4-stem model)
+- `lookup` — Deezer / Genius / MusicBrainz metadata fetch
+- `speak` — Piper TTS for cue tracks
+- `unstretch` — constant-BPM recovery from stretched source audio
+- `duration` — quick WAV/MP3/M4A length check
+
+For the user-facing workflow that ties these together, see the clickbait skill (`skill/SKILL.md` — generated, or `skill/SKILL.md.njk` — source) rather than this maintainer guide.
 
 ## Prior Art
 

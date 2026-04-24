@@ -80,7 +80,7 @@ If the user mentions stems, audio files, or backing tracks:
 ## Step 2: Look up song data
 
 ```bash
-.claude/skills/clickbait/bin/clickbait-audio lookup "<title>" -a "<artist>" > "songs/<artist-slug>/<song-slug>.lookup.json"
+npx clickbait-lookup "<title>" -a "<artist>" > "songs/<artist-slug>/<song-slug>.lookup.json"
 ```
 
 This fetches from Deezer (BPM), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel. Saving to a sidecar lets you `Read` it directly and re-use it without re-fetching.

@@ -19,8 +19,11 @@ const shared = {
   platform: "node",
   format: "esm",
   target: "node20",
-  // Mark native deps as external — they rely on binary addons
-  external: ["nodejs-whisper", "fsevents"],
+  // Mark as external:
+  // - native/binary-addon deps
+  // - dotenv: uses CommonJS `require('fs')` internally which breaks in our
+  //   ESM bundle. Node resolves it from node_modules at runtime instead.
+  external: ["nodejs-whisper", "fsevents", "dotenv", "cheerio"],
 };
 
 await esbuild.build({
@@ -38,5 +41,13 @@ await esbuild.build({
   banner: { js: "#!/usr/bin/env node" },
 });
 console.log("  bin/teleprompter.mjs");
+
+await esbuild.build({
+  ...shared,
+  entryPoints: ["src/lookup-cli.ts"],
+  outfile: "bin/lookup.mjs",
+  banner: { js: "#!/usr/bin/env node" },
+});
+console.log("  bin/lookup.mjs");
 
 console.log("Build done.");

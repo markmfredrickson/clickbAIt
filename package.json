@@ -10,7 +10,8 @@
   ],
   "bin": {
     "clickbait-generate": "./bin/generate.mjs",
-    "clickbait-teleprompter": "./bin/teleprompter.mjs"
+    "clickbait-teleprompter": "./bin/teleprompter.mjs",
+    "clickbait-lookup": "./bin/lookup.mjs"
   },
   "exports": {
     "./dsongl": "./src/dsongl/index.ts"
@@ -43,6 +44,8 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
     "nodejs-whisper": "^0.2.9",
     "osc": "^2.4.5",
     "qrcode": "^1.5.4",

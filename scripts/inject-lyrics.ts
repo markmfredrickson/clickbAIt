@@ -41,7 +41,7 @@ try {
   lookupText = readFileSync(lookupPath, "utf8");
 } catch {
   console.error(`Cannot read lookup file: ${lookupPath}`);
-  console.error("Run: .claude/skills/clickbait/bin/clickbait-audio lookup ... > " + lookupPath);
+  console.error("Run: npx clickbait-lookup ... > " + lookupPath);
   process.exit(1);
 }
 

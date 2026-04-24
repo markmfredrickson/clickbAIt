@@ -30,11 +30,9 @@ hound = "3"
 # Forced alignment (wav2vec2 CTC). Piper already pulls ort 2.0.0-rc.11 transitively.
 ort = { version = "=2.0.0-rc.11", features = ["coreml"] }
 
-# Song lookup (HTTP APIs)
+# HTTP — used by align.rs / split.rs / setup.rs for model downloads.
+# (The lookup module moved to TS; tokio/scraper/dotenvy are no longer needed.)
 reqwest = { version = "0.12", features = ["json", "blocking"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-scraper = "0.22"
-dotenvy = "0.15"
 
 # Stem separation (demucs)
 demucs-core = { git = "https://github.com/nikhilunni/demucs-rs", rev = "97adfaa" }

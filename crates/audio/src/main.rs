@@ -5,7 +5,6 @@ mod activation;
 mod align;
 mod analyze;
 mod dbn;
-mod lookup;
 mod setup;
 mod split;
 mod transcribe;
@@ -53,14 +52,6 @@ enum Commands {
         /// Whisper model to use
         #[arg(long, default_value = "base.en")]
         model: String,
-    },
-    /// Look up song metadata from multiple sources
-    Lookup {
-        /// Song title
-        title: String,
-        /// Artist name (optional, improves accuracy)
-        #[arg(short, long)]
-        artist: Option<String>,
     },
     /// Detect tempo warping and estimate constant recording BPM
     Unstretch {
@@ -148,7 +139,6 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&result)?);
             Ok(())
         },
-        Commands::Lookup { title, artist } => lookup::run(&title, artist.as_deref()),
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
         Commands::Unstretch { file } => unstretch::run(&file),
         Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),

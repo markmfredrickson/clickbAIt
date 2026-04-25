@@ -22,7 +22,7 @@ function durationBeats(d: Duration, ts: [number, number]): number {
 }
 
 function childDuration(node: Node, ts: [number, number]): number {
-  if (node.kind === "event" || node.kind === "song") return 0;
+  if (node.kind !== "span" && node.kind !== "sequence") return 0;
   const localTs = node.timeSignature ?? ts;
   if (node.duration) return durationBeats(node.duration, localTs);
   return 0;

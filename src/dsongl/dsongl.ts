@@ -63,6 +63,7 @@ export function span(name: string, duration: Duration, third?: Node[] | SpanOpti
 interface AudioOptions {
   offset?: number;
   soffs?: number;
+  sourceEnd?: number;
   beatsFile?: string;
   smStride?: number;
 }
@@ -74,6 +75,7 @@ export function audio(name: string, file: string, opts?: AudioOptions): Audio {
     file,
     ...opts?.offset !== undefined && { offset: opts.offset },
     ...opts?.soffs !== undefined && { soffs: opts.soffs },
+    ...opts?.sourceEnd !== undefined && { sourceEnd: opts.sourceEnd },
     ...opts?.beatsFile !== undefined && { beatsFile: opts.beatsFile },
     ...opts?.smStride !== undefined && { smStride: opts.smStride },
   };

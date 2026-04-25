@@ -67,6 +67,7 @@ export interface Audio {
   file: string;       // path to audio file
   offset?: number;    // beats relative to parent; default 0
   soffs?: number;     // source offset in seconds (trim from start of file)
+  sourceEnd?: number; // optional source end in seconds (file-absolute); caps item length to sourceEnd - soffs
   beatsFile?: string; // path to .beats.json sidecar for stretch marker generation
   smStride?: number;  // emit a stretch marker every Nth beat (default 1); use 4 in 4/4 to pin only downbeats
 }

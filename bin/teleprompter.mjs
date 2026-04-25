@@ -8632,6 +8632,7 @@ function walk(node, ctx, out) {
         // track name
         file: node.file,
         soffs: node.soffs,
+        sourceEnd: node.sourceEnd,
         beatsFile: node.beatsFile,
         smStride: node.smStride
       });
@@ -8762,7 +8763,7 @@ function durationBeats2(d, ts) {
   return d.bars * ts[0];
 }
 function childDuration2(node, ts) {
-  if (node.kind === "event" || node.kind === "song") return 0;
+  if (node.kind !== "span" && node.kind !== "sequence") return 0;
   const localTs = node.timeSignature ?? ts;
   if (node.duration) return durationBeats2(node.duration, localTs);
   return 0;

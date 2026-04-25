@@ -60,6 +60,7 @@ function walk(node, ctx, out) {
         // track name
         file: node.file,
         soffs: node.soffs,
+        sourceEnd: node.sourceEnd,
         beatsFile: node.beatsFile,
         smStride: node.smStride
       });
@@ -190,7 +191,7 @@ function durationBeats2(d, ts) {
   return d.bars * ts[0];
 }
 function childDuration2(node, ts) {
-  if (node.kind === "event" || node.kind === "song") return 0;
+  if (node.kind !== "span" && node.kind !== "sequence") return 0;
   const localTs = node.timeSignature ?? ts;
   if (node.duration) return durationBeats2(node.duration, localTs);
   return 0;
@@ -630,15 +631,29 @@ function sourceType(file) {
 }
 function buildAudioFileItems(audioEvents, tempoMap, groupId, projectEndSec, defaultSoffs) {
   const lines = [];
-  for (const e of audioEvents) {
+  for (let i = 0; i < audioEvents.length; i++) {
+    const e = audioEvents[i];
+    const next = audioEvents[i + 1];
     let position = e.seconds;
     const soffs = e.soffs ?? defaultSoffs;
     const absFile = resolve(e.file);
     const srcType = sourceType(absFile);
     const totalDur = audioDuration(absFile);
-    let length = totalDur - soffs;
+    const sourceCap = e.sourceEnd !== void 0 ? e.sourceEnd - soffs : totalDur - soffs;
+    let length = sourceCap;
     let smLines = [];
-    if (e.beatsFile) {
+    if (e.sourceEnd !== void 0 && !e.beatsFile) {
+      const timelineLen = next ? next.seconds - position : sourceCap;
+      smLines = formatStretchMarkers(
+        [
+          { beat: -1, itemPosition: 0, sourcePosition: soffs },
+          { beat: -1, itemPosition: timelineLen, sourcePosition: e.sourceEnd }
+        ],
+        0,
+        0
+      );
+      length = timelineLen;
+    } else if (e.beatsFile) {
       const bpm = tempoMap[0]?.bpm ?? 120;
       const beatsData = JSON.parse(readFileSync(e.beatsFile, "utf8"));
       const beats = beatsData.beats.filter((b) => b.time >= soffs);
@@ -655,7 +670,7 @@ function buildAudioFileItems(audioEvents, tempoMap, groupId, projectEndSec, defa
           position -= preRegion;
         }
         smLines = formatStretchMarkers(markers, 0, 0);
-        length = markers[markers.length - 1].itemPosition;
+        length = Math.min(markers[markers.length - 1].itemPosition, sourceCap);
       }
     }
     if (projectEndSec !== void 0) {

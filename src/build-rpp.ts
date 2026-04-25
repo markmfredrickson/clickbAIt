@@ -471,17 +471,34 @@ function buildAudioFileItems(
   defaultSoffs: number,
 ): string {
   const lines: string[] = [];
-  for (const e of audioEvents) {
+  for (let i = 0; i < audioEvents.length; i++) {
+    const e = audioEvents[i];
+    const next = audioEvents[i + 1];
     let position = e.seconds;
     const soffs = e.soffs ?? defaultSoffs;
     const absFile = resolve(e.file!);
     const srcType = sourceType(absFile);
     const totalDur = audioDuration(absFile);
-    let length = totalDur - soffs;
+    const sourceCap = e.sourceEnd !== undefined ? e.sourceEnd - soffs : totalDur - soffs;
+    let length = sourceCap;
 
     // Load stretch markers from beats sidecar if available
     let smLines: string[] = [];
-    if (e.beatsFile) {
+    if (e.sourceEnd !== undefined && !e.beatsFile) {
+      // Rigid segment with two anchor SMs: REAPER applies one uniform stretch
+      // across the segment, preserving feel between anchors but locking edges
+      // to the click. Timeline length comes from the next item's position.
+      const timelineLen = next ? next.seconds - position : sourceCap;
+      smLines = formatStretchMarkers(
+        [
+          { beat: -1, itemPosition: 0, sourcePosition: soffs },
+          { beat: -1, itemPosition: timelineLen, sourcePosition: e.sourceEnd },
+        ],
+        0,
+        0,
+      );
+      length = timelineLen;
+    } else if (e.beatsFile) {
       const bpm = tempoMap[0]?.bpm ?? 120;
       const beatsData = JSON.parse(readFileSync(e.beatsFile, "utf8"));
       // Drop beats that fall inside the soffs trim — their source positions
@@ -515,7 +532,7 @@ function buildAudioFileItems(
         // soffs), so pass 0 here regardless of the item's soffs value.
         smLines = formatStretchMarkers(markers, 0, 0);
         // Item length = last marker's grid position (stretched timeline)
-        length = markers[markers.length - 1].itemPosition;
+        length = Math.min(markers[markers.length - 1].itemPosition, sourceCap);
       }
     }
 

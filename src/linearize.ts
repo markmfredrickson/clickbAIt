@@ -10,6 +10,8 @@ export interface LinearEvent {
   file?: string;
   /** For audio events: source offset in seconds (trim from start) */
   soffs?: number;
+  /** For audio events: file-absolute source end in seconds; caps item length */
+  sourceEnd?: number;
   /** For audio events: path to .beats.json sidecar for stretch markers */
   beatsFile?: string;
   /** For audio events: emit a stretch marker every Nth beat (default 1) */
@@ -77,6 +79,7 @@ function walk(node: Node, ctx: Context, out: LinearEvent[]): void {
         value: node.name,  // track name
         file: node.file,
         soffs: node.soffs,
+        sourceEnd: node.sourceEnd,
         beatsFile: node.beatsFile,
         smStride: node.smStride,
       });

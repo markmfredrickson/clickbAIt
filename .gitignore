@@ -66,6 +66,9 @@ clickbait-workspace/
 # Demo recordings (generated)
 demo/output/
 
+# Practice bundles (generated; large, regenerated per-render)
+bundles/
+
 # Skill: generated file and downloaded binary
 .claude/skills/clickbait/SKILL.md
 .claude/skills/clickbait/bin/

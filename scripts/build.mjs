@@ -50,4 +50,12 @@ await esbuild.build({
 });
 console.log("  bin/lookup.mjs");
 
+await esbuild.build({
+  ...shared,
+  entryPoints: ["src/bundle.ts"],
+  outfile: "bin/bundle.mjs",
+  banner: { js: "#!/usr/bin/env node" },
+});
+console.log("  bin/bundle.mjs");
+
 console.log("Build done.");

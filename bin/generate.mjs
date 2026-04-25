@@ -485,6 +485,20 @@ function buildRpp(song2, opts) {
   rppLines.push(`  TEMPOENVLOCKMODE 1`);
   rppLines.push(`  ITEMMIX 1`);
   rppLines.push(`  LOOP 0`);
+  rppLines.push(`  RENDER_FILE ""`);
+  rppLines.push(`  RENDER_PATTERN mix`);
+  rppLines.push(`  RENDER_FMT 0 2 44100`);
+  rppLines.push(`  RENDER_1X 0`);
+  rppLines.push(`  RENDER_RANGE 1 0 0 0 1000`);
+  rppLines.push(`  RENDER_RESAMPLE 3 0 1`);
+  rppLines.push(`  RENDER_ADDTOPROJ 0`);
+  rppLines.push(`  RENDER_STEMS 0`);
+  rppLines.push(`  RENDER_DITHER 0`);
+  rppLines.push(`  RENDER_NORMALIZE 1 0.177828 1 0 0 1 1`);
+  rppLines.push(`  RENDER_TRIM 0.000001 0.000001 0 0`);
+  rppLines.push(`  <RENDER_CFG`);
+  rppLines.push(`    ZXZhdxgAAQ==`);
+  rppLines.push(`  >`);
   rppLines.push(`  <METRONOME 6 2`);
   rppLines.push(`    VOL 0.25 0.125`);
   rppLines.push(`    BEATLEN 4`);
@@ -510,7 +524,7 @@ function buildRpp(song2, opts) {
     nchan: 2,
     mainsend: "1 0"
   }));
-  rppLines.push(buildTrack("Cues & Counts", 0.8, buildWaveItems(trackItems), { beat: -1 }));
+  rppLines.push(buildTrack("Cues & Counts", 1, buildWaveItems(trackItems), { beat: -1 }));
   const lastSection = sections2[sections2.length - 1];
   const projectEndSec = lastSection ? beatToSeconds(lastSection.beat + lastSection.durationBeats, tempoMap) : 0;
   const audioByTrack = /* @__PURE__ */ new Map();
@@ -531,9 +545,10 @@ function buildRpp(song2, opts) {
       console.error(`Applying preRollSeconds=${defaultSoffs}s as soffs to ${applied} audio item${applied === 1 ? "" : "s"}`);
     }
   }
+  const stemVolume = 0.70794578438414;
   for (const [trackName, audioEvents] of audioByTrack) {
     const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs);
-    rppLines.push(buildTrack(trackName, 1, items, { beat: -1 }));
+    rppLines.push(buildTrack(trackName, stemVolume, items, { beat: -1 }));
   }
   rppLines.push(`>`);
   return {

@@ -281,6 +281,25 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   rppLines.push(`  TEMPOENVLOCKMODE 1`);
   rppLines.push(`  ITEMMIX 1`);
   rppLines.push(`  LOOP 0`);
+
+  // Render settings — 24-bit WAV, LUFS-I -15, normalize on. Output written next
+  // to the .RPP as `mix.wav` (RENDER_PATTERN=mix). We render WAV from REAPER
+  // because REAPER's Opus encoder produces files that Safari/QuickTime can't
+  // play; ffmpeg post-encode handles Opus reliably (see bin/render-bundle.mjs).
+  rppLines.push(`  RENDER_FILE ""`);
+  rppLines.push(`  RENDER_PATTERN mix`);
+  rppLines.push(`  RENDER_FMT 0 2 44100`);
+  rppLines.push(`  RENDER_1X 0`);
+  rppLines.push(`  RENDER_RANGE 1 0 0 0 1000`);
+  rppLines.push(`  RENDER_RESAMPLE 3 0 1`);
+  rppLines.push(`  RENDER_ADDTOPROJ 0`);
+  rppLines.push(`  RENDER_STEMS 0`);
+  rppLines.push(`  RENDER_DITHER 0`);
+  rppLines.push(`  RENDER_NORMALIZE 1 0.177828 1 0 0 1 1`);
+  rppLines.push(`  RENDER_TRIM 0.000001 0.000001 0 0`);
+  rppLines.push(`  <RENDER_CFG`);
+  rppLines.push(`    ZXZhdxgAAQ==`);
+  rppLines.push(`  >`);
   rppLines.push(`  <METRONOME 6 2`);
   rppLines.push(`    VOL 0.25 0.125`);
   rppLines.push(`    BEATLEN 4`);
@@ -313,7 +332,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   }));
 
   // Cues & Counts track (BEAT -1 = time-based, so positions in seconds aren't reinterpreted as beats)
-  rppLines.push(buildTrack("Cues & Counts", 0.8, buildWaveItems(trackItems), { beat: -1 }));
+  rppLines.push(buildTrack("Cues & Counts", 1, buildWaveItems(trackItems), { beat: -1 }));
 
   // Audio tracks (stems, backing tracks, etc.)
   // Calculate project end time so audio items can be trimmed
@@ -340,9 +359,12 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
       console.error(`Applying preRollSeconds=${defaultSoffs}s as soffs to ${applied} audio item${applied === 1 ? "" : "s"}`);
     }
   }
+  // Stems sit at -3dB so the click and cue tracks (at 0dB) cut through the mix.
+  // 0.70794578438414 = 10^(-3/20).
+  const stemVolume = 0.70794578438414;
   for (const [trackName, audioEvents] of audioByTrack) {
     const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs);
-    rppLines.push(buildTrack(trackName, 1, items, { beat: -1 }));
+    rppLines.push(buildTrack(trackName, stemVolume, items, { beat: -1 }));
   }
 
   rppLines.push(`>`);

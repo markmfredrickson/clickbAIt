@@ -11,7 +11,8 @@
   "bin": {
     "clickbait-generate": "./bin/generate.mjs",
     "clickbait-teleprompter": "./bin/teleprompter.mjs",
-    "clickbait-lookup": "./bin/lookup.mjs"
+    "clickbait-lookup": "./bin/lookup.mjs",
+    "clickbait-bundle": "./bin/bundle.mjs"
   },
   "exports": {
     "./dsongl": "./src/dsongl/index.ts"

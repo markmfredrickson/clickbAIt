@@ -33,7 +33,9 @@ var slug = target.slice(slash + 1);
 var repoRoot = process.cwd();
 var artistDir = resolve(repoRoot, "songs", artist);
 var songJsonPath = resolve(artistDir, `${slug}.json`);
-var mixWavPath = resolve(artistDir, "mix.wav");
+var mixCandidates = ["mix.opus", "mix.ogg", "mix.m4a", "mix.wav"];
+var mixFile = mixCandidates.find((n) => existsSync(resolve(artistDir, n)));
+var mixPath = mixFile ? resolve(artistDir, mixFile) : resolve(artistDir, "mix.wav");
 var clientDir = resolve(repoRoot, "src", "teleprompter", "client");
 var outDir = resolve(repoRoot, outArg ?? `bundles/${slug}`);
 if (!existsSync(songJsonPath)) {
@@ -43,13 +45,11 @@ if (!existsSync(songJsonPath)) {
     npx tsx bin/generate.mjs songs/${artist}/${slug.replace(/-.*$/, "")}.ts songs/${artist}`
   );
 }
-if (!existsSync(mixWavPath)) {
+if (!mixFile) {
   fail(
-    `mix.wav not found at ${mixWavPath}
-  Render it first:
-    1. Open songs/${artist}/${slug}.RPP in REAPER
-    2. File \u2192 Render (default settings are fine)
-    3. Save as ${mixWavPath}`
+    `no mix file found in ${artistDir}
+  Looked for: ${mixCandidates.join(", ")}
+  Render the RPP in REAPER and save the result as one of those names.`
   );
 }
 if (!existsSync(clientDir)) {
@@ -58,18 +58,16 @@ if (!existsSync(clientDir)) {
 mkdirSync(outDir, { recursive: true });
 copyFileSync(join(clientDir, "style.css"), join(outDir, "style.css"));
 copyFileSync(join(clientDir, "teleprompter.js"), join(outDir, "teleprompter.js"));
-copyFileSync(mixWavPath, join(outDir, "mix.wav"));
+copyFileSync(mixPath, join(outDir, mixFile));
 var songData = JSON.parse(readFileSync(songJsonPath, "utf8"));
 songData.bundle = true;
 writeFileSync(join(outDir, "song.json"), JSON.stringify(songData, null, 2));
 var indexHtmlSrc = readFileSync(join(clientDir, "index.html"), "utf8");
-var audioTag = '  <audio id="mix-audio" src="mix.wav" controls preload="auto" style="width:100%;margin-top:0.5rem"></audio>';
-var indexHtml = indexHtmlSrc.replace(
-  /<main id="lyrics-container"><\/main>/,
-  `${audioTag}
-
-  <main id="lyrics-container"></main>`
-);
+var audioTag = `    <audio id="mix-audio" src="${mixFile}" controls preload="auto" style="width:100%;margin-top:0.5rem"></audio>`;
+var songScript = `  <script>window.__SONG_DATA__ = ${JSON.stringify(songData)};</script>`;
+var indexHtml = indexHtmlSrc.replace(/(<\/header>)/, `${audioTag}
+  $1`).replace(/(<script src="teleprompter\.js"><\/script>)/, `${songScript}
+  $1`);
 writeFileSync(join(outDir, "index.html"), indexHtml);
 var readme = `${songData.title} \u2014 practice bundle
 

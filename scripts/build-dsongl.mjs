@@ -431,10 +431,14 @@ const beatsFileRel = `${songDirRel}/${beatsFileName}`;
 
 const spansCode = sectionRanges.map((sr) => {
   const startBeat = sr.startBar * beatsPerBar;
+  const sectionLen = sr.barCount * beatsPerBar;
   const lines = sr.lineIndices.map(li => {
     const beat = lineStartBeats[li];
-    const beatInSection = beat - startBeat;
-    if (beatInSection < 0 || beatInSection >= sr.barCount * beatsPerBar) return null;
+    // Genius assigns the lyric to this section, so keep it even if the
+    // alignment beat falls outside the section's [start, end) window — that
+    // happens when section bounds get bumped (cursor collisions, snapBars,
+    // tail overrun). Clamp into the section instead of silently dropping.
+    const beatInSection = Math.max(0, Math.min(sectionLen - 1, beat - startBeat));
     const text = esc(align.lines[li].text);
     return `      lyric("${text}", beats(${beatInSection}), "Lead Vocal"),`;
   }).filter(Boolean);

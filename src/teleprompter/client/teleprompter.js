@@ -76,6 +76,13 @@
   }
 
   async function loadSong() {
+    // Bundles inline the song JSON as window.__SONG_DATA__ so they work over
+    // file:// (where fetch is blocked). Server mode falls back to fetching.
+    if (typeof window.__SONG_DATA__ === "object" && window.__SONG_DATA__) {
+      song = window.__SONG_DATA__;
+      renderSong();
+      return;
+    }
     try {
       var res = await fetch("song.json");
       if (!res.ok) {

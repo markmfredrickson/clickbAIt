@@ -16,7 +16,7 @@ import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.j
 import { extractSections, type Section } from "./sections.js";
 import { songSlug } from "./dsongl/index.js";
 import { beatsToStretchMarkers, formatStretchMarkers, type Beat } from "./stretch-markers.js";
-import { beatToSeconds } from "./tempo.js";
+import { Curve } from "./curve.js";
 
 import { accessSync, constants } from "fs";
 
@@ -87,7 +87,8 @@ function patternStr(beats: number): string { return "A" + "B".repeat(beats - 1);
 /** REAPER's timesig flags encoding. */
 function timesigFlags(beats: number): number { return 262144 + beats; }
 
-// beatToSeconds moved to src/tempo.ts (canonical home for beat↔seconds math).
+// Beat↔seconds resolution lives in the Curve resolver (src/curve.ts). A tempo
+// map is converted once via Curve.fromTempoMap and queried with curve.toTime.
 
 export interface BuildOptions {
   /** Directory containing pre-generated cue WAVs named `<slug>.wav` */
@@ -130,6 +131,9 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   const masterBpm = tempoMap[0]?.bpm ?? song.bpm;
   const masterTs = song.timeSignature;
 
+  // Single resolver for every beat→seconds conversion below.
+  const curve = Curve.fromTempoMap(tempoMap);
+
   // --- Tempo envelope points ---
   // Merge tempo and timesig changes into a single sorted list of envelope points.
   // REAPER needs a tempo envelope point at every BPM or timesig change.
@@ -162,7 +166,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   let lastTs: number | null = null;
   for (const [beat, { bpm, num }] of [...byBeat.entries()].sort((a, b) => a[0] - b[0])) {
     if (bpm !== lastBpm || num !== lastTs) {
-      const sec = beatToSeconds(beat, tempoMap);
+      const sec = curve.toTime(beat);
       const flags = timesigFlags(num);
       const pNum = patternNum(num);
       const pStr = patternStr(num);
@@ -183,7 +187,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // Named with the song slug so REAPER's /lastregion/name OSC message lets the
   // teleprompter identify the song on tab switch.
   {
-    const slugEndSec = beatToSeconds(slugBeats, tempoMap);
+    const slugEndSec = curve.toTime(slugBeats);
     regionLines.push(
       `MARKER ${regionId} ${fmt(0)} ${rppStr(slug)} 1 0 1 B ${newGuid()} 0 1`
     );
@@ -194,8 +198,8 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   }
 
   for (const sec of sections) {
-    const startSec = beatToSeconds(sec.beat, tempoMap);
-    const endSec = beatToSeconds(sec.beat + sec.durationBeats, tempoMap);
+    const startSec = curve.toTime(sec.beat);
+    const endSec = curve.toTime(sec.beat + sec.durationBeats);
     regionLines.push(
       `MARKER ${regionId} ${fmt(startSec)} ${rppStr(sec.name)} 1 0 1 B ${newGuid()} 0 1`
     );
@@ -223,7 +227,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     const beatsPerBar = sec.timeSignature[0];
     const cueBeat = sec.beat - beatsPerBar * 2; // 2 bars before section
     if (cueBeat < 0) continue;
-    const cueSec = beatToSeconds(cueBeat, tempoMap);
+    const cueSec = curve.toTime(cueBeat);
     if (cueSec < cueTrackFreeAfter) continue; // would overlap — skip
     const cueSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
     const file = `${opts.cueDir}/${cueSlug}.wav`;
@@ -251,7 +255,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
 
     for (let i = 0; i < beatsPerBar; i++) {
       const beatPos = barStartBeat + i;
-      const beatSec = beatToSeconds(beatPos, tempoMap);
+      const beatSec = curve.toTime(beatPos);
       const file = `${opts.countDir}/${i + 1}.wav`;
       trackItems.push({ position: beatSec, length: audioDuration(file), file });
     }
@@ -326,7 +330,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   }
 
   // Click track (SOURCE CLICK — follows tempo map automatically)
-  const clickItemContent = buildClickItem(song, sections, tempoMap, opts);
+  const clickItemContent = buildClickItem(song, sections, tempoMap, curve, opts);
   rppLines.push(buildTrack("Click", 1, clickItemContent, {
     beat: -1, playoffs: "0 1", nchan: 2, mainsend: "1 0",
   }));
@@ -338,7 +342,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // Calculate project end time so audio items can be trimmed
   const lastSection = sections[sections.length - 1];
   const projectEndSec = lastSection
-    ? beatToSeconds(lastSection.beat + lastSection.durationBeats, tempoMap)
+    ? curve.toTime(lastSection.beat + lastSection.durationBeats)
     : 0;
 
   const audioByTrack = new Map<string, typeof events>();
@@ -380,6 +384,7 @@ function buildClickItem(
   song: Song,
   sections: Section[],
   tempoMap: { beat: number; bpm: number }[],
+  curve: Curve,
   opts: BuildOptions,
 ): string {
   const masterTs = song.timeSignature;
@@ -387,7 +392,7 @@ function buildClickItem(
 
   const lastSection = sections[sections.length - 1];
   const totalSeconds = lastSection
-    ? beatToSeconds(lastSection.beat + lastSection.durationBeats, tempoMap)
+    ? curve.toTime(lastSection.beat + lastSection.durationBeats)
     : 0;
 
   const accentFile = `${opts.clickDir}/accent.wav`;

@@ -1,4 +1,5 @@
 import type { Node, Event, Span, Sequence, Song, Audio, Duration } from "./dsongl/index.js";
+import { Curve } from "./curve.js";
 
 export interface LinearEvent {
   beat: number;
@@ -165,20 +166,19 @@ function assignSeconds(events: LinearEvent[]): void {
     return priority(a) - priority(b);
   });
 
-  let currentBpm = 0;
-  let currentBeat = 0;
-  let currentSeconds = 0;
-
+  // Resolve every event's seconds through the canonical Curve. The tempo
+  // events (always anchored at beat 0 by linearize) define the map; with no
+  // tempo events there's no defined timing, so seconds stay 0.
+  const tempoMap = events
+    .filter((e) => e.type === "tempo")
+    .map((e) => ({ beat: e.beat, bpm: Number(e.value) }));
+  if (tempoMap.length === 0) {
+    for (const event of events) event.seconds = 0;
+    return;
+  }
+  const curve = Curve.fromTempoMap(tempoMap);
   for (const event of events) {
-    if (event.beat > currentBeat && currentBpm > 0) {
-      const deltaBeats = event.beat - currentBeat;
-      currentSeconds += (deltaBeats / currentBpm) * 60;
-      currentBeat = event.beat;
-    }
-    event.seconds = currentSeconds;
-    if (event.type === "tempo") {
-      currentBpm = Number(event.value);
-    }
+    event.seconds = curve.toTime(event.beat);
   }
 }
 

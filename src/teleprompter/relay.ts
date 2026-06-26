@@ -15,7 +15,7 @@ import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import type { SongPayload } from "./types.js";
 import { toSlug } from "../dsongl/index.js";
-import { secondsToBeat } from "../tempo.js";
+import { Curve } from "../curve.js";
 
 export interface RelayOptions {
   /** HTTP/WebSocket port (default 3000) */
@@ -121,14 +121,21 @@ function getLocalIP(): string {
 /**
  * Convert seconds to beats using the song's tempo map.
  *
- * Thin wrapper around the canonical `secondsToBeat` in `../tempo.ts`.
- * The SongPayload's tempoMap carries `seconds` precomputed for each
- * entry so the server can serve it to clients directly; the generic
- * helper in tempo.ts only needs `{beat, bpm}`, which is what we pass.
+ * Resolves through the canonical `Curve` (../curve.ts). `/time` OSC messages
+ * arrive at high frequency, so the per-song curve is cached — rebuilding it
+ * each call would be wasteful. `Curve.fromTempoMap` only reads `{beat, bpm}`,
+ * which the SongPayload's tempoMap carries.
  */
+const curveCache = new WeakMap<SongPayload, Curve>();
+
 export function secondsToBeats(seconds: number, song: SongPayload): number {
   if (song.tempoMap.length === 0) return (seconds / 60) * song.bpm;
-  return secondsToBeat(seconds, song.tempoMap);
+  let curve = curveCache.get(song);
+  if (!curve) {
+    curve = Curve.fromTempoMap(song.tempoMap);
+    curveCache.set(song, curve);
+  }
+  return curve.toBeat(seconds);
 }
 
 // ── Server ──

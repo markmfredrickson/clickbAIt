@@ -79,3 +79,9 @@ skill/bin/
 
 # Sandbox: simulated fresh user install for skill testing
 sandbox/
+
+# Local song backups (authored files snapshot before schema migration)
+backups/
+
+# Local practice launcher (symlinks into gitignored songs/)
+practice/

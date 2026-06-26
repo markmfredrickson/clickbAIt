@@ -9,7 +9,7 @@ import type { LinearEvent } from "../linearize.js";
 import type { SongPayload, Section, LyricLine, ChordMark, TempoPoint } from "./types.js";
 import { linearize } from "../linearize.js";
 import { extractSections } from "../sections.js";
-import { beatToSeconds } from "../tempo.js";
+import { Curve } from "../curve.js";
 
 export { toSlug, songSlug };
 
@@ -27,6 +27,7 @@ export function exportSongPayload(song: Song, opts: ExportOptions = {}): SongPay
 
   // Build a tempo map so we can convert beats→seconds for section boundaries
   const tempoMap = buildTempoMap(events);
+  const curve = Curve.fromTempoMap(tempoMap);
 
   const exportedSections: Section[] = sections.map((sec, i) => {
     const nextBeat = i < sections.length - 1
@@ -58,10 +59,10 @@ export function exportSongPayload(song: Song, opts: ExportOptions = {}): SongPay
     return {
       name: sec.name,
       beat: sec.beat,
-      seconds: beatToSeconds(sec.beat, tempoMap),
+      seconds: curve.toTime(sec.beat),
       durationBeats: sec.durationBeats,
-      durationSeconds: beatToSeconds(sec.beat + sec.durationBeats, tempoMap)
-        - beatToSeconds(sec.beat, tempoMap),
+      durationSeconds: curve.toTime(sec.beat + sec.durationBeats)
+        - curve.toTime(sec.beat),
       lyrics,
       chords,
     };
@@ -70,7 +71,7 @@ export function exportSongPayload(song: Song, opts: ExportOptions = {}): SongPay
   // Build tempo map with seconds for each tempo change
   const tempoPoints: TempoPoint[] = tempoMap.map((t) => ({
     beat: t.beat,
-    seconds: beatToSeconds(t.beat, tempoMap),
+    seconds: curve.toTime(t.beat),
     bpm: t.bpm,
   }));
 

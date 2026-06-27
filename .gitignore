@@ -85,3 +85,6 @@ backups/
 
 # Local practice launcher (symlinks into gitignored songs/)
 practice/
+
+# Personal dogfooding tool, not part of the project
+bin/sync-band.sh

@@ -13,9 +13,15 @@ import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
 import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
-import type { SongPayload } from "./types.js";
+import type { SongPayload, TempoPoint } from "./types.js";
+import type { LyricsDisplay } from "./lyrics-display.js";
 import { toSlug } from "../dsongl/index.js";
-import { Curve } from "../curve.js";
+import { Curve, type Anchor } from "../curve.js";
+
+/** Either song format the relay can serve. */
+type LoadedSong = SongPayload | LyricsDisplay;
+/** The fields the seconds→beats conversion needs from either format. */
+type TimingSong = { bpm: number; tempoMap?: TempoPoint[]; curve?: Anchor[] };
 
 export interface RelayOptions {
   /** HTTP/WebSocket port (default 3000) */
@@ -25,7 +31,7 @@ export interface RelayOptions {
   /** Directories containing song JSON files (default: [cwd]). Searched in order; first match wins. */
   songsDirs?: string[];
   /** Initial song payload (optional — can also load from songsDir) */
-  song?: SongPayload;
+  song?: LoadedSong;
   /** Directory containing the static client files */
   clientDir?: string;
 }
@@ -119,20 +125,19 @@ function getLocalIP(): string {
 }
 
 /**
- * Convert seconds to beats using the song's tempo map.
- *
- * Resolves through the canonical `Curve` (../curve.ts). `/time` OSC messages
- * arrive at high frequency, so the per-song curve is cached — rebuilding it
- * each call would be wasteful. `Curve.fromTempoMap` only reads `{beat, bpm}`,
- * which the SongPayload's tempoMap carries.
+ * Convert seconds to beats through the song's curve. Handles both formats: a
+ * LyricsDisplay carries explicit `(t,b)` curve anchors; a legacy SongPayload
+ * carries a piecewise `tempoMap`. Cached per song — `/time` OSC messages arrive
+ * at high frequency, so rebuilding the curve each call would be wasteful.
  */
-const curveCache = new WeakMap<SongPayload, Curve>();
+const curveCache = new WeakMap<object, Curve>();
 
-export function secondsToBeats(seconds: number, song: SongPayload): number {
-  if (song.tempoMap.length === 0) return (seconds / 60) * song.bpm;
+export function secondsToBeats(seconds: number, song: TimingSong): number {
   let curve = curveCache.get(song);
   if (!curve) {
-    curve = Curve.fromTempoMap(song.tempoMap);
+    if (song.curve && song.curve.length >= 2) curve = new Curve(song.curve);
+    else if (song.tempoMap && song.tempoMap.length > 0) curve = Curve.fromTempoMap(song.tempoMap);
+    else return (seconds / 60) * song.bpm;
     curveCache.set(song, curve);
   }
   return curve.toBeat(seconds);
@@ -149,11 +154,11 @@ export function startRelay(opts: RelayOptions) {
   const baseUrl = `http://${ip}:${httpPort}`;
 
   // Current song state
-  let currentSong: SongPayload | null = opts.song ?? null;
+  let currentSong: LoadedSong | null = opts.song ?? null;
   let currentSlug = currentSong?.slug ?? "";
 
   // Song cache: slug → {payload, filePath, mtimeMs}
-  interface CacheEntry { payload: SongPayload; filePath: string; mtimeMs: number }
+  interface CacheEntry { payload: LoadedSong; filePath: string; mtimeMs: number }
   const songCache = new Map<string, CacheEntry>();
   let currentCacheEntry: CacheEntry | null = null;
   if (currentSong) {
@@ -167,14 +172,18 @@ export function startRelay(opts: RelayOptions) {
     // Find the file on disk (first matching dir wins)
     let filePath: string | null = null;
     let mtimeMs = 0;
-    for (const dir of songsDirs) {
-      const candidate = join(dir, slug + ".json");
-      try {
-        const s = await stat(candidate);
-        filePath = candidate;
-        mtimeMs = s.mtimeMs;
-        break;
-      } catch { /* try next dir */ }
+    // Prefer the new LyricsDisplay build; fall back to the legacy SongPayload.
+    const names = [slug + ".lyrics-display.json", slug + ".json"];
+    outer: for (const dir of songsDirs) {
+      for (const name of names) {
+        const candidate = join(dir, name);
+        try {
+          const s = await stat(candidate);
+          filePath = candidate;
+          mtimeMs = s.mtimeMs;
+          break outer;
+        } catch { /* try next */ }
+      }
     }
     if (!filePath) {
       // Not on disk. Return any stale cache entry (e.g. in-memory only) if present.
@@ -188,7 +197,7 @@ export function startRelay(opts: RelayOptions) {
 
     try {
       const data = await readFile(filePath, "utf8");
-      const payload = JSON.parse(data) as SongPayload;
+      const payload = JSON.parse(data) as LoadedSong;
       const entry = { payload, filePath, mtimeMs };
       songCache.set(slug, entry);
       return entry;

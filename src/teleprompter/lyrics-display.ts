@@ -1,5 +1,11 @@
 /**
- * The built karaoke song — the file the teleprompter reads to show lyrics.
+ * The built lyrics display — the file the teleprompter reads to show lyrics in
+ * time with the song.
+ *
+ * Lyrics are one time-synced display; later there will be siblings (chords, or
+ * other notes for musicians). They'll likely share the grouping and curve ideas
+ * here, so the line/section/curve parts are named for display in general, while
+ * the word is specific to lyrics.
  *
  * The builder writes this from a `.song.json` manifest plus the alignment; the
  * teleprompter client reads it. Both import these types so the shape stays in
@@ -30,7 +36,7 @@
 import type { Anchor } from "../curve.js";
 
 /** A sung word: its span in beats, and the real text to show (with punctuation). */
-export interface KaraokeWord {
+export interface LyricWord {
   text: string;
   startBeat: number;
   endBeat: number;
@@ -40,7 +46,7 @@ export interface KaraokeWord {
  * A display line. Points at a span of `words` by index; it does not copy them
  * and has no timing of its own.
  */
-export interface KaraokeLine {
+export interface DisplayLine {
   /** [start, end] inclusive indices into the song's `words` list. */
   words: [number, number];
   /** e.g. "Lead Vocal", "Backing Vocal". */
@@ -50,15 +56,15 @@ export interface KaraokeLine {
 }
 
 /** A section label with a start beat. For navigation and cues, not a container. */
-export interface KaraokeSection {
+export interface DisplaySection {
   name: string;
   startBeat: number;
   cue?: boolean;
 }
 
-/** The whole built song. */
-export interface KaraokeSong {
-  schema: "clickbait/karaoke@1";
+/** The whole built lyrics display. */
+export interface LyricsDisplay {
+  schema: "clickbait/lyrics-display@1";
   title: string;
   artist?: string;
   key?: string;
@@ -69,11 +75,11 @@ export interface KaraokeSong {
   curve: Anchor[];
 
   /** The timeline: every sung word in order. Timing lives here. */
-  words: KaraokeWord[];
+  words: LyricWord[];
 
   /** How to group the words on screen. Editing this never moves the timing. */
   display: {
-    sections: KaraokeSection[];
-    lines: KaraokeLine[];
+    sections: DisplaySection[];
+    lines: DisplayLine[];
   };
 }

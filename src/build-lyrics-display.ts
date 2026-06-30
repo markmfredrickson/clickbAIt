@@ -48,9 +48,15 @@ export function buildLyricsDisplay(
   beats: readonly { time: number }[],
 ): LyricsDisplay {
   // Recording curve (recording time -> musical beat, with the bar-1 anchor)
-  // and the song's constant-tempo curve (beat -> song seconds).
+  // and the song's constant-tempo curve (beat -> song seconds). The pre-roll
+  // sets the curve's t0: the downbeat (beat 0) sits `preRollBars` bars into the
+  // show-track timeline, so the count-in is at negative beats / positive time
+  // (see docs/timing-frames.md). Word beats are downbeat-relative regardless —
+  // they come from the recording curve — so only t0 (the song-time origin)
+  // moves.
   const recordingCurve = recordingCurveFromBeats(beats, manifest.sources.recording.anchor);
-  const songCurve = Curve.constantBpm(manifest.bpm);
+  const preRollSeconds = (manifest.preRollBars * manifest.timeSignature[0] * 60) / manifest.bpm;
+  const songCurve = Curve.constantBpm(manifest.bpm, { t0: preRollSeconds });
 
   // Resolve each aligned word to its musical beat; keep beats, drop seconds.
   const tokens = bridgeTokens(align, recordingCurve, songCurve);

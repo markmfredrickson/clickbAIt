@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { SongManifestSchema, type SongManifest } from "../src/manifest.js";
 import type { AlignInput } from "../src/lyrics-timing.js";
 import { buildLyricsDisplay, alignWords } from "../src/build-lyrics-display.js";
+import { Curve } from "../src/curve.js";
 
 // --- fixtures --------------------------------------------------------------
 
@@ -153,6 +154,22 @@ describe("buildLyricsDisplay", () => {
     const out = buildLyricsDisplay(m, align, beats);
     expect(out.display.lines[0].section).toBe("Chorus 1"); // beat 2
     expect(out.display.lines[1].section).toBe("Instrumental"); // beat 80 >= 64
+  });
+
+  // pre-roll: downbeat sits at the pre-roll offset; count-in is negative beats
+  // at positive time; word beats (downbeat-relative) are unchanged.
+  it("places the downbeat at the pre-roll offset, count-in at negative beats", () => {
+    const beats = mkBeats(40); // 120 BPM grid, anchor {t:0,b:0} => beat = 2*seconds
+    const align = mkAlign([["A", 1000, 1100]]); // word at 1.0s => beat 2
+    const m = mkManifest({ bpm: 120, timeSignature: [4, 4], preRollBars: 2 });
+    const out = buildLyricsDisplay(m, align, beats);
+
+    const c = new Curve(out.curve);
+    // 2 bars @ 120 BPM 4/4 = 8 beats = 4s pre-roll.
+    expect(c.toTime(0)).toBeCloseTo(4); // downbeat at song-time 4s
+    expect(c.toBeat(0)).toBeCloseTo(-8); // time 0 is beat -8 (count-in start)
+    // The word beat is downbeat-relative and unaffected by the pre-roll.
+    expect(out.words[0].startBeat).toBeCloseTo(2);
   });
 
   // #6 curve anchors carried for the client's beat<->seconds

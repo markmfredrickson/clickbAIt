@@ -97,6 +97,14 @@ export const SongManifestSchema = z
     bpm: z.number().positive(),
     timeSignature: TimeSignature,
 
+    /**
+     * Whole bars of count-in/cue lead-in before the song's downbeat. The
+     * pre-roll lives at positive time but NEGATIVE beats (see
+     * docs/timing-frames.md): it sets the song curve's `t0` (downbeat at
+     * `preRollBars` bars in) and REAPER's `PROJOFFS` measure offset. Default 0.
+     */
+    preRollBars: z.number().int().nonnegative().default(0),
+
     metadata: ArtifactRef.optional(),
 
     sources: z

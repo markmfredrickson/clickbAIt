@@ -169,4 +169,20 @@ describe("SongManifestSchema", () => {
     m.timeSignature = [7, 8];
     expect(() => SongManifestSchema.parse(m)).not.toThrow();
   });
+
+  // -- pre-roll --------------------------------------------------------------
+  it("defaults preRollBars to 0 and accepts a whole-bar count", () => {
+    expect((SongManifestSchema.parse(validManifest()) as any).preRollBars).toBe(0);
+    const m = validManifest() as any;
+    m.preRollBars = 4;
+    expect((SongManifestSchema.parse(m) as any).preRollBars).toBe(4);
+  });
+
+  it("rejects negative or fractional preRollBars", () => {
+    for (const v of [-1, 1.5]) {
+      const m = validManifest() as any;
+      m.preRollBars = v;
+      expect(() => SongManifestSchema.parse(m), String(v)).toThrow();
+    }
+  });
 });

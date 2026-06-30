@@ -71,6 +71,28 @@ decoded PCM; no need to add an ffmpeg dep just for this. Surface as
 `clickbait-audio transcribe --split-silence` so the `.words.json` sidecar stays
 drop-in compatible.
 
+**Apply the same chunking to `align` (built since this was written).** The
+forced aligner (wav2vec2 CTC, `align.rs`) has the identical failure: it must
+place the whole transcript across the whole audio, so it smears words over
+audio they aren't in. Aligning each silence-bounded phrase clip independently
+(then offsetting) prevents it. Two concrete regression cases to build against:
+
+- **Saints — dropped + smeared choruses.** Full-text align over the 158s mix
+  stretched single words across the trombone solo (e.g. "Blow it Brother Holmes"
+  ~5.8 s/word over a ~23s gap). Per-clip align should keep each phrase inside
+  its own clip.
+- **Seven Nation Army — trailing-word late start.** The final "home" of "go
+  back home" is sung ~209s (right after "back"@209.04s) but CTC tags it at
+  **225.34s — 16s late**, because it's the last word before a long outro and the
+  Viterbi path lingers on blank, then commits late. Expected after chunking:
+  "home" lands inside the final vocal phrase, not 16s into the outro. Onset-snap
+  to vocal-stem energy is the finer follow-on; a cheap interim is clamping a
+  trailing word's start when the pre-gap is implausibly large.
+
+Display-side mitigation (independent of the above): highlight each word from its
+start to the NEXT word's start, not its own `endMs` — CTC word ends are
+unreliable. Does not fix a wrong *start* like the SNA "home" case.
+
 ### Forced alignment (larger win)
 
 For songs where we already have published lyrics (Genius), the problem is

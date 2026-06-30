@@ -41,6 +41,18 @@ describe("buildRpp", () => {
     expect(rpp).toContain("TEMPO 120");
   });
 
+  it("emits a negative PROJOFFS measure offset so the downbeat reads as Bar 1", () => {
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(2)),
+      ),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    // PROJOFFS <startTime> <measureOffset> <flag>: time 0 (positive timeline),
+    // measure offset negative by the slug bars (count-in on negative bars).
+    expect(rpp).toMatch(/PROJOFFS 0 -\d+ 0/);
+  });
+
   it("includes region markers for sections", () => {
     const s = song("Test", 120,
       seq(

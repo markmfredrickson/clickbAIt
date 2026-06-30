@@ -279,6 +279,11 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   rppLines.push(`  RIPPLE 0 0`);
   rppLines.push(`  AUTOXFADE 129`);
   rppLines.push(`  SAMPLERATE 44100 0 0`);
+  // Project measure offset: relabel the bar grid so the song's downbeat reads
+  // as Bar 1 and the slug/count-in falls on negative bars (timeline still
+  // starts at 0:00). Cosmetic — REAPER bar numbers only; the teleprompter
+  // aligns via OSC time through the curve, not bars. See docs/timing-frames.md.
+  rppLines.push(`  PROJOFFS 0 ${-slugBars} 0`);
   rppLines.push(`  TEMPO ${fmt(masterBpm)} ${masterTs[0]} ${masterTs[1]} 0`);
   rppLines.push(`  PLAYRATE 1 0 0.25 4`);
   rppLines.push(`  TIMELOCKMODE 1`);

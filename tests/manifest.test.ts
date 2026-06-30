@@ -33,7 +33,6 @@ function validManifest(): unknown {
       { name: "Verse 1", b: 32, bars: 18, cue: true },
     ],
     lyrics: {
-      text: { file: "seven-nation-army.lyrics.txt", "produced-by": "human" },
       alignment: { file: "source_vocals.align.json", "produced-by": "clickbait-audio align" },
       lines: [
         { b: 35, text: "I'm gonna fight 'em off", tag: "Lead Vocal" },
@@ -72,7 +71,6 @@ describe("SongManifestSchema", () => {
       songCurve: "constantBpm",
       sections: [{ name: "Verse 1", b: 0, bars: 8 }],
       lyrics: {
-        text: { file: "x.lyrics.txt", "produced-by": "human" },
         lines: [{ b: 0, text: "hello" }],
       },
     };

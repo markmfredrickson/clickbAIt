@@ -41,7 +41,6 @@ function mkManifest(over: Record<string, unknown> = {}): SongManifest {
     songCurve: "constantBpm",
     sections: [],
     lyrics: {
-      text: { file: "x.lyrics.txt", "produced-by": "human" },
       lines: [],
     },
     ...over,
@@ -108,7 +107,6 @@ describe("buildLyricsDisplay", () => {
     );
     const m = mkManifest({
       lyrics: {
-        text: { file: "x.txt", "produced-by": "human" },
         lines: [
           { text: "go a-marchin' in" }, // 4 normalized words (hyphen splits)
           { text: "when the saints go in" }, // 5 normalized words
@@ -149,7 +147,6 @@ describe("buildLyricsDisplay", () => {
         { name: "Instrumental", b: 64, bars: 20 },
       ],
       lyrics: {
-        text: { file: "x.txt", "produced-by": "human" },
         lines: [{ text: "early" }, { text: "late" }],
       },
     });
@@ -179,7 +176,6 @@ describe("buildLyricsDisplay", () => {
       artist: "Louis Armstrong",
       sections: [{ name: "Chorus 1", b: 0, bars: 16, cue: true }],
       lyrics: {
-        text: { file: "x.txt", "produced-by": "human" },
         lines: [
           { text: "when the saints", tag: "Lead" },
           { text: "go marchin' in", tag: "Response" },

@@ -111,9 +111,12 @@ export const SongManifestSchema = z
 
     sections: z.array(Section),
 
+    // `lines` is the source of truth for the lyric text (small, structured,
+    // inline). `alignment` is the only file ref — the per-word timing is too
+    // big to inline. The flat lyrics text fed to the aligner is generated from
+    // `lines`, not stored separately, so the two can't drift apart.
     lyrics: z
       .object({
-        text: ArtifactRef,
         alignment: ArtifactRef.optional(),
         lines: z.array(LyricLine),
       })

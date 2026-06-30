@@ -161,6 +161,27 @@ body {
   min-height: 1.2em;
 }
 
+/* ── Word-level highlight (LyricsDisplay) ── */
+/* Lines are dim context by default; the current line brightens, the active
+   word glows, and words already sung within it fade. */
+.lyric-line.current {
+  color: var(--text);
+}
+
+.word {
+  transition: color 0.08s ease, text-shadow 0.08s ease;
+}
+
+.lyric-line.current .word.sung {
+  color: var(--text-dim);
+}
+
+.word.active {
+  color: var(--accent);
+  text-shadow: 0 0 18px var(--accent);
+  font-weight: 600;
+}
+
 /* ── Status bar ── */
 #status-bar {
   position: fixed;

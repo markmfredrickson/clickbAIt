@@ -1,8 +1,15 @@
 /**
  * clickbAIt Teleprompter — browser client
  *
- * Fetches the full song on load, connects to the relay WebSocket,
- * and highlights/scrolls lyrics based on incoming beat position.
+ * Fetches the full song on load, connects to the relay WebSocket (or drives
+ * off an <audio> element in bundle mode), and highlights/scrolls lyrics from
+ * the incoming beat position.
+ *
+ * Two song formats, detected at load:
+ *   - LyricsDisplay (`schema: "clickbait/lyrics-display@1"`): word-level
+ *     karaoke highlight, beats resolved through the song curve.
+ *   - Legacy SongPayload (sections with line-level `lyrics[]`): the original
+ *     whole-line highlight. Kept so songs not yet rebuilt still display.
  */
 
 (function () {
@@ -10,21 +17,19 @@
 
   // ── State ──
   let song = null;
+  let isLD = false;        // true when song is a LyricsDisplay
+  let curve = null;        // Curve built from LyricsDisplay.curve (bundle mode)
   let ws = null;
   let autoScroll = true;
   let offsetBeats = 0;
   let rawBeat = -1;      // most recent beat from OSC (no offset applied)
   let currentBeat = -1;  // rawBeat + offsetBeats (reading position)
   let sectionElements = [];
-  let lyricElements = [];  // flat list of { el, beat, sectionIdx }
+  let lyricElements = [];  // legacy: flat list of { el, beat, sectionIdx }
+  let wordElements = [];   // LyricsDisplay: flat list of { el, startBeat, lineEl }
   let reconnectTimer = null;
 
   // ── Clock (pub/sub) ──
-  // Beat updates flow through a small bus. Today there's one subscriber
-  // (the teleprompter display); later phases add more (chord pane, stage
-  // banner, sheet viewer, etc.) without changing the clock. Source of
-  // beats is either the WebSocket relay (server mode) or the <audio>
-  // element's currentTime (bundle mode).
   const clock = (function () {
     const subs = new Set();
     return {
@@ -33,8 +38,27 @@
     };
   })();
 
-  // Port of src/teleprompter/relay.ts:secondsToBeats — piecewise-linear
-  // accumulation along the tempo map.
+  // ── Curve (port of src/curve.ts:toBeat) ──
+  // anchors: sorted [{t, b}], strictly increasing in both. Linear interp,
+  // end-slope extrapolation. Constant-tempo songs have two anchors.
+  function makeCurve(anchors) {
+    const a = anchors;
+    const last = a.length - 1;
+    const leadBps = (a[1].b - a[0].b) / (a[1].t - a[0].t);
+    const tailBps = (a[last].b - a[last - 1].b) / (a[last].t - a[last - 1].t);
+    return {
+      toBeat: function (t) {
+        if (t <= a[0].t) return a[0].b + (t - a[0].t) * leadBps;
+        if (t >= a[last].t) return a[last].b + (t - a[last].t) * tailBps;
+        let lo = 0, hi = last;
+        while (lo < hi - 1) { const m = (lo + hi) >> 1; if (a[m].t <= t) lo = m; else hi = m; }
+        const slope = (a[lo + 1].b - a[lo].b) / (a[lo + 1].t - a[lo].t);
+        return a[lo].b + (t - a[lo].t) * slope;
+      },
+    };
+  }
+
+  // Legacy: piecewise-linear accumulation along the tempo map.
   function secondsToBeats(seconds, s) {
     const map = s.tempoMap || [];
     if (map.length === 0) return (seconds / 60) * s.bpm;
@@ -50,6 +74,10 @@
     }
     beat += ((seconds - prevSec) / 60) * bpm;
     return beat;
+  }
+
+  function beatFromSeconds(seconds) {
+    return isLD ? curve.toBeat(seconds) : secondsToBeats(seconds, song);
   }
 
   // ── DOM refs ──
@@ -73,11 +101,10 @@
     container.innerHTML = '<div class="waiting-message">No song loaded yet.</div>';
     sectionElements = [];
     lyricElements = [];
+    wordElements = [];
   }
 
   async function loadSong() {
-    // Bundles inline the song JSON as window.__SONG_DATA__ so they work over
-    // file:// (where fetch is blocked). Server mode falls back to fetching.
     if (typeof window.__SONG_DATA__ === "object" && window.__SONG_DATA__) {
       song = window.__SONG_DATA__;
       renderSong();
@@ -85,10 +112,7 @@
     }
     try {
       var res = await fetch("song.json");
-      if (!res.ok) {
-        renderWaiting();
-        return;
-      }
+      if (!res.ok) { renderWaiting(); return; }
       song = await res.json();
       renderSong();
     } catch (e) {
@@ -99,7 +123,6 @@
 
   async function init() {
     await loadSong();
-    // Single subscriber for now: the teleprompter display.
     clock.subscribe(onBeatUpdate);
     if (song && song.bundle) {
       startAudioClock();
@@ -124,31 +147,76 @@
     audio.addEventListener("ended", function () { transportLight.className = "stopped"; });
 
     function tick() {
-      if (song) {
-        const beat = secondsToBeats(audio.currentTime || 0, song);
-        clock.emit(beat);
-      }
+      if (song) clock.emit(beatFromSeconds(audio.currentTime || 0));
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
   }
 
-  // ── Render full song ──
+  // ── Render: dispatch on format ──
   function renderSong() {
-    titleEl.textContent = song.title;
+    isLD = song.schema === "clickbait/lyrics-display@1";
+    curve = isLD && song.curve ? makeCurve(song.curve) : null;
 
+    titleEl.textContent = song.title;
     const parts = [];
     if (song.artist) parts.push(song.artist);
     if (song.key) parts.push("Key: " + song.key);
     parts.push(song.bpm + " BPM");
     metaEl.textContent = parts.join(" · ");
-
     document.title = song.title + " — clickbAIt: One Simple Track";
 
     container.innerHTML = "";
     sectionElements = [];
     lyricElements = [];
+    wordElements = [];
 
+    if (isLD) renderLyricsDisplay();
+    else renderLegacy();
+  }
+
+  // ── LyricsDisplay renderer: words grouped into lines + sections ──
+  function renderLyricsDisplay() {
+    const words = song.words;
+    const lines = song.display.lines;
+    const sections = song.display.sections || [];
+    let lastSection = null;
+
+    lines.forEach(function (line) {
+      // Section header when the line's section changes.
+      if (line.section && line.section !== lastSection) {
+        var nameEl = document.createElement("div");
+        nameEl.className = "section-name";
+        nameEl.textContent = line.section;
+        container.appendChild(nameEl);
+        var secInfo = sections.find(function (s) { return s.name === line.section; });
+        sectionElements.push({ el: nameEl, beat: secInfo ? secInfo.startBeat : 0 });
+        lastSection = line.section;
+      }
+
+      var lineEl = document.createElement("div");
+      lineEl.className = "lyric-line";
+      if (line.tag) lineEl.dataset.tag = line.tag;
+
+      var first = words[line.words[0]];
+      lineEl.dataset.beat = first ? first.startBeat : 0;
+
+      for (var i = line.words[0]; i <= line.words[1] && i < words.length; i++) {
+        var w = words[i];
+        var span = document.createElement("span");
+        span.className = "word";
+        span.textContent = w.text;
+        lineEl.appendChild(span);
+        lineEl.appendChild(document.createTextNode(" "));
+        wordElements.push({ el: span, startBeat: w.startBeat, lineEl: lineEl });
+      }
+
+      container.appendChild(lineEl);
+    });
+  }
+
+  // ── Legacy renderer (line-level SongPayload) ──
+  function renderLegacy() {
     song.sections.forEach(function (section, sIdx) {
       var sectionDiv = document.createElement("div");
       sectionDiv.className = "section";
@@ -159,27 +227,17 @@
       nameEl.textContent = section.name;
       sectionDiv.appendChild(nameEl);
 
-      // Interleave chords and lyrics by beat position
       var items = [];
-      section.chords.forEach(function (c) {
-        items.push({ beat: c.beat, type: "chord", text: c.chord });
-      });
-      section.lyrics.forEach(function (l) {
-        items.push({ beat: l.beat, type: "lyric", text: l.text, tag: l.tag });
-      });
+      (section.chords || []).forEach(function (c) { items.push({ beat: c.beat, type: "chord", text: c.chord }); });
+      (section.lyrics || []).forEach(function (l) { items.push({ beat: l.beat, type: "lyric", text: l.text, tag: l.tag }); });
       items.sort(function (a, b) { return a.beat - b.beat; });
 
-      // Group items at the same beat into chord+lyric pairs
       var beatGroups = [];
       var lastBeat = null;
       items.forEach(function (item) {
-        if (item.beat !== lastBeat) {
-          beatGroups.push({ beat: item.beat, chords: [], lyrics: [] });
-          lastBeat = item.beat;
-        }
+        if (item.beat !== lastBeat) { beatGroups.push({ beat: item.beat, chords: [], lyrics: [] }); lastBeat = item.beat; }
         var group = beatGroups[beatGroups.length - 1];
-        if (item.type === "chord") group.chords.push(item);
-        else group.lyrics.push(item);
+        if (item.type === "chord") group.chords.push(item); else group.lyrics.push(item);
       });
 
       beatGroups.forEach(function (group) {
@@ -189,7 +247,6 @@
           chordRow.textContent = group.chords.map(function (c) { return c.text; }).join("  ");
           sectionDiv.appendChild(chordRow);
         }
-
         group.lyrics.forEach(function (l) {
           var lineEl = document.createElement("div");
           lineEl.className = "lyric-line";
@@ -209,39 +266,25 @@
   function connectWebSocket() {
     var protocol = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(protocol + "//" + location.host);
-
     ws.onopen = function () {
       statusEl.textContent = "Connected";
       statusEl.className = "connected";
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     };
-
     ws.onmessage = function (event) {
       var msg;
       try { msg = JSON.parse(event.data); } catch (e) { return; }
-      if (msg.type === "position") {
-        clock.emit(msg.beat);
-      } else if (msg.type === "stop") {
-        transportLight.className = "stopped";
-      } else if (msg.type === "play") {
-        transportLight.className = "playing";
-      } else if (msg.type === "song-changed") {
-        loadSong();
-      }
+      if (msg.type === "position") clock.emit(msg.beat);
+      else if (msg.type === "stop") transportLight.className = "stopped";
+      else if (msg.type === "play") transportLight.className = "playing";
+      else if (msg.type === "song-changed") loadSong();
     };
-
     ws.onclose = function () {
       statusEl.textContent = "Disconnected — retrying…";
       statusEl.className = "disconnected";
       reconnectTimer = setTimeout(connectWebSocket, 2000);
     };
-
-    ws.onerror = function () {
-      ws.close();
-    };
+    ws.onerror = function () { ws.close(); };
   }
 
   // ── Beat update ──
@@ -251,99 +294,89 @@
     currentBeat = readingBeat;
     beatDisplay.textContent = "Beat: " + Math.round(beat * 10) / 10;
 
-    updateHighlight(beat, readingBeat);
+    if (isLD) updateWordHighlight(readingBeat);
+    else updateHighlightLegacy(beat, readingBeat);
 
-    if (autoScroll) {
-      scrollToCurrentLine(readingBeat);
-    }
+    if (autoScroll) scrollToCurrentLine(readingBeat);
   }
 
-  function updateHighlight(nowBeat, readingBeat) {
-    // Find the "now" lyric (actual song position)
-    var nowIdx = -1;
-    for (var i = lyricElements.length - 1; i >= 0; i--) {
-      if (nowBeat >= lyricElements[i].beat) { nowIdx = i; break; }
+  // LyricsDisplay: a word is active from its start until the NEXT word's start
+  // (CTC word ends are unreliable — see TODO). The active word lights; earlier
+  // words read as sung; the active line is marked for context.
+  function updateWordHighlight(readingBeat) {
+    var active = -1;
+    for (var i = wordElements.length - 1; i >= 0; i--) {
+      if (readingBeat >= wordElements[i].startBeat) { active = i; break; }
     }
-
-    // Find the "reading" lyric (offset/lookahead position)
-    var readIdx = -1;
-    for (var j = lyricElements.length - 1; j >= 0; j--) {
-      if (readingBeat >= lyricElements[j].beat) { readIdx = j; break; }
-    }
-
-    lyricElements.forEach(function (item, idx) {
-      item.el.classList.remove("reading", "now", "past");
-      if (idx === readIdx) {
-        item.el.classList.add("reading");
-      } else if (idx === nowIdx && nowIdx !== readIdx) {
-        item.el.classList.add("now");
-      } else if (idx < nowIdx) {
-        item.el.classList.add("past");
-      }
+    var activeLine = active >= 0 ? wordElements[active].lineEl : null;
+    wordElements.forEach(function (item, idx) {
+      item.el.classList.toggle("active", idx === active);
+      item.el.classList.toggle("sung", idx < active);
+      item.lineEl.classList.toggle("current", item.lineEl === activeLine);
     });
   }
 
+  // Legacy line-level highlight.
+  function updateHighlightLegacy(nowBeat, readingBeat) {
+    var nowIdx = -1;
+    for (var i = lyricElements.length - 1; i >= 0; i--) { if (nowBeat >= lyricElements[i].beat) { nowIdx = i; break; } }
+    var readIdx = -1;
+    for (var j = lyricElements.length - 1; j >= 0; j--) { if (readingBeat >= lyricElements[j].beat) { readIdx = j; break; } }
+    lyricElements.forEach(function (item, idx) {
+      item.el.classList.remove("reading", "now", "past");
+      if (idx === readIdx) item.el.classList.add("reading");
+      else if (idx === nowIdx && nowIdx !== readIdx) item.el.classList.add("now");
+      else if (idx < nowIdx) item.el.classList.add("past");
+    });
+  }
+
+  // ── Scroll ──
   var scrollTarget = 0;
   var scrolling = false;
-
   function animateScroll() {
     var current = window.scrollY;
     var diff = scrollTarget - current;
-    if (Math.abs(diff) < 1) {
-      scrolling = false;
-      return;
-    }
-    // Ease toward target — 10% per frame for smooth but responsive motion
+    if (Math.abs(diff) < 1) { scrolling = false; return; }
     window.scrollTo(0, current + diff * 0.1);
     requestAnimationFrame(animateScroll);
   }
 
   function scrollToCurrentLine(beat) {
     var target = null;
-    for (var i = lyricElements.length - 1; i >= 0; i--) {
-      if (beat >= lyricElements[i].beat) {
-        target = lyricElements[i].el;
-        break;
+    if (isLD) {
+      for (var i = wordElements.length - 1; i >= 0; i--) {
+        if (beat >= wordElements[i].startBeat) { target = wordElements[i].lineEl; break; }
+      }
+    } else {
+      for (var k = lyricElements.length - 1; k >= 0; k--) {
+        if (beat >= lyricElements[k].beat) { target = lyricElements[k].el; break; }
       }
     }
-
     if (!target) {
       for (var j = sectionElements.length - 1; j >= 0; j--) {
-        if (beat >= sectionElements[j].beat) {
-          target = sectionElements[j].el;
-          break;
-        }
+        if (beat >= sectionElements[j].beat) { target = sectionElements[j].el; break; }
       }
     }
-
     if (target) {
       var rect = target.getBoundingClientRect();
-      scrollTarget = window.scrollY + rect.top - window.innerHeight * 0.33;
-      if (!scrolling) {
-        scrolling = true;
-        requestAnimationFrame(animateScroll);
-      }
+      scrollTarget = window.scrollY + rect.top - window.innerHeight * 0.4;
+      if (!scrolling) { scrolling = true; requestAnimationFrame(animateScroll); }
     }
   }
 
   // ── Controls ──
   function setupControls() {
-    // Offset slider
     offsetSlider.addEventListener("input", function () {
       offsetBeats = parseFloat(this.value);
       offsetValue.textContent = offsetBeats;
-      if (rawBeat >= 0) onBeatUpdate(rawBeat); // re-apply with new offset
+      if (rawBeat >= 0) onBeatUpdate(rawBeat);
     });
-
-    // Auto-scroll toggle
     scrollModeBtn.classList.add("active");
     scrollModeBtn.addEventListener("click", function () {
       autoScroll = !autoScroll;
       this.classList.toggle("active", autoScroll);
       this.textContent = autoScroll ? "Auto" : "Manual";
     });
-
-    // Text size
     sizeSlider.addEventListener("input", function () {
       var s = parseFloat(this.value);
       var root = document.documentElement;
@@ -351,26 +384,15 @@
       root.style.setProperty("--chord-size", (s * 0.6) + "rem");
       root.style.setProperty("--section-size", (s * 0.5) + "rem");
     });
-
-    // Dark/light mode
     darkModeBtn.addEventListener("click", function () {
       document.body.classList.toggle("light");
       this.textContent = document.body.classList.contains("light") ? "☀️" : "🌙";
     });
-
-    // Keyboard shortcuts — only arrow keys for offset, no accidental scroll toggle
     document.addEventListener("keydown", function (e) {
-      if (e.key === "ArrowUp") {
-        offsetSlider.value = parseFloat(offsetSlider.value) + 0.5;
-        offsetSlider.dispatchEvent(new Event("input"));
-      }
-      if (e.key === "ArrowDown") {
-        offsetSlider.value = parseFloat(offsetSlider.value) - 0.5;
-        offsetSlider.dispatchEvent(new Event("input"));
-      }
+      if (e.key === "ArrowUp") { offsetSlider.value = parseFloat(offsetSlider.value) + 0.5; offsetSlider.dispatchEvent(new Event("input")); }
+      if (e.key === "ArrowDown") { offsetSlider.value = parseFloat(offsetSlider.value) - 0.5; offsetSlider.dispatchEvent(new Event("input")); }
     });
   }
 
-  // Go
   init();
 })();

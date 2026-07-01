@@ -63,11 +63,10 @@ const StemsSource = z
 
 /**
  * An authored lyric line. A line is a DISPLAY-organization unit (where text
- * wraps on the prompter), not the timing unit — timing lives at the token
- * level and is resolved from alignment at build. So a source line is normally
- * just `text`; `b`/`t` are optional MANUAL OVERRIDES for the rare case where
- * alignment failed and you want to pin the line by hand. (The built artifact,
- * by contrast, carries measured timing on every token — enforced there.)
+ * wraps on the prompter), not the timing unit — timing is measured from
+ * alignment at build. So a line is normally just `text` (+ optional `tag`);
+ * `b`/`t` are rare MANUAL OVERRIDES for when alignment failed and you want to
+ * pin it by hand.
  */
 const LyricLine = z
   .object({
@@ -78,13 +77,21 @@ const LyricLine = z
   })
   .strict();
 
-/** A labeled section. A label with a start beat, not a container. */
+/**
+ * A section. Its start beat is the structural anchor; `lines` are the lyric
+ * lines that belong to it (in sung order). Nesting makes section membership
+ * explicit, so a pickup line — sung a beat or two before the section's
+ * downbeat — still groups under its section instead of being guessed into the
+ * previous one from its measured beat. Instrumental sections omit `lines`.
+ * Lines across all sections, in order, are the full lyric fed to the aligner.
+ */
 const Section = z
   .object({
     name: z.string().min(1),
     b: z.number(),
     bars: z.number().positive(),
     cue: z.boolean().optional(),
+    lines: z.array(LyricLine).optional(),
   })
   .strict();
 
@@ -117,16 +124,15 @@ export const SongManifestSchema = z
     /** The song's intended curve. Only constant-BPM for now. */
     songCurve: z.enum(["constantBpm"]),
 
+    // Sections carry their own lyric lines (see Section). `alignment` is the
+    // only lyric file ref — the measured per-word timing, too big to inline.
+    // The flat lyric text fed to the aligner is the sections' lines in order
+    // (an intermediate), not stored here, so nothing can drift.
     sections: z.array(Section),
 
-    // `lines` is the source of truth for the lyric text (small, structured,
-    // inline). `alignment` is the only file ref — the per-word timing is too
-    // big to inline. The flat lyrics text fed to the aligner is generated from
-    // `lines`, not stored separately, so the two can't drift apart.
     lyrics: z
       .object({
         alignment: ArtifactRef.optional(),
-        lines: z.array(LyricLine),
       })
       .strict(),
 

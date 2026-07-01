@@ -30,14 +30,13 @@ function validManifest(): unknown {
     songCurve: "constantBpm",
     sections: [
       { name: "Riff", b: 0, bars: 8, cue: true },
-      { name: "Verse 1", b: 32, bars: 18, cue: true },
+      { name: "Verse 1", b: 32, bars: 18, cue: true, lines: [
+        { text: "I'm gonna fight 'em off", tag: "Lead Vocal" },
+        { text: "A seven-nation army couldn't hold me back" },
+      ] },
     ],
     lyrics: {
       alignment: { file: "source_vocals.align.json", "produced-by": "clickbait-audio align" },
-      lines: [
-        { b: 35, text: "I'm gonna fight 'em off", tag: "Lead Vocal" },
-        { b: 42, t: 20.6, text: "A seven-nation army couldn't hold me back" },
-      ],
     },
     cues: { dir: "cues/", "produced-by": "clickbait-audio speak" },
   };
@@ -69,10 +68,8 @@ describe("SongManifestSchema", () => {
         },
       },
       songCurve: "constantBpm",
-      sections: [{ name: "Verse 1", b: 0, bars: 8 }],
-      lyrics: {
-        lines: [{ b: 0, text: "hello" }],
-      },
+      sections: [{ name: "Verse 1", b: 0, bars: 8, lines: [{ text: "hello" }] }],
+      lyrics: {},
     };
     expect(() => SongManifestSchema.parse(minimal)).not.toThrow();
   });
@@ -116,7 +113,7 @@ describe("SongManifestSchema", () => {
       { b: 10, t: 5.5, text: "both" },
     ]) {
       const m = validManifest() as any;
-      m.lyrics.lines = [line];
+      m.sections[1].lines = [line]; // Verse 1
       expect(() => SongManifestSchema.parse(m), JSON.stringify(line)).not.toThrow();
     }
   });
@@ -124,7 +121,7 @@ describe("SongManifestSchema", () => {
   it("accepts a text-only lyric line (timing resolved from alignment at build)", () => {
     // A source line is a display unit; timing comes from align, not the author.
     const m = validManifest() as any;
-    m.lyrics.lines = [{ text: "no authored coordinate" }];
+    m.sections[1].lines = [{ text: "no authored coordinate" }];
     expect(() => SongManifestSchema.parse(m)).not.toThrow();
   });
 

@@ -46,8 +46,14 @@ fundamental**. The output still has both coordinates resolved.
 5. **No structural reuse.** Loops are unrolled in the source. Practice
    looping is a playback-time concern (REAPER region loop + count-in audio),
    not a schema concern. Static absolute lyric positions survive looping.
-6. **Sections are labels with a start beat**, not containers. Lyrics are a
-   flat list with absolute coordinates.
+6. **Sections carry their lyric lines** (REVISED 2026-07-01, was "labels, flat
+   list"). A section has a start beat *and* nests the lyric lines that belong
+   to it, in sung order. This makes section membership explicit so a pickup —
+   sung a beat or two before the section downbeat — groups under its section
+   instead of being guessed into the previous one from its measured beat.
+   Timing is still measured (alignment), not authored; only the grouping is
+   authored. The flat lyric text fed to the aligner is the sections' lines in
+   order (an intermediate), so nothing drifts.
 7. **`song.json` is a manifest** that explicitly references `clickbait-audio`
    outputs (`*.beats.json`, `*.analysis.json`, `*.align.json`, stems, cues).
    Each artifact carries a `produced-by` annotation for provenance.

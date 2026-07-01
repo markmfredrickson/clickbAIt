@@ -41,9 +41,7 @@ function mkManifest(over: Record<string, unknown> = {}): SongManifest {
     },
     songCurve: "constantBpm",
     sections: [],
-    lyrics: {
-      lines: [],
-    },
+    lyrics: {},
     ...over,
   });
 }
@@ -107,17 +105,18 @@ describe("buildLyricsDisplay", () => {
       ["GO A MARCHIN IN WHEN THE SAINTS GO IN".split(" ").map((t, i) => [t, 1000 + i * 200, 1100 + i * 200] as [string, number, number])][0],
     );
     const m = mkManifest({
-      lyrics: {
-        lines: [
+      sections: [
+        { name: "Verse 1", b: 0, bars: 8, lines: [
           { text: "go a-marchin' in" }, // 4 normalized words (hyphen splits)
           { text: "when the saints go in" }, // 5 normalized words
-        ],
-      },
+        ] },
+      ],
     });
     const out = buildLyricsDisplay(m, align, beats);
     expect(out.display.lines).toHaveLength(2);
     expect(out.display.lines[0].words).toEqual([0, 3]); // 4 words: indices 0..3
     expect(out.display.lines[1].words).toEqual([4, 8]); // 5 words: indices 4..8
+    expect(out.display.lines[0].section).toBe("Verse 1");
   });
 
   // #4 sections copied as display labels
@@ -137,23 +136,23 @@ describe("buildLyricsDisplay", () => {
     ]);
   });
 
-  // #5 line -> section: last section starting at or before the line's first word
-  it("attributes each line to the section it starts in", () => {
+  // #5 explicit section membership — a pickup groups under its section even
+  // though its measured beat lands before the section's start beat.
+  it("uses the containing section, so a pickup groups under its section", () => {
     const beats = mkBeats(200);
-    // two words: first at 1.0s (beat 2), second at 40.0s (beat 80)
-    const align = mkAlign([["EARLY", 1000, 1100], ["LATE", 40000, 40100]]);
+    // "PICKUP" sung at 30s => beat 60, which is BEFORE Verse 1's beat (64).
+    const align = mkAlign([["EARLY", 1000, 1100], ["PICKUP", 30000, 30100]]);
     const m = mkManifest({
       sections: [
-        { name: "Chorus 1", b: 0, bars: 16 },
-        { name: "Instrumental", b: 64, bars: 20 },
+        { name: "Intro", b: 0, bars: 16, lines: [{ text: "early" }] },
+        { name: "Verse 1", b: 64, bars: 16, lines: [{ text: "pickup" }] },
       ],
-      lyrics: {
-        lines: [{ text: "early" }, { text: "late" }],
-      },
     });
     const out = buildLyricsDisplay(m, align, beats);
-    expect(out.display.lines[0].section).toBe("Chorus 1"); // beat 2
-    expect(out.display.lines[1].section).toBe("Instrumental"); // beat 80 >= 64
+    expect(out.display.lines[0].section).toBe("Intro");
+    // pickup beat 60 < Verse 1's 64, yet it's grouped under Verse 1 by authorship
+    expect(out.words[out.display.lines[1].words[0]].startBeat).toBeCloseTo(60);
+    expect(out.display.lines[1].section).toBe("Verse 1");
   });
 
   // pre-roll: downbeat sits at the pre-roll offset; count-in is negative beats
@@ -191,13 +190,10 @@ describe("buildLyricsDisplay", () => {
     const m = mkManifest({
       title: "When the Saints Go Marching In",
       artist: "Louis Armstrong",
-      sections: [{ name: "Chorus 1", b: 0, bars: 16, cue: true }],
-      lyrics: {
-        lines: [
-          { text: "when the saints", tag: "Lead" },
-          { text: "go marchin' in", tag: "Response" },
-        ],
-      },
+      sections: [{ name: "Chorus 1", b: 0, bars: 16, cue: true, lines: [
+        { text: "when the saints", tag: "Lead" },
+        { text: "go marchin' in", tag: "Response" },
+      ] }],
     });
     const out = buildLyricsDisplay(m, align, beats);
     expect(out.title).toBe("When the Saints Go Marching In");

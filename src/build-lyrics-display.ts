@@ -73,31 +73,27 @@ export function buildLyricsDisplay(
     ...(s.cue !== undefined ? { cue: s.cue } : {}),
   }));
 
-  // Slice the authored lines into word ranges by normalized word count, and
-  // attribute each line to the section it starts in.
+  // Walk sections in order and slice their lines' words off the aligned
+  // stream (word counts match because the aligner was fed these same lines in
+  // this same order). Section membership is EXPLICIT — the containing section —
+  // so a pickup sung before its section's downbeat still groups under it,
+  // rather than being guessed into the previous section from its beat.
   const lines: DisplayLine[] = [];
   let cursor = 0;
-  for (const line of manifest.lyrics.lines) {
-    const count = alignWords(line.text).length;
-    if (count === 0) continue;
-    if (cursor >= words.length) break; // ran out of aligned words
-    const start = cursor;
-    const end = Math.min(cursor + count, words.length) - 1; // inclusive
-    cursor += count;
-
-    // Last section starting at or before this line's first word.
-    const lineStartBeat = words[start].startBeat;
-    let section: string | undefined;
-    for (const s of sections) {
-      if (s.startBeat <= lineStartBeat) section = s.name;
-      else break;
+  for (const section of manifest.sections) {
+    for (const line of section.lines ?? []) {
+      const count = alignWords(line.text).length;
+      if (count === 0) continue;
+      if (cursor >= words.length) break; // ran out of aligned words
+      const start = cursor;
+      const end = Math.min(cursor + count, words.length) - 1; // inclusive
+      cursor += count;
+      lines.push({
+        words: [start, end],
+        ...(line.tag ? { tag: line.tag } : {}),
+        section: section.name,
+      });
     }
-
-    lines.push({
-      words: [start, end],
-      ...(line.tag ? { tag: line.tag } : {}),
-      ...(section ? { section } : {}),
-    });
   }
 
   const slug = manifest.artist

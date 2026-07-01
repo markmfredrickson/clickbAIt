@@ -58,6 +58,10 @@ const StemsSource = z
     "produced-by": z.string().min(1),
     dir: z.string().min(1),
     files: z.record(z.string(), z.string().min(1)),
+    /** Seconds to trim from the start of each source file (skip an intro). */
+    soffs: z.number().nonnegative().optional(),
+    /** File-absolute source end in seconds; caps item length to sourceEnd - soffs. */
+    sourceEnd: z.number().positive().optional(),
   })
   .strict();
 
@@ -91,6 +95,9 @@ const Section = z
     b: z.number(),
     bars: z.number().positive(),
     cue: z.boolean().optional(),
+    /** Meter for this section, if it differs from the song default (e.g. a 6/8
+     *  bridge). Omitted = inherit the song's timeSignature. */
+    timeSignature: TimeSignature.optional(),
     lines: z.array(LyricLine).optional(),
   })
   .strict();

@@ -88,3 +88,8 @@ practice/
 
 # Personal dogfooding tool, not part of the project
 bin/sync-band.sh
+
+# Scratch / experiments
+tmp/
+# Demucs stems are large + regenerable; keep out of git even under example-songs
+songs/example-songs/stems/

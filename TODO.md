@@ -106,3 +106,21 @@ Whisper on a few songs before committing to one path.
 
 Either approach writes the same `.words.json` sidecar shape so the rest of the
 pipeline is unchanged.
+
+## Teleprompter: visual count-in cues
+
+A lyrics display that brings the singer in, mirroring the spoken count-in cues
+the RPP already generates (the "1, 2, 3, 4" WAVs one bar before a cued section).
+Before each `cue: true` section, show a greyed count — e.g. "1 2 3 4" — that
+highlights beat-by-beat leading into the section's first word, so the singer
+knows exactly when to come in. Same idea could show the upcoming section label
+("Chorus") greyed ahead of time.
+
+Data: reuse the cue/count events the build ALREADY generates — don't re-derive.
+`build-rpp.ts` computes the count-in beats (the count WAVs one bar before each
+cued section) and the spoken section announcement two bars before; these
+already respect the actual meter (odd bars, etc.), so no "assume 4" guesswork.
+Surface those same events (beat + label, e.g. "1".."4" and "Chorus") into the
+built artifact (LyricsDisplay or a sibling cues block), and the teleprompter
+renders the visual count-in straight off them — the screen and the spoken cue
+fire from one source of truth. No need to add `timeSignature` for this.

@@ -67,3 +67,19 @@ describe("manifestToSong", () => {
     expect(audios[0].soffs).toBe(0.5);
   });
 });
+
+describe("manifestToSong cue marks", () => {
+  it("maps section.cues to cue() events at section-relative beats", () => {
+    const m = SongManifestSchema.parse({
+      schema: "clickbait/song@1", title: "T", bpm: 120, timeSignature: [4, 4],
+      sources: { recording: { kind: "audio", file: "s.m4a", beats: { file: "b.json", "produced-by": "x" }, anchor: { t: 0, b: 0 } } },
+      songCurve: "constantBpm",
+      sections: [{ name: "Hit", b: 0, bars: 1, cue: true, cues: [{ at: 0, label: "one" }] }],
+      lyrics: {},
+    });
+    const song: any = manifestToSong(m, mkBeats(4), "/x");
+    const hit = song.children[0].children[0];
+    expect(hit.name).toBe("Hit");
+    expect(hit.children[0]).toMatchObject({ type: "cue", value: "one", offset: 0 });
+  });
+});

@@ -15,7 +15,7 @@
  */
 
 import { resolve } from "node:path";
-import { song, seq, span, audio, bars } from "./dsongl/index.js";
+import { song, seq, span, audio, bars, cue } from "./dsongl/index.js";
 import type { Song, Node } from "./dsongl/index.js";
 import type { SongManifest } from "./manifest.js";
 import { Curve } from "./curve.js";
@@ -40,12 +40,15 @@ export function manifestToSong(
 ): Song {
   // Sections -> spans. Structure only (name, duration, cue, meter override);
   // lyrics stay out of the tree — build-lyrics measures their timing.
-  const spans: Node[] = manifest.sections.map((s) =>
-    span(s.name, bars(s.bars), {
+  const spans: Node[] = manifest.sections.map((s) => {
+    const opts = {
       ...(s.cue !== undefined ? { cue: s.cue } : {}),
       ...(s.timeSignature ? { timeSignature: s.timeSignature } : {}),
-    }),
-  );
+    };
+    // Manual spoken cues become cue() events at section-relative beats.
+    const marks: Node[] = (s.cues ?? []).map((m) => cue(m.label, m.at));
+    return marks.length > 0 ? span(s.name, bars(s.bars), opts, marks) : span(s.name, bars(s.bars), opts);
+  });
 
   // Stems -> audio tracks. All share the recording's beats and the anchor-
   // derived offset (and any group-level source trim).

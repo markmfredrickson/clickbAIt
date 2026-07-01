@@ -98,6 +98,10 @@ const Section = z
     /** Meter for this section, if it differs from the song default (e.g. a 6/8
      *  bridge). Omitted = inherit the song's timeSignature. */
     timeSignature: TimeSignature.optional(),
+    /** Manual spoken cues at beats relative to this section's start (e.g. a
+     *  count-in "1,2,3,4" or a "hit"). Distinct from `cue` (which auto-announces
+     *  the section name); these are extra band cues placed by hand. */
+    cues: z.array(z.object({ at: z.number(), label: z.string().min(1) }).strict()).optional(),
     lines: z.array(LyricLine).optional(),
   })
   .strict();

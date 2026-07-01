@@ -143,6 +143,24 @@ export function secondsToBeats(seconds: number, song: TimingSong): number {
   return curve.toBeat(seconds);
 }
 
+/** True when the loaded song is a LyricsDisplay (drives REAPER `/beat/str` use). */
+function isLyricsDisplay(song: LoadedSong): song is LyricsDisplay {
+  return "schema" in song && song.schema === "clickbait/lyrics-display@1";
+}
+
+/**
+ * Parse REAPER's `/beat/str` ("measure.beat.hundredths", PROJOFFS-aware so the
+ * downbeat is measure 1 and the count-in is negative measures) into a
+ * continuous downbeat-relative beat: downbeat = 0, count-in negative.
+ */
+export function beatStrToBeats(beatStr: string, beatsPerBar: number): number {
+  const parts = beatStr.split(".");
+  const measure = parseInt(parts[0], 10);
+  const beat = parseInt(parts[1] ?? "1", 10);
+  const hundredths = parts[2] ? parseInt(parts[2], 10) : 0;
+  return (measure - 1) * beatsPerBar + (beat - 1) + hundredths / 100;
+}
+
 // ── Server ──
 
 export function startRelay(opts: RelayOptions) {
@@ -392,7 +410,10 @@ export function startRelay(opts: RelayOptions) {
     const messages = parseOscPacket(msg);
     for (const parsed of messages) {
       if (parsed.type === "float") {
-        if (parsed.address === "/time" && currentSong) {
+        // Legacy SongPayload: derive beat from /time through the tempo map.
+        // LyricsDisplay uses REAPER's /beat/str instead (handled below), which
+        // is PROJOFFS-aware and stays correct at any tempo/playrate.
+        if (parsed.address === "/time" && currentSong && !isLyricsDisplay(currentSong)) {
           const beat = secondsToBeats(parsed.value, currentSong);
           broadcast(JSON.stringify({ type: "position", beat }));
           // Log beat progress as a spinner (update every ~4 beats)
@@ -420,7 +441,12 @@ export function startRelay(opts: RelayOptions) {
           }
         }
       } else if (parsed.type === "string") {
-        if ((parsed.address === "/lastmarker/name" || parsed.address === "/lastregion/name") && parsed.value) {
+        if (parsed.address === "/beat/str" && currentSong && isLyricsDisplay(currentSong)) {
+          // REAPER's PROJOFFS-aware beat — downbeat is measure 1, count-in is
+          // negative measures. Stays correct at any tempo/playrate.
+          const beat = beatStrToBeats(parsed.value, currentSong.timeSignature[0]);
+          broadcast(JSON.stringify({ type: "position", beat }));
+        } else if ((parsed.address === "/lastmarker/name" || parsed.address === "/lastregion/name") && parsed.value) {
           const slug = toSlug(parsed.value);
           if (slug) switchSong(slug);
         }

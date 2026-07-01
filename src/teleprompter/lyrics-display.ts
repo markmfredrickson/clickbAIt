@@ -69,6 +69,9 @@ export interface LyricsDisplay {
   artist?: string;
   key?: string;
   bpm: number;
+  /** [beats-per-bar, beat-unit]. Lets a client turn REAPER's measure.beat OSC
+   *  string into a continuous beat. */
+  timeSignature: [number, number];
   /** Slug for file lookup and RPP region identification. */
   slug: string;
   /** Song curve anchors (constant tempo => two). Lets a client convert beats to seconds. */

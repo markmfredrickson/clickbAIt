@@ -110,6 +110,7 @@ export function buildLyricsDisplay(
     ...(manifest.artist ? { artist: manifest.artist } : {}),
     ...(manifest.key ? { key: manifest.key } : {}),
     bpm: manifest.bpm,
+    timeSignature: manifest.timeSignature,
     slug,
     curve: [...songCurve.anchors],
     words,

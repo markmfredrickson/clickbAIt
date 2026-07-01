@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseOscFloat, parseOscPacket, parseOscMessage, secondsToBeats } from "../../src/teleprompter/relay.js";
+import { parseOscFloat, parseOscPacket, parseOscMessage, secondsToBeats, beatStrToBeats } from "../../src/teleprompter/relay.js";
 import type { SongPayload } from "../../src/teleprompter/types.js";
 
 /** Build a minimal OSC message with address and a single float arg. */
@@ -188,5 +188,22 @@ describe("secondsToBeats", () => {
     const empty: SongPayload = { title: "T", slug: "t", bpm: 90, tempoMap: [], sections: [] };
     // Falls back to master BPM: 90 BPM = 1.5 beats/sec
     expect(secondsToBeats(2, empty)).toBeCloseTo(3);
+  });
+});
+
+describe("beatStrToBeats", () => {
+  // REAPER /beat/str "measure.beat.hundredths", PROJOFFS-aware (downbeat = m1).
+  it("maps the downbeat (measure 1) to beat 0", () => {
+    expect(beatStrToBeats("1.1.00", 4)).toBeCloseTo(0);
+  });
+  it("maps count-in (negative measures) to negative beats", () => {
+    expect(beatStrToBeats("-3.1.13", 4)).toBeCloseTo(-15.87); // 4 bars before downbeat
+    expect(beatStrToBeats("-1.1.00", 4)).toBeCloseTo(-8);
+  });
+  it("combines measure, beat, and hundredths", () => {
+    expect(beatStrToBeats("5.2.50", 4)).toBeCloseTo(17.5); // (5-1)*4 + (2-1) + 0.5
+  });
+  it("honors odd meter", () => {
+    expect(beatStrToBeats("2.1.00", 3)).toBeCloseTo(3); // (2-1)*3
   });
 });

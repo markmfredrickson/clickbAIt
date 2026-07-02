@@ -29,7 +29,7 @@ const RouteSchema = z.object({
   hwout: HwSchema.optional(),
   /** Mute by default (stems ship muted so you unmute what you need). */
   muted: z.boolean().default(false),
-  /** Linear gain (1 = unity). Stems default ~-3 dB. */
+  /** Linear gain (1 = unity, the default). Balance is set on the mixer. */
   gain: z.number().positive().default(1),
 });
 export type Route = z.infer<typeof RouteSchema>;

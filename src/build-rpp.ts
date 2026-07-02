@@ -397,13 +397,12 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
       console.error(`Applying preRollSeconds=${defaultSoffs}s as soffs to ${applied} audio item${applied === 1 ? "" : "s"}`);
     }
   }
-  // Stems sit at -3dB so the click and cue tracks (at 0dB) cut through the mix.
-  // 0.70794578438414 = 10^(-3/20). A rig stems Route can override gain/mute/send.
+  // Stems default to unity — balance is set downstream (on the mixer), not
+  // baked into the render. A rig stems Route can override gain/mute/send.
   const stemsR = routeOpts(opts.rig?.generated?.stems, true);
-  const stemVolume = opts.rig?.generated?.stems ? stemsR.gain : 0.70794578438414;
   for (const [trackName, audioEvents] of audioByTrack) {
     const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs);
-    rppLines.push(buildTrack(trackName, stemVolume, items, {
+    rppLines.push(buildTrack(trackName, stemsR.gain, items, {
       beat: -1, mainsend: stemsR.mainsend, hwout: stemsR.hwout, muted: stemsR.muted,
     }));
   }

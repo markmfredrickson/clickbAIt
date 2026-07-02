@@ -185,10 +185,19 @@ Both migrated. audioslave/like-a-stone: clean source-stem path, nothing special.
 tom-petty/mary-janes-last-dance: karaokeversion.com multitrack — 10 real isolated
 stems + a click track in `songs/tom-petty/kv/`, NOT source.m4a+Demucs. Beats come
 from `kv/click.mp3.beats.json`; aligned on the isolated `kv/lead-vocal.mp3`
-(great alignment off a clean vocal). Manifest bpm set to the click's true tempo
-84.50704225352102 (was 85 in the .ts) so REAPER matches the karaoke and the
-stems need no stretch. The .ts lyrics were already present (no lyric-fetch
+(great alignment off a clean vocal). Manifest bpm set to the click's average
+tempo 84.50704225352102 (was 85 in the .ts) so REAPER's average matches the
+karaoke and NET stretch is minimized — but per-beat stretch still applies and is
+needed (NOT identity). The .ts lyrics were already present (no lyric-fetch
 needed) — the earlier "no lyrics.txt" was just a missing sidecar.
+
+OPEN QUESTION on tom-petty click: the detected click beats vary a lot — local
+76–98 bpm, sd 2.6%, ~0.5-beat cumulative drift from an even grid. That's
+suspicious for a karaokeversion metronome click; likely partly beat-DETECTION
+noise on click.mp3, not real tempo movement. If the click is a true metronome,
+stretching the stems to those noisy beats would wobble otherwise-steady stems —
+better to generate EVEN beats at 84.507 than detect them. Verify before trusting
+tom-petty's fine sync (listen / diff detected vs even beats).
 
 ### Hand-edited manifests: do not re-convert
 lonely-boy (added missing opening line "Well I'm so above you..."), crowded-house

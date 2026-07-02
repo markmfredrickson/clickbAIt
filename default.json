@@ -4,7 +4,7 @@
   "generated": {
     "click": { "master": false, "hwout": { "mono": 20 } },
     "cues":  { "master": false, "hwout": { "mono": 19 } },
-    "stems": { "master": true, "muted": true, "gain": 0.708 }
+    "stems": { "master": true, "muted": true }
   },
 
   "bandBlock": {

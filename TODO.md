@@ -199,6 +199,18 @@ stretching the stems to those noisy beats would wobble otherwise-steady stems â€
 better to generate EVEN beats at 84.507 than detect them. Verify before trusting
 tom-petty's fine sync (listen / diff detected vs even beats).
 
+### Alignment: vowel-initial word onsets are imprecise (CTC limitation)
+Seen clearly on audioslave/like-a-stone (sustained, legato vocal). wav2vec2 CTC
+locks to acoustic boundaries; consonants have an attack transient to pin, vowels
+ramp in with none, so vowel-initial words get their onset placed late or folded
+into a neighbor (COBWEB held 2.4 beats then a 4.6-beat gap before AFTERNOON;
+short vowel words A/IN/OF/I collapse to ~0.04 beat). Inherent to the method,
+worse on legato singing. Fix = vowel-onset refinement pass: for vowel-initial
+words, nudge the onset from audio energy rise / previous word end / beat grid
+(same neighborhood as syllable-karaoke + windowed align). Optional beat-snapping
+(quantize onsets) is a separate opt-in the user only wants on request. Interim:
+the 1-beat lookahead masks small onset lag (the common direction).
+
 ### Hand-edited manifests: do not re-convert
 lonely-boy (added missing opening line "Well I'm so above you..."), crowded-house
 (outro trimmed), and tom-petty (bpm â†’ click's 84.507) manifests are HAND-EDITED.

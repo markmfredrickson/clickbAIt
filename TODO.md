@@ -124,3 +124,47 @@ Surface those same events (beat + label, e.g. "1".."4" and "Chorus") into the
 built artifact (LyricsDisplay or a sibling cues block), and the teleprompter
 renders the visual count-in straight off them — the screen and the spoken cue
 fire from one source of truth. No need to add `timeSignature` for this.
+
+## Catalog migration: flagged song issues (2026-07-01)
+
+Found while migrating the .ts catalog to manifests via `src/ts-to-manifest.ts`.
+None block the songs that work (white-stripes, sheryl-crow); these are the
+stragglers.
+
+### Converter bug: fractional bars for time-signature-override sections
+`ts-to-manifest.ts` computes a section's `bars` against the SONG's meter, not
+the section's own. A 2/4 "Pickup" (`beats(2)`, `timeSignature:[2,4]`) becomes
+`bars: 0.5` — which `manifestToSong` then reads as 0.5 bars of 2/4 = **1 beat**,
+not the intended 1 bar / 2 beats. Meanwhile the converter's cumulative `b`
+advances by the right 2 beats, so the manifest is internally inconsistent: the
+RPP (via linearize) and the lyrics (via section `b`) drift 1 beat per pickup.
+Fix: in `barsOf`/cursor, use `span.timeSignature?.[0] ?? songBeatsPerBar`.
+Affects crowded-house (2 pickups). Re-convert after fixing.
+
+### Converter: nested spans are dropped
+The converter reads only top-level spans as sections and their `event` children
+(lyrics/cues). It ignores nested *spans*. aimee-mann/save-me nests a 2/4
+"Pickup" span (with `one`/`two` count cues) inside "Instrumental Break" — the
+whole 2/4 bar and its counts vanish on conversion. Fix: flatten a nested span
+into its own top-level manifest section, carrying its `timeSignature` and cues,
+with correct beat accounting. (The manifest schema is flat — no sub-sections —
+so flattening is the model, not nesting.)
+
+### Alignment: duplicate/repeated lines mis-place words (needs windowed align)
+aimee-mann chorus is the concrete case. A single global wav2vec2 CTC pass over a
+song with repeated choruses + instrumental gaps spreads words across the gaps:
+"'cause I can" pulled ~13 beats early (onto the prior chorus tail), "tell"
+stranded at the true verse start (11-beat gap). Slicing is fine (right word
+counts per line); the ALIGNMENT is wrong. Fix = windowed / silence-based
+alignment (see the align-chunking section above), aligning each section/phrase
+against only its own audio so repeats + gaps can't cross-contaminate.
+Concern to honor: don't hard-cut at section boundaries — pickups sit before the
+downbeat and phrases ring over. Prefer splitting at vocal SILENCES (never
+bisects a sung phrase) and/or padded overlapping windows; section membership is
+already explicit in the manifest, so ownership is safe under overlap.
+
+### Crowded House: live-recording audio vs studio lyrics
+The source recording is a LIVE version (chosen to match the band's live ending),
+but `dont-dream-its-over.lyrics.txt` is the studio lyrics. Alignment mismatches,
+especially at the ending. Fix: transcribe/edit the lyrics to match the live
+performance before aligning. Also has 2/4 pickups (see converter bug above).

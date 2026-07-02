@@ -144,7 +144,7 @@ const manifest: Record<string, unknown> = {
   songCurve: "constantBpm",
   sections,
   lyrics: vocalsKey
-    ? { alignment: { file: join(stemDir, files[vocalsKey]).replace(/\.wav$/i, ".align.json"), "produced-by": "clickbait-audio align" } }
+    ? { alignment: { file: join(stemDir, files[vocalsKey]).replace(/\.[^.]+$/, ".align.json"), "produced-by": "clickbait-audio align" } }
     : {},
   cues: { dir: "cues/", "produced-by": "clickbait-audio speak" },
 };

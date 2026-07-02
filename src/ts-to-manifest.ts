@@ -35,14 +35,18 @@ const seq = song.children.find((c): c is Node & { children?: Node[] } => c.kind 
 const spans = (seq?.children ?? []).filter((c): c is Span => c.kind === "span");
 
 function barsOf(span: Span): number {
+  // A section's bars are counted in ITS OWN meter, not the song's — a 2/4
+  // pickup of beats(2) is 1 bar, not 0.5 of a 4/4 bar.
+  const bpb = span.timeSignature?.[0] ?? beatsPerBar;
   const d = span.duration;
   if (!d) throw new Error(`span "${span.name}" has no duration`);
   if ("bars" in d) return d.bars;
-  return d.beats / beatsPerBar; // beats → bars
+  return d.beats / bpb; // beats → bars in the section's meter
 }
 
 let cursor = 0;
 const sections = spans.map((span) => {
+  const sectionBpb = span.timeSignature?.[0] ?? beatsPerBar;
   const bars = barsOf(span);
   const events = (span.children ?? []).filter((c): c is Event => c.kind === "event");
   const lines = events
@@ -56,7 +60,7 @@ const sections = spans.map((span) => {
   if (span.timeSignature) section.timeSignature = span.timeSignature;
   if (cues.length) section.cues = cues;
   if (lines.length) section.lines = lines;
-  cursor += bars * beatsPerBar;
+  cursor += bars * sectionBpb;
   return section;
 });
 

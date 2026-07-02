@@ -88,10 +88,26 @@ audio they aren't in. Aligning each silence-bounded phrase clip independently
   "home" lands inside the final vocal phrase, not 16s into the outro. Onset-snap
   to vocal-stem energy is the finer follow-on; a cheap interim is clamping a
   trailing word's start when the pre-gap is implausibly large.
+- **Aimee Mann "Save Me" — chorus duplicate lines.** Repeated choruses +
+  instrumental gaps: "'cause I can" pulled ~13 beats early onto the prior chorus
+  tail, "tell" stranded 11 beats later at the true verse start. (Details in the
+  catalog-migration section below.)
+- **Crowded House "Don't Dream It's Over" — outro end-smear.** The final chorus's
+  last line drags into the repetitive "we know they won't win / hey now" vamp
+  that follows it (last word ~48 beats late). Whatever line is last drags — the
+  vamp acoustically repeats it. Per-clip align bounding the final chorus to its
+  own audio is the fix. (Catalog-migration section below.)
 
 Display-side mitigation (independent of the above): highlight each word from its
 start to the NEXT word's start, not its own `endMs` — CTC word ends are
 unreliable. Does not fix a wrong *start* like the SNA "home" case.
+
+**Finer follow-on — vowel-initial onset refinement.** Separate from chunking but
+same "improve measured timing" cluster: vowel-initial words have no attack
+transient for CTC to lock to, so their onsets are late/folded (audioslave case,
+detailed in the catalog-migration section). Onset-snap to vocal-stem energy
+rise, applied after chunking. Group these — chunking + onset refinement — as one
+alignment-quality effort when it's picked up.
 
 ### Forced alignment (larger win)
 

@@ -163,8 +163,18 @@ downbeat and phrases ring over. Prefer splitting at vocal SILENCES (never
 bisects a sung phrase) and/or padded overlapping windows; section membership is
 already explicit in the manifest, so ownership is safe under overlap.
 
-### Crowded House: live-recording audio vs studio lyrics
-The source recording is a LIVE version (chosen to match the band's live ending),
-but `dont-dream-its-over.lyrics.txt` is the studio lyrics. Alignment mismatches,
-especially at the ending. Fix: transcribe/edit the lyrics to match the live
-performance before aligning. Also has 2/4 pickups (see converter bug above).
+### Crowded House: live outro is a repetitive vamp (blocked on windowed align)
+The recording is a LIVE version. Verses + choruses align cleanly; the converter
+meter/pickup bug is now FIXED (commit). The ONLY remaining problem is the outro:
+a long repetitive singalong ("we know they won't win / hey now" x many). Whisper
+LOOPS on it (~50x "and we know that they won't win"), and forced-alignment smears
+the repeated lines — the same duplicate-lines wall as aimee, NOT a lyrics-content
+problem. Can't precisely time the outro until windowed/silence-chunked alignment
+lands. Until then: ship as-is (good through the last chorus, outro vamp smears)
+or trim the outro lines.
+
+### Hand-edited manifests: do not re-convert
+lonely-boy (added missing opening line "Well I'm so above you...") and
+crowded-house manifests are now HAND-EDITED. Do NOT re-run ts-to-manifest.ts on
+them — it overwrites the edits. Their .ts files are stale; delete them in the
+.ts retirement pass.

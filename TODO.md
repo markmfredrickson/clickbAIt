@@ -227,6 +227,16 @@ words, nudge the onset from audio energy rise / previous word end / beat grid
 (quantize onsets) is a separate opt-in the user only wants on request. Interim:
 the 1-beat lookahead masks small onset lag (the common direction).
 
+### Teleprompter polish: section header should start at the section's first sung word
+When a section's first line is a pickup (first word slightly before the section
+downbeat), the section header is anchored at the downbeat (`section.startBeat`),
+so for that fraction the prompter still shows the PREVIOUS section. Seen on
+tom-petty Verse 2 (first word @143.7, downbeat 144 → flashes "Post-Chorus").
+Fix: anchor each section header at min(section.startBeat, its first line's first
+word beat) so it turns over when the section's vocal actually enters. Small,
+client/build-lyrics-display side. (Distinct from the windowed-align pickup
+concern; this is just the header label.)
+
 ### Hand-edited manifests: do not re-convert
 lonely-boy (added missing opening line "Well I'm so above you..."), crowded-house
 (outro trimmed), and tom-petty (bpm → click's 84.507) manifests are HAND-EDITED.

@@ -15,6 +15,7 @@ import { execSync } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
 import { SongManifestSchema } from "./manifest.js";
 import { manifestToSong } from "./manifest-to-song.js";
+import { RigSchema } from "./rig.js";
 import { buildRpp } from "./build-rpp.js";
 import { buildLyricsDisplay } from "./build-lyrics-display.js";
 import { extractSections } from "./sections.js";
@@ -43,6 +44,13 @@ const clickDir = resolve(root, "assets", "clicks");
 const cueDir = join(outDir, "cues");
 mkdirSync(cueDir, { recursive: true });
 
+// Rig config (routing + record tracks). Rig-level, not per-song: a repo-root
+// default.json applies to every project. Absent → no routing, no record tracks.
+const rigPath = process.env.CLICKBAIT_RIG ?? resolve(root, "default.json");
+const rig = existsSync(rigPath)
+  ? RigSchema.parse(JSON.parse(readFileSync(rigPath, "utf8")))
+  : undefined;
+
 // Inert manifest -> internal Song (RPP side).
 const song = manifestToSong(manifest, beats, dir);
 
@@ -62,7 +70,7 @@ for (const name of cueNames) speak(name, join(cueDir, `${slugify(name)}.wav`));
 for (let i = 1; i <= maxBeatsPerBar; i++) speak(String(i), join(cueDir, `${i}.wav`));
 
 // RPP (cue WAVs now exist for duration measurement).
-const { rpp } = buildRpp(song, { cueDir, countDir: cueDir, clickDir });
+const { rpp } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig });
 const slug = songSlug(song);
 writeFileSync(join(outDir, `${slug}.RPP`), rpp);
 

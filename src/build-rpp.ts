@@ -17,6 +17,7 @@ import { extractSections, type Section } from "./sections.js";
 import { songSlug } from "./dsongl/index.js";
 import { beatsToStretchMarkers, formatStretchMarkers, type Beat } from "./stretch-markers.js";
 import { Curve } from "./curve.js";
+import { hwoutField, recordTrackSpecs, type Rig, type Route } from "./rig.js";
 
 import { accessSync, constants } from "fs";
 
@@ -97,6 +98,26 @@ export interface BuildOptions {
   countDir: string;
   /** Directory containing click samples: accent.wav, beat.wav */
   clickDir: string;
+  /** Rig routing + record-track layout (default.json). Optional — without it,
+   *  no hardware routing is emitted and no record tracks are added. */
+  rig?: Rig;
+}
+
+/** Track options (mainsend/hwout/mute/gain) for a generated track from a rig
+ *  Route, or sensible defaults when no rig is configured. */
+function routeOpts(route: Route | undefined, fallbackToMaster: boolean): {
+  mainsend: string;
+  hwout?: number;
+  muted: boolean;
+  gain: number;
+} {
+  if (!route) return { mainsend: fallbackToMaster ? "1 0" : "0 0", muted: false, gain: 1 };
+  return {
+    mainsend: route.master ? "1 0" : "0 0",
+    hwout: route.hwout ? hwoutField(route.hwout) : undefined,
+    muted: route.muted,
+    gain: route.gain,
+  };
 }
 
 export function buildRpp(song: Song, opts: BuildOptions): RppProject {
@@ -279,6 +300,9 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   rppLines.push(`  RIPPLE 0 0`);
   rppLines.push(`  AUTOXFADE 129`);
   rppLines.push(`  SAMPLERATE 44100 0 0`);
+  if (opts.rig?.master?.hwout) {
+    rppLines.push(`  MASTERHWOUT ${hwoutField(opts.rig.master.hwout)} 0 1 0 0 0 0 -1`);
+  }
   // Project measure offset: relabel the bar grid so the song's downbeat reads
   // as Bar 1 and the slug/count-in falls on negative bars (timeline still
   // starts at 0:00). Cosmetic — REAPER bar numbers only; the teleprompter
@@ -336,12 +360,17 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
 
   // Click track (SOURCE CLICK — follows tempo map automatically)
   const clickItemContent = buildClickItem(song, sections, tempoMap, curve, opts);
-  rppLines.push(buildTrack("Click", 1, clickItemContent, {
-    beat: -1, playoffs: "0 1", nchan: 2, mainsend: "1 0",
+  const clickR = routeOpts(opts.rig?.generated?.click, true);
+  rppLines.push(buildTrack("Click", clickR.gain, clickItemContent, {
+    beat: -1, playoffs: "0 1", nchan: 2,
+    mainsend: clickR.mainsend, hwout: clickR.hwout, muted: clickR.muted,
   }));
 
   // Cues & Counts track (BEAT -1 = time-based, so positions in seconds aren't reinterpreted as beats)
-  rppLines.push(buildTrack("Cues & Counts", 1, buildWaveItems(trackItems), { beat: -1 }));
+  const cuesR = routeOpts(opts.rig?.generated?.cues, true);
+  rppLines.push(buildTrack("Cues & Counts", cuesR.gain, buildWaveItems(trackItems), {
+    beat: -1, mainsend: cuesR.mainsend, hwout: cuesR.hwout, muted: cuesR.muted,
+  }));
 
   // Audio tracks (stems, backing tracks, etc.)
   // Calculate project end time so audio items can be trimmed
@@ -369,11 +398,27 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     }
   }
   // Stems sit at -3dB so the click and cue tracks (at 0dB) cut through the mix.
-  // 0.70794578438414 = 10^(-3/20).
-  const stemVolume = 0.70794578438414;
+  // 0.70794578438414 = 10^(-3/20). A rig stems Route can override gain/mute/send.
+  const stemsR = routeOpts(opts.rig?.generated?.stems, true);
+  const stemVolume = opts.rig?.generated?.stems ? stemsR.gain : 0.70794578438414;
   for (const [trackName, audioEvents] of audioByTrack) {
     const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs);
-    rppLines.push(buildTrack(trackName, stemVolume, items, { beat: -1 }));
+    rppLines.push(buildTrack(trackName, stemVolume, items, {
+      beat: -1, mainsend: stemsR.mainsend, hwout: stemsR.hwout, muted: stemsR.muted,
+    }));
+  }
+
+  // Record tracks (band block + drum feeds) from the rig. Each records from a
+  // card input and — when roundTrip — plays back out to the same channel, so
+  // flipping the mixer to the card lets the band hear their own take on their
+  // own channel (virtual soundcheck). Not sent to master.
+  if (opts.rig) {
+    for (const t of recordTrackSpecs(opts.rig)) {
+      rppLines.push(buildTrack(t.name, 1, "", {
+        recarm: t.arm, recinput: t.recInput, hwout: t.hwout,
+        nchan: t.nchan, mainsend: "0 0",
+      }));
+    }
   }
 
   rppLines.push(`>`);
@@ -443,6 +488,14 @@ interface TrackOptions {
   playoffs?: string;
   nchan?: number;
   mainsend?: string;
+  /** MUTESOLO first field: true = muted. */
+  muted?: boolean;
+  /** Record-arm this track (REC field 1). */
+  recarm?: boolean;
+  /** Record-input channel (REC field 2). See rig.recInputField. */
+  recinput?: number;
+  /** Hardware output field (HWOUT). See rig.hwoutField. */
+  hwout?: number;
 }
 
 function buildTrack(name: string, volume: number, itemContent: string, trackOpts?: TrackOptions): string {
@@ -451,17 +504,18 @@ function buildTrack(name: string, volume: number, itemContent: string, trackOpts
   lines.push(`    NAME ${rppStr(name)}`);
   if (trackOpts?.beat !== undefined) lines.push(`    BEAT ${trackOpts.beat}`);
   lines.push(`    VOLPAN ${fmt(volume)} 0 -1 -1 1`);
-  lines.push(`    MUTESOLO 0 0 0`);
+  lines.push(`    MUTESOLO ${trackOpts?.muted ? 1 : 0} 0 0`);
   lines.push(`    IPHASE 0`);
   if (trackOpts?.playoffs) lines.push(`    PLAYOFFS ${trackOpts.playoffs}`);
   lines.push(`    ISBUS 0 0`);
   lines.push(`    BUSCOMP 0 0 0 0 0`);
   lines.push(`    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0`);
-  lines.push(`    REC 0 0 1 0 0 0 0 0`);
+  lines.push(`    REC ${trackOpts?.recarm ? 1 : 0} ${trackOpts?.recinput ?? 0} 1 0 0 0 0 0`);
   if (trackOpts?.nchan) lines.push(`    NCHAN ${trackOpts.nchan}`);
   lines.push(`    TRACKID ${newGuid()}`);
   if (trackOpts?.mainsend) lines.push(`    MAINSEND ${trackOpts.mainsend}`);
-  lines.push(itemContent);
+  if (trackOpts?.hwout !== undefined) lines.push(`    HWOUT ${trackOpts.hwout} 0 1 0 0 0 0 -1:U -1`);
+  if (itemContent) lines.push(itemContent);
   lines.push(`  >`);
   return lines.join("\n");
 }

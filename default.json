@@ -1,0 +1,31 @@
+{
+  "master": { "hwout": { "stereo": 17 } },
+
+  "generated": {
+    "click": { "master": false, "hwout": { "mono": 20 } },
+    "cues":  { "master": false, "hwout": { "mono": 19 } },
+    "stems": { "master": true, "muted": true, "gain": 0.708 }
+  },
+
+  "bandBlock": {
+    "channels": 16,
+    "arm": true,
+    "roundTrip": true,
+    "names": {
+      "1": "Guitar Kr",
+      "2": "Guitar Nat",
+      "3": "Bass Steve",
+      "5": "Voc Caitlin",
+      "6": "Voc Krishna",
+      "7": "Voc Nathan",
+      "8": "Voc Joe",
+      "9": "Voc Mark"
+    }
+  },
+
+  "drums": [
+    { "name": "X32 AUX 01/02 (Drums Mix)", "channel": [21, 22] },
+    { "name": "X32 AUX 03 (Kick Drum)",    "channel": 23 },
+    { "name": "X32 AUX 04 (Snare Drum)",   "channel": 24 }
+  ]
+}

@@ -231,4 +231,57 @@ describe("buildRpp", () => {
     expect(rpp).toContain("SOFFS 0.164");
   });
 
+  describe("rig routing", () => {
+    const vocalsPath = resolve(fixturesDir, "stems", "vocals.wav");
+    const rig = {
+      master: { hwout: { stereo: 17 as const } },
+      generated: {
+        click: { master: false, hwout: { mono: 20 as const }, muted: false, gain: 1 },
+        cues: { master: false, hwout: { mono: 19 as const }, muted: false, gain: 1 },
+        stems: { master: true, muted: true, gain: 0.708 },
+      },
+      bandBlock: { channels: 16, arm: true, roundTrip: true, names: { "1": "Guitar Kr" } },
+      drums: [{ name: "X32 AUX 01/02 (Drums Mix)", channel: [21, 22] as [number, number], arm: true, roundTrip: true }],
+    };
+    const s = song("Test", 120,
+      span("Intro", bars(2)),
+      audio("Vocals", vocalsPath, {}),
+    );
+
+    it("emits MASTERHWOUT for the master output pair", () => {
+      const { rpp } = buildRpp(s, { ...defaultOpts, rig });
+      expect(rpp).toContain("MASTERHWOUT 16 0 1 0 0 0 0 -1");
+    });
+
+    it("routes click/cues off master to their mono hardware outs", () => {
+      const { rpp } = buildRpp(s, { ...defaultOpts, rig });
+      expect(rpp).toContain("HWOUT 1043 0 1 0 0 0 0 -1:U -1"); // click → mono 20
+      expect(rpp).toContain("HWOUT 1042 0 1 0 0 0 0 -1:U -1"); // cues → mono 19
+    });
+
+    it("mutes stems when the rig says so", () => {
+      const { rpp } = buildRpp(s, { ...defaultOpts, rig });
+      const vocalsBlock = rpp.slice(rpp.indexOf("NAME Vocals"));
+      expect(vocalsBlock).toMatch(/MUTESOLO 1 0 0/);
+    });
+
+    it("adds armed round-trip record tracks (band block + drums)", () => {
+      const { rpp } = buildRpp(s, { ...defaultOpts, rig });
+      expect(rpp).toContain("X32 CH 01 (Guitar Kr)");
+      expect(rpp).toContain("X32 CH 16");
+      expect(rpp).toContain("X32 AUX 01/02 (Drums Mix)");
+      // band ch1: armed, mono input 0, round-trip mono out 1024
+      const ch1 = rpp.slice(rpp.indexOf("X32 CH 01"));
+      expect(ch1).toMatch(/REC 1 0 1 0 0 0 0 0/);
+      expect(ch1).toMatch(/HWOUT 1024 0 1 0 0 0 0 -1:U -1/);
+    });
+
+    it("emits no HWOUT or record tracks without a rig", () => {
+      const { rpp } = buildRpp(s, defaultOpts);
+      expect(rpp).not.toContain("HWOUT");
+      expect(rpp).not.toContain("MASTERHWOUT");
+      expect(rpp).not.toContain("X32 CH");
+    });
+  });
+
 });

@@ -180,8 +180,18 @@ windowed/silence-chunked alignment (bound the final chorus to its own audio) —
 same fix as aimee. The outro section itself has no lyrics (intentionally skipped;
 the band vamps).
 
+### audioslave + tom-petty: DONE (2026-07-01)
+Both migrated. audioslave/like-a-stone: clean source-stem path, nothing special.
+tom-petty/mary-janes-last-dance: karaokeversion.com multitrack — 10 real isolated
+stems + a click track in `songs/tom-petty/kv/`, NOT source.m4a+Demucs. Beats come
+from `kv/click.mp3.beats.json`; aligned on the isolated `kv/lead-vocal.mp3`
+(great alignment off a clean vocal). Manifest bpm set to the click's true tempo
+84.50704225352102 (was 85 in the .ts) so REAPER matches the karaoke and the
+stems need no stretch. The .ts lyrics were already present (no lyric-fetch
+needed) — the earlier "no lyrics.txt" was just a missing sidecar.
+
 ### Hand-edited manifests: do not re-convert
-lonely-boy (added missing opening line "Well I'm so above you...") and
-crowded-house manifests are now HAND-EDITED. Do NOT re-run ts-to-manifest.ts on
-them — it overwrites the edits. Their .ts files are stale; delete them in the
-.ts retirement pass.
+lonely-boy (added missing opening line "Well I'm so above you..."), crowded-house
+(outro trimmed), and tom-petty (bpm → click's 84.507) manifests are HAND-EDITED.
+Do NOT re-run ts-to-manifest.ts on them — it overwrites the edits. Their .ts
+files are stale; delete them in the .ts retirement pass.

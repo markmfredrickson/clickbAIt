@@ -20,6 +20,7 @@ import type {
   LyricWord,
   DisplayLine,
   DisplaySection,
+  MeterSegment,
 } from "./teleprompter/lyrics-display.js";
 
 /**
@@ -73,6 +74,26 @@ export function buildLyricsDisplay(
     ...(s.cue !== undefined ? { cue: s.cue } : {}),
   }));
 
+  // Meter map, in REAPER measure order, so the client can turn measure.beat OSC
+  // into a continuous beat even when a section changes meter (e.g. a 2/4
+  // pickup). Walk sections accumulating measures + beats, emitting a segment
+  // only where beats-per-bar changes. Only emitted when the meter isn't
+  // constant — a single-meter song omits it and the client uses timeSignature.
+  const defaultBpb = manifest.timeSignature[0];
+  const meterMap: MeterSegment[] = [];
+  let measure = 1;
+  let beatsAcc = 0;
+  for (const s of manifest.sections) {
+    const beatsPerBar = s.timeSignature?.[0] ?? defaultBpb;
+    const last = meterMap[meterMap.length - 1];
+    if (!last || last.beatsPerBar !== beatsPerBar) {
+      meterMap.push({ fromMeasure: measure, beatsPerBar, beatsBefore: beatsAcc });
+    }
+    measure += s.bars;
+    beatsAcc += s.bars * beatsPerBar;
+  }
+  const meterChanges = meterMap.length > 1;
+
   // Walk sections in order and slice their lines' words off the aligned
   // stream (word counts match because the aligner was fed these same lines in
   // this same order). Section membership is EXPLICIT — the containing section —
@@ -109,6 +130,7 @@ export function buildLyricsDisplay(
     timeSignature: manifest.timeSignature,
     slug,
     curve: [...songCurve.anchors],
+    ...(meterChanges ? { meterMap } : {}),
     words,
     display: { sections, lines },
   };

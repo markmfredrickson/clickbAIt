@@ -62,6 +62,20 @@ export interface DisplaySection {
   cue?: boolean;
 }
 
+/**
+ * One stretch of constant meter, in REAPER measure order. Lets a client turn
+ * REAPER's `measure.beat` OSC string into a continuous beat when the meter
+ * isn't constant (e.g. a 2/4 pickup bar) — multiplying measures by a fixed
+ * beats-per-bar overcounts by 2 for every short bar before the cursor.
+ */
+export interface MeterSegment {
+  /** First REAPER measure this segment covers (1-based; downbeat = measure 1). */
+  fromMeasure: number;
+  beatsPerBar: number;
+  /** Cumulative continuous beats before this segment's first measure. */
+  beatsBefore: number;
+}
+
 /** The whole built lyrics display. */
 export interface LyricsDisplay {
   schema: "clickbait/lyrics-display@1";
@@ -76,6 +90,11 @@ export interface LyricsDisplay {
   slug: string;
   /** Song curve anchors (constant tempo => two). Lets a client convert beats to seconds. */
   curve: Anchor[];
+
+  /** Meter segments in REAPER measure order. Present when the song has a meter
+   *  change (e.g. a 2/4 pickup); a single-meter song can omit it and the client
+   *  falls back to `timeSignature[0]` beats per bar. */
+  meterMap?: MeterSegment[];
 
   /** The timeline: every sung word in order. Timing lives here. */
   words: LyricWord[];

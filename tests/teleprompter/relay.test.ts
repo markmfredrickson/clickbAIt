@@ -206,4 +206,28 @@ describe("beatStrToBeats", () => {
   it("honors odd meter", () => {
     expect(beatStrToBeats("2.1.00", 3)).toBeCloseTo(3); // (2-1)*3
   });
+
+  describe("with a meter map (2/4 pickup)", () => {
+    // Crowded House: a 2/4 pickup at measure 36, back to 4/4 at measure 37.
+    // segments computed by build-lyrics-display.
+    const meterMap = [
+      { fromMeasure: 1, beatsPerBar: 4, beatsBefore: 0 },
+      { fromMeasure: 36, beatsPerBar: 2, beatsBefore: 140 },
+      { fromMeasure: 37, beatsPerBar: 4, beatsBefore: 142 },
+    ];
+    it("matches constant 4/4 before the meter change", () => {
+      expect(beatStrToBeats("5.1.00", meterMap)).toBeCloseTo(16); // (5-1)*4
+    });
+    it("counts the 2/4 pickup as 2 beats, not 4", () => {
+      expect(beatStrToBeats("36.1.00", meterMap)).toBeCloseTo(140); // start of pickup
+      expect(beatStrToBeats("37.1.00", meterMap)).toBeCloseTo(142); // pickup added only 2
+    });
+    it("stays 2 beats lower than a constant-4 assumption after the pickup", () => {
+      // measure 50 beat 1: correct 194, NOT (50-1)*4 = 196
+      expect(beatStrToBeats("50.1.00", meterMap)).toBeCloseTo(194);
+    });
+    it("uses the first segment's meter for count-in measures", () => {
+      expect(beatStrToBeats("-1.1.00", meterMap)).toBeCloseTo(-8); // (-1-1)*4
+    });
+  });
 });

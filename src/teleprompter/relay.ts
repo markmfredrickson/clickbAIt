@@ -14,7 +14,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import type { SongPayload, TempoPoint } from "./types.js";
-import type { LyricsDisplay } from "./lyrics-display.js";
+import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
 import { toSlug } from "../dsongl/index.js";
 import { Curve, type Anchor } from "../curve.js";
 
@@ -152,13 +152,33 @@ function isLyricsDisplay(song: LoadedSong): song is LyricsDisplay {
  * Parse REAPER's `/beat/str` ("measure.beat.hundredths", PROJOFFS-aware so the
  * downbeat is measure 1 and the count-in is negative measures) into a
  * continuous downbeat-relative beat: downbeat = 0, count-in negative.
+ *
+ * `meter` is either a constant beats-per-bar, or a MeterSegment list for songs
+ * with a meter change (a 2/4 pickup, say). With a constant, a 2/4 bar would
+ * make every later measure overcount by 2 beats — the segments fix that by
+ * counting each measure in its own meter.
  */
-export function beatStrToBeats(beatStr: string, beatsPerBar: number): number {
+export function beatStrToBeats(
+  beatStr: string,
+  meter: number | MeterSegment[],
+): number {
   const parts = beatStr.split(".");
   const measure = parseInt(parts[0], 10);
   const beat = parseInt(parts[1] ?? "1", 10);
   const hundredths = parts[2] ? parseInt(parts[2], 10) : 0;
-  return (measure - 1) * beatsPerBar + (beat - 1) + hundredths / 100;
+  const frac = (beat - 1) + hundredths / 100;
+
+  if (typeof meter === "number") {
+    return (measure - 1) * meter + frac;
+  }
+  // Find the last segment starting at or before this measure. Measures before
+  // the first segment (count-in) use the first segment's meter.
+  let seg = meter[0];
+  for (const s of meter) {
+    if (s.fromMeasure <= measure) seg = s;
+    else break;
+  }
+  return seg.beatsBefore + (measure - seg.fromMeasure) * seg.beatsPerBar + frac;
 }
 
 // ── Server ──
@@ -444,7 +464,10 @@ export function startRelay(opts: RelayOptions) {
         if (parsed.address === "/beat/str" && currentSong && isLyricsDisplay(currentSong)) {
           // REAPER's PROJOFFS-aware beat — downbeat is measure 1, count-in is
           // negative measures. Stays correct at any tempo/playrate.
-          const beat = beatStrToBeats(parsed.value, currentSong.timeSignature[0]);
+          const beat = beatStrToBeats(
+            parsed.value,
+            currentSong.meterMap ?? currentSong.timeSignature[0],
+          );
           broadcast(JSON.stringify({ type: "position", beat }));
         } else if ((parsed.address === "/lastmarker/name" || parsed.address === "/lastregion/name") && parsed.value) {
           const slug = toSlug(parsed.value);

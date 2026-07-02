@@ -163,15 +163,22 @@ downbeat and phrases ring over. Prefer splitting at vocal SILENCES (never
 bisects a sung phrase) and/or padded overlapping windows; section membership is
 already explicit in the manifest, so ownership is safe under overlap.
 
-### Crowded House: live outro is a repetitive vamp (blocked on windowed align)
-The recording is a LIVE version. Verses + choruses align cleanly; the converter
-meter/pickup bug is now FIXED (commit). The ONLY remaining problem is the outro:
-a long repetitive singalong ("we know they won't win / hey now" x many). Whisper
-LOOPS on it (~50x "and we know that they won't win"), and forced-alignment smears
-the repeated lines — the same duplicate-lines wall as aimee, NOT a lyrics-content
-problem. Can't precisely time the outro until windowed/silence-chunked alignment
-lands. Until then: ship as-is (good through the last chorus, outro vamp smears)
-or trim the outro lines.
+### Crowded House: usable; only the final line drifts (end-smear / windowed align)
+The recording is a LIVE version. Two bugs found + FIXED: (1) converter meter/
+pickup bug (2/4 bars → wrong `bars`), and (2) the teleprompter's beatStrToBeats
+assumed constant 4/4 so every 2/4 pickup ran the highlight 2 beats ahead for the
+rest of the song — now meter-aware via a display `meterMap`. With both fixed,
+crowded-house tracks correctly through Verse 3 and the final chorus.
+
+The ONE remaining rough spot: the final chorus's last line "We know they won't
+win" starts highlighting on time (~beat 250) but its trailing words drift late
+(win @294) because the outro vamps that same phrase and the aligner drags the
+last text line into the trailing unmatched audio. Trimming the line does NOT
+help — the drag just moves to whichever line becomes last (tried, reverted).
+Keep the words (user: a drifting highlight beats a missing line). The real fix is
+windowed/silence-chunked alignment (bound the final chorus to its own audio) —
+same fix as aimee. The outro section itself has no lyrics (intentionally skipped;
+the band vamps).
 
 ### Hand-edited manifests: do not re-convert
 lonely-boy (added missing opening line "Well I'm so above you...") and

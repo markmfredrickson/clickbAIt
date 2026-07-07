@@ -38,13 +38,15 @@ if [ ${#valid_dirs[@]} -eq 0 ]; then
   exit 1
 fi
 
-# Open the most recent .rpp in each directory
+# Open the most recent .rpp in each directory. Case-insensitive match (files
+# are .RPP; shell globbing is case-sensitive even on a case-insensitive FS).
 for dir in "${valid_dirs[@]}"; do
-  rpp="$(ls -t "$dir"/*.rpp 2>/dev/null | head -1 || true)"
-  if [ -z "$rpp" ]; then
+  matches="$(find "$dir" -maxdepth 1 -iname "*.rpp" 2>/dev/null)"
+  if [ -z "$matches" ]; then
     echo "Skip (no .rpp): $dir" >&2
     continue
   fi
+  rpp="$(printf '%s\n' "$matches" | tr '\n' '\0' | xargs -0 ls -t | head -1)"
   echo "REAPER: $rpp"
   open "$rpp"
 done

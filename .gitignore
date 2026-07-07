@@ -97,3 +97,6 @@ bin/*.mjs
 tmp/
 # Demucs stems are large + regenerable; keep out of git even under example-songs
 songs/example-songs/stems/
+
+# Personal working notes — kept local, not in the repo
+TODO.md

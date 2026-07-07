@@ -89,6 +89,11 @@ practice/
 # Personal dogfooding tool, not part of the project
 bin/sync-band.sh
 
+# Compiled esbuild bundles — regenerable via `npm run build` (scripts/build.mjs).
+# bin/lookup.mjs is hand-written source and stays tracked.
+bin/generate.mjs
+bin/teleprompter.mjs
+
 # Scratch / experiments
 tmp/
 # Demucs stems are large + regenerable; keep out of git even under example-songs

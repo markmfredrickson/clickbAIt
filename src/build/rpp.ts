@@ -11,19 +11,19 @@
 import { execSync } from "child_process";
 import { resolve, dirname } from "path";
 import { readFileSync } from "fs";
-import type { Song } from "./dsongl/index.js";
+import type { Song } from "../core/dsongl/index.js";
 import { linearize, type LinearEvent, type LinearizeResult } from "./linearize.js";
 import { extractSections, type Section } from "./sections.js";
-import { songSlug } from "./dsongl/index.js";
+import { songSlug } from "../core/dsongl/index.js";
 import { beatsToStretchMarkers, formatStretchMarkers, type Beat } from "./stretch-markers.js";
-import { Curve } from "./curve.js";
-import { hwoutField, recordTrackSpecs, type Rig, type Route } from "./rig.js";
+import { Curve } from "../core/curve.js";
+import { hwoutField, recordTrackSpecs, type Rig, type Route } from "../rig.js";
 
 import { accessSync, constants } from "fs";
 
 /** Resolve the clickbait-audio binary: prefer release build, fall back to debug. */
 function findAudioBin(): string {
-  const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+  const root = resolve(dirname(new URL(import.meta.url).pathname), "..", "..");
   const release = resolve(root, "target", "release", "clickbait-audio");
   const debug = resolve(root, "target", "debug", "clickbait-audio");
   try { accessSync(release, constants.X_OK); return release; } catch {}

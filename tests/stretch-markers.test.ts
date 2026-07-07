@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { beatsToStretchMarkers, type Beat } from "../src/stretch-markers.js";
+import { beatsToStretchMarkers, type Beat } from "../src/build/stretch-markers.js";
 
 function mkBeats(times: number[]): Beat[] {
   return times.map(t => ({ time: t, strength: 1 }));

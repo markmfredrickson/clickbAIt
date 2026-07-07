@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SongManifestSchema } from "../src/manifest.js";
-import { manifestToSong, stemOffset } from "../src/manifest-to-song.js";
+import { manifestToSong, stemOffset } from "../src/build/manifest-to-song.js";
 
 function mkTimes(n: number, spacing = 0.5): number[] {
   return Array.from({ length: n }, (_, i) => i * spacing);

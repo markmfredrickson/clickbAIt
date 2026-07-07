@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BPM } from "../src/bpm.js";
+import { BPM } from "../src/core/bpm.js";
 
 describe("BPM", () => {
   it("stores the value", () => {

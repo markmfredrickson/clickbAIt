@@ -1,5 +1,5 @@
-import type { Node, Event, Span, Sequence, Song, Audio, Duration } from "./dsongl/index.js";
-import { Curve } from "./curve.js";
+import type { Node, Event, Span, Sequence, Song, Audio, Duration } from "../core/dsongl/index.js";
+import { Curve } from "../core/curve.js";
 
 export interface LinearEvent {
   beat: number;

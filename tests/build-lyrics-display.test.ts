@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { SongManifestSchema, type SongManifest } from "../src/manifest.js";
-import type { AlignInput } from "../src/lyrics-timing.js";
-import { buildLyricsDisplay, alignWords } from "../src/build-lyrics-display.js";
-import { Curve } from "../src/curve.js";
+import type { AlignInput } from "../src/build/lyrics-timing.js";
+import { buildLyricsDisplay, alignWords } from "../src/build/lyrics-display.js";
+import { Curve } from "../src/core/curve.js";
 
 // --- fixtures --------------------------------------------------------------
 

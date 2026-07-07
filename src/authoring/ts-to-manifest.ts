@@ -14,7 +14,7 @@
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname, relative, basename, join } from "node:path";
-import type { Song, Node, Span, Event, Audio } from "./dsongl/index.js";
+import type { Song, Node, Span, Event, Audio } from "../core/dsongl/index.js";
 
 const tsPath = process.argv[2];
 if (!tsPath) {

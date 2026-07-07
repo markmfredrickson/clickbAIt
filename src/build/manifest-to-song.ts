@@ -15,11 +15,11 @@
  */
 
 import { resolve } from "node:path";
-import { song, seq, span, audio, bars, cue } from "./dsongl/index.js";
-import type { Song, Node } from "./dsongl/index.js";
-import type { SongManifest } from "./manifest.js";
-import { beatMapToBeats } from "./beat-map.js";
-import { Curve } from "./curve.js";
+import { song, seq, span, audio, bars, cue } from "../core/dsongl/index.js";
+import type { Song, Node } from "../core/dsongl/index.js";
+import type { SongManifest } from "../manifest.js";
+import { beatMapToBeats } from "../core/beat-map.js";
+import { Curve } from "../core/curve.js";
 
 /**
  * The stem's beat offset: where detected-beat-0 lands relative to the downbeat.

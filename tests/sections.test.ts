@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractSections } from "../src/sections.js";
+import { extractSections } from "../src/build/sections.js";
 import { song, seq, span, bars, beats } from "@clickbait/dsongl";
 
 describe("extractSections", () => {

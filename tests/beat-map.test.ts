@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { expandBeatMap, beatMapCurve } from "../src/beat-map.js";
+import { expandBeatMap, beatMapCurve } from "../src/core/beat-map.js";
 import type { BeatMap } from "../src/manifest.js";
 
 describe("expandBeatMap", () => {

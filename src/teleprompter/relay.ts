@@ -15,8 +15,8 @@ import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import type { SongPayload, TempoPoint } from "./types.js";
 import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
-import { toSlug } from "../dsongl/index.js";
-import { Curve, type Anchor } from "../curve.js";
+import { toSlug } from "../core/dsongl/index.js";
+import { Curve, type Anchor } from "../core/curve.js";
 
 /** Either song format the relay can serve. */
 type LoadedSong = SongPayload | LyricsDisplay;

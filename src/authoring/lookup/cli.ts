@@ -10,7 +10,7 @@
  */
 
 import { config } from "dotenv";
-import { runLookup, formatReport } from "./lookup/index.js";
+import { runLookup, formatReport } from "./index.js";
 
 config({ quiet: true }); // load .env if present (GENIUS_API_TOKEN); suppress banner
 

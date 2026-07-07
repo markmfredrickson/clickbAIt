@@ -33,7 +33,7 @@
  * or re-grouping never disturbs the timing.
  */
 
-import type { Anchor } from "../curve.js";
+import type { Anchor } from "../core/curve.js";
 
 /** A sung word: its span in beats, and the real text to show (with punctuation). */
 export interface LyricWord {

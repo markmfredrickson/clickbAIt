@@ -3,13 +3,13 @@
  * Groups linearized events by section, with lyrics, chords, and timing.
  */
 
-import type { Song } from "../dsongl/index.js";
-import { toSlug, songSlug } from "../dsongl/index.js";
-import type { LinearEvent } from "../linearize.js";
+import type { Song } from "../core/dsongl/index.js";
+import { toSlug, songSlug } from "../core/dsongl/index.js";
+import type { LinearEvent } from "../build/linearize.js";
 import type { SongPayload, Section, LyricLine, ChordMark, TempoPoint } from "./types.js";
-import { linearize } from "../linearize.js";
-import { extractSections } from "../sections.js";
-import { Curve } from "../curve.js";
+import { linearize } from "../build/linearize.js";
+import { extractSections } from "../build/sections.js";
+import { Curve } from "../core/curve.js";
 
 export { toSlug, songSlug };
 

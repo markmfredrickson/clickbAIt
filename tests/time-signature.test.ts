@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { TimeSignature } from "../src/time-signature.js";
+import { TimeSignature } from "../src/core/time-signature.js";
 
 describe("TimeSignature", () => {
   it("stores numerator and denominator", () => {

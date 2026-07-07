@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { buildRpp } from "../src/build-rpp.js";
-import { linearize } from "../src/linearize.js";
+import { buildRpp } from "../src/build/rpp.js";
+import { linearize } from "../src/build/linearize.js";
 import { song, seq, span, bars, cue, marker, audio } from "@clickbait/dsongl";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

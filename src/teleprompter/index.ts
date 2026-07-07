@@ -9,7 +9,7 @@ import { networkInterfaces } from "node:os";
 import { readdirSync } from "node:fs";
 import { startRelay } from "./relay.js";
 import { exportSongPayload } from "./export.js";
-import type { Song } from "../dsongl/index.js";
+import type { Song } from "../core/dsongl/index.js";
 import QRCode from "qrcode";
 
 export interface TeleprompterOptions {

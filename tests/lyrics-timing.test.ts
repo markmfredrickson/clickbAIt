@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { Curve } from "../src/curve.js";
+import { Curve } from "../src/core/curve.js";
 import {
   recordingCurveFromBeats,
   bridgeTokens,
   type AlignInput,
-} from "../src/lyrics-timing.js";
+} from "../src/build/lyrics-timing.js";
 
 /** Build a one-word align input with the given per-char (text, startMs, endMs). */
 function word(text: string, chars: [string, number, number][]): AlignInput {

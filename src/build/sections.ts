@@ -1,4 +1,4 @@
-import type { Node, Song, Duration } from "./dsongl/index.js";
+import type { Node, Song, Duration } from "../core/dsongl/index.js";
 
 /** A section boundary extracted from the song tree. */
 export interface Section {

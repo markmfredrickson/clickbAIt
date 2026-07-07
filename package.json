@@ -15,7 +15,7 @@
     "clickbait-bundle": "./bin/bundle.mjs"
   },
   "exports": {
-    "./dsongl": "./src/dsongl/index.ts"
+    "./dsongl": "./src/core/dsongl/index.ts"
   },
   "workspaces": [
     "songs/*"
@@ -24,7 +24,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "node scripts/build.mjs",
-    "generate": "npx tsx src/generate.ts",
+    "generate": "npx tsx src/build/generate.ts",
     "teleprompter": "npx tsx scripts/teleprompter.ts",
     "build:skill": "node scripts/render-skill.mjs",
     "sandbox": "scripts/sandbox.sh",

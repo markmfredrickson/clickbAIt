@@ -13,15 +13,15 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
-import { SongManifestSchema, sectionStarts } from "./manifest.js";
-import { beatMapToBeats, expandBeatMap } from "./beat-map.js";
+import { SongManifestSchema, sectionStarts } from "../manifest.js";
+import { beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
-import { RigSchema } from "./rig.js";
-import { buildRpp } from "./build-rpp.js";
-import { buildLyricsDisplay } from "./build-lyrics-display.js";
+import { RigSchema } from "../rig.js";
+import { buildRpp } from "./rpp.js";
+import { buildLyricsDisplay } from "./lyrics-display.js";
 import { extractSections } from "./sections.js";
 import { linearize } from "./linearize.js";
-import { songSlug } from "./dsongl/index.js";
+import { songSlug } from "../core/dsongl/index.js";
 import type { AlignInput } from "./lyrics-timing.js";
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
@@ -40,7 +40,7 @@ const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(manifestPath, 
 // by every stem (they play the same recording) and fed to build-rpp.
 const { beats } = beatMapToBeats(manifest.sources.recording.beatMap, manifest.bpm);
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const root = resolve(dirname(new URL(import.meta.url).pathname), "..", "..");
 const audioBin = existsSync(resolve(root, "target/release/clickbait-audio"))
   ? resolve(root, "target/release/clickbait-audio")
   : resolve(root, "target/debug/clickbait-audio");

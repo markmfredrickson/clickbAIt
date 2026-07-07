@@ -82,11 +82,11 @@ function extractBuilders(source) {
 // --- Read sources ---
 
 const typesSource = readFileSync(
-  resolve(root, "src/dsongl/types.ts"),
+  resolve(root, "src/core/dsongl/types.ts"),
   "utf-8"
 );
 const dsonglSource = readFileSync(
-  resolve(root, "src/dsongl/dsongl.ts"),
+  resolve(root, "src/core/dsongl/dsongl.ts"),
   "utf-8"
 );
 

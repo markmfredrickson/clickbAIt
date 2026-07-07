@@ -12,9 +12,9 @@
  * the CLI that calls it.
  */
 
-import { sectionStarts, type SongManifest } from "./manifest.js";
-import { Curve } from "./curve.js";
-import { beatMapCurve } from "./beat-map.js";
+import { sectionStarts, type SongManifest } from "../manifest.js";
+import { Curve } from "../core/curve.js";
+import { beatMapCurve } from "../core/beat-map.js";
 import { bridgeTokens, type AlignInput } from "./lyrics-timing.js";
 import type {
   LyricsDisplay,
@@ -22,7 +22,7 @@ import type {
   DisplayLine,
   DisplaySection,
   MeterSegment,
-} from "./teleprompter/lyrics-display.js";
+} from "../teleprompter/lyrics-display.js";
 
 /**
  * Split text into words the same way `clickbait-audio align` normalizes it:

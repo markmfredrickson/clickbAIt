@@ -28,7 +28,7 @@ const shared = {
 
 await esbuild.build({
   ...shared,
-  entryPoints: ["src/generate.ts"],
+  entryPoints: ["src/build/generate.ts"],
   outfile: "bin/generate.mjs",
   banner: { js: "#!/usr/bin/env node" },
 });
@@ -44,18 +44,10 @@ console.log("  bin/teleprompter.mjs");
 
 await esbuild.build({
   ...shared,
-  entryPoints: ["src/lookup-cli.ts"],
+  entryPoints: ["src/authoring/lookup/cli.ts"],
   outfile: "bin/lookup.mjs",
   banner: { js: "#!/usr/bin/env node" },
 });
 console.log("  bin/lookup.mjs");
-
-await esbuild.build({
-  ...shared,
-  entryPoints: ["src/bundle.ts"],
-  outfile: "bin/bundle.mjs",
-  banner: { js: "#!/usr/bin/env node" },
-});
-console.log("  bin/bundle.mjs");
 
 console.log("Build done.");

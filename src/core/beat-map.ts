@@ -15,7 +15,7 @@
  */
 
 import { Curve, type Anchor } from "./curve.js";
-import type { BeatMap } from "./manifest.js";
+import type { BeatMap } from "../manifest.js";
 
 /**
  * Flatten a beat-map to sorted `(beat, source-time)` control points. A pin is

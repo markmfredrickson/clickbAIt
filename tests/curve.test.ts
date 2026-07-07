@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Curve, type Anchor } from "../src/curve.js";
-import { beatToSeconds, secondsToBeat, type TempoPoint } from "../src/tempo.js";
+import { Curve, type Anchor } from "../src/core/curve.js";
+import { beatToSeconds, secondsToBeat, type TempoPoint } from "../src/core/tempo.js";
 
 describe("Curve", () => {
   // -- #2 Constant BPM -------------------------------------------------------

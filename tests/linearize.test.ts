@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { linearize, type LinearEvent } from "../src/linearize.js";
+import { linearize, type LinearEvent } from "../src/build/linearize.js";
 import { song, seq, span, bars, beats, cue, chord, lyric, marker, audio } from "@clickbait/dsongl";
 
 /** Helper: find events by type */

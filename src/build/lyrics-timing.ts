@@ -22,7 +22,7 @@
  * fixing a wrong bar-1 is a one-number edit + rebuild — no re-running align.
  */
 
-import { Curve } from "./curve.js";
+import { Curve } from "../core/curve.js";
 
 /** A character as emitted by `clickbait-audio align` (recording-time ms). */
 export interface AlignChar {

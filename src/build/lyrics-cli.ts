@@ -11,8 +11,8 @@
 
 import { readFileSync, writeFileSync } from "fs";
 import { resolve, dirname, join } from "path";
-import { SongManifestSchema } from "./manifest.js";
-import { buildLyricsDisplay } from "./build-lyrics-display.js";
+import { SongManifestSchema } from "../manifest.js";
+import { buildLyricsDisplay } from "./lyrics-display.js";
 import type { AlignInput } from "./lyrics-timing.js";
 
 const manifestPath = process.argv[2];

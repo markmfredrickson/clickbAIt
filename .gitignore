@@ -90,9 +90,8 @@ practice/
 bin/sync-band.sh
 
 # Compiled esbuild bundles — regenerable via `npm run build` (scripts/build.mjs).
-# bin/lookup.mjs is hand-written source and stays tracked.
-bin/generate.mjs
-bin/teleprompter.mjs
+# Every bin/*.mjs is build output; bin/sync-band.sh (personal) is ignored above.
+bin/*.mjs
 
 # Scratch / experiments
 tmp/

@@ -86,11 +86,8 @@ backups/
 # Local practice launcher (symlinks into gitignored songs/)
 practice/
 
-# Personal dogfooding tool, not part of the project
-bin/sync-band.sh
-
 # Compiled esbuild bundles — regenerable via `npm run build` (scripts/build.mjs).
-# Every bin/*.mjs is build output; bin/sync-band.sh (personal) is ignored above.
+# Every bin/*.mjs is build output.
 bin/*.mjs
 
 # Scratch / experiments
@@ -98,5 +95,5 @@ tmp/
 # Demucs stems are large + regenerable; keep out of git even under example-songs
 songs/example-songs/stems/
 
-# Personal working notes — kept local, not in the repo
-TODO.md
+# Personal stuff (notes, band scene, practice launchers, sync tools) lives in
+# local/ (ignored above) — nothing personal is tracked in the repo.

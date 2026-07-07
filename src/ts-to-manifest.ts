@@ -15,7 +15,6 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, dirname, relative, basename, join } from "node:path";
 import type { Song, Node, Span, Event, Audio } from "./dsongl/index.js";
-import { stemOffset } from "./manifest-to-song.js";
 
 const tsPath = process.argv[2];
 if (!tsPath) {
@@ -44,9 +43,9 @@ function barsOf(span: Span): number {
   return d.beats / bpb; // beats → bars in the section's meter
 }
 
-let cursor = 0;
+// Section start beats are inferred downstream from order + length, so the
+// manifest carries only `bars` — no absolute `b` (see manifest.ts sectionStarts).
 const sections = spans.map((span) => {
-  const sectionBpb = span.timeSignature?.[0] ?? beatsPerBar;
   const bars = barsOf(span);
   const events = (span.children ?? []).filter((c): c is Event => c.kind === "event");
   const lines = events
@@ -55,12 +54,11 @@ const sections = spans.map((span) => {
   const cues = events
     .filter((e) => e.type === "cue")
     .map((e) => ({ at: e.offset ?? 0, label: e.value }));
-  const section: Record<string, unknown> = { name: span.name, b: cursor, bars };
+  const section: Record<string, unknown> = { name: span.name, bars };
   if (span.cue !== undefined) section.cue = span.cue;
   if (span.timeSignature) section.timeSignature = span.timeSignature;
   if (cues.length) section.cues = cues;
   if (lines.length) section.lines = lines;
-  cursor += bars * sectionBpb;
   return section;
 });
 
@@ -88,22 +86,15 @@ if (spliced) {
   process.exit(2);
 }
 
-// --- anchor: derive {t,b} that reproduces the .ts offset (use a node with beats) ---
+// --- beat-map: inline the detected beats as a dense run pinned at the stem's
+// song-beat offset (the .ts `offset` is the song beat of detected beat 0). This
+// reproduces the old (beats.json + anchor) curve exactly, now durable in-file. ---
 const anchorNode = audios.find((a) => a.beatsFile) ?? audios[0];
 const offset = anchorNode.offset ?? 0;
-if (!anchorNode.beatsFile) throw new Error("no audio() node has a beatsFile — can't derive anchor");
+if (!anchorNode.beatsFile) throw new Error("no audio() node has a beatsFile — can't derive the beat-map");
 const beatsFileAbs = resolve(anchorNode.beatsFile);
 const beats: { time: number }[] = JSON.parse(readFileSync(beatsFileAbs, "utf8")).beats;
-const k = -offset;
-const anchor =
-  k >= 0 && k < beats.length
-    ? { t: beats[k].time, b: 0 } // offset <= 0 (the normal case): downbeat = detected beat k
-    : { t: beats[0].time, b: offset }; // offset > 0: pin at first beat with a beat shift
-
-const check = stemOffset(anchor, beats);
-if (Math.abs(check - offset) > 1e-6) {
-  throw new Error(`anchor check failed: derived stemOffset ${check} != .ts offset ${offset}`);
-}
+const beatMap = [{ startBeat: offset, times: beats.map((b) => b.time) }];
 
 // --- pre-roll: seconds → whole bars ---
 const barSeconds = (60 / song.bpm) * beatsPerBar;
@@ -115,8 +106,7 @@ const vocalsKey = Object.keys(files).find((k) => k.includes("vocal"));
 const rec: Record<string, unknown> = {
   kind: "audio",
   file: existsSync(join(manifestDir, "source.m4a")) ? "source.m4a" : `${basename(beatsFileRel).replace(/\.beats.*$/, "")}`,
-  beats: { file: beatsFileRel, "produced-by": "clickbait-audio beats", edited: /effective/.test(beatsFileRel) },
-  anchor,
+  beatMap,
 };
 if (existsSync(join(manifestDir, "source.analysis.json"))) {
   rec.analysis = { file: "source.analysis.json", "produced-by": "clickbait-audio analyze" };

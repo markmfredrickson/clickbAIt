@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SongManifestSchema, type SongManifest } from "../src/manifest.js";
+import { SongManifestSchema, sectionStarts, type SongManifest } from "../src/manifest.js";
 
 /** A fresh, fully-valid manifest object each test can mutate in isolation. */
 function validManifest(): unknown {
@@ -15,9 +15,8 @@ function validManifest(): unknown {
       recording: {
         kind: "audio",
         file: "source.m4a",
-        beats: { file: "source.m4a.beats.effective.json", "produced-by": "clickbait-audio beats", edited: true },
         analysis: { file: "source.analysis.json", "produced-by": "clickbait-audio analyze" },
-        anchor: { t: 0, b: 0 },
+        beatMap: [{ startBeat: 0, times: [0, 0.49, 0.98] }],
       },
       stems: {
         kind: "audio-group",
@@ -29,8 +28,8 @@ function validManifest(): unknown {
     },
     songCurve: "constantBpm",
     sections: [
-      { name: "Riff", b: 0, bars: 8, cue: true },
-      { name: "Verse 1", b: 32, bars: 18, cue: true, lines: [
+      { name: "Riff", bars: 8, cue: true },
+      { name: "Verse 1", bars: 18, cue: true, lines: [
         { text: "I'm gonna fight 'em off", tag: "Lead Vocal" },
         { text: "A seven-nation army couldn't hold me back" },
       ] },
@@ -47,7 +46,7 @@ describe("SongManifestSchema", () => {
   it("parses a fully-valid manifest", () => {
     const parsed = SongManifestSchema.parse(validManifest());
     expect(parsed.title).toBe("Seven Nation Army");
-    expect(parsed.sources.recording.beats.edited).toBe(true);
+    expect(parsed.sources.recording.beatMap).toHaveLength(1);
     // Type-level check: the inferred type flows (compile-time, but assert shape).
     const m: SongManifest = parsed;
     expect(m.bpm).toBeCloseTo(122.449);
@@ -63,12 +62,11 @@ describe("SongManifestSchema", () => {
         recording: {
           kind: "audio",
           file: "source.m4a",
-          beats: { file: "source.m4a.beats.json", "produced-by": "clickbait-audio beats" },
-          anchor: { t: 0, b: 0 },
+          beatMap: [{ startBeat: 0, times: [0, 0.5, 1.0] }],
         },
       },
       songCurve: "constantBpm",
-      sections: [{ name: "Verse 1", b: 0, bars: 8, lines: [{ text: "hello" }] }],
+      sections: [{ name: "Verse 1", bars: 8, lines: [{ text: "hello" }] }],
       lyrics: {},
     };
     expect(() => SongManifestSchema.parse(minimal)).not.toThrow();
@@ -148,7 +146,7 @@ describe("SongManifestSchema", () => {
   // -- #6 Artifact provenance ------------------------------------------------
   it("requires produced-by on referenced artifacts", () => {
     const m = validManifest() as any;
-    delete m.sources.recording.beats["produced-by"];
+    delete m.sources.recording.analysis["produced-by"];
     expect(() => SongManifestSchema.parse(m)).toThrow();
   });
 
@@ -181,5 +179,38 @@ describe("SongManifestSchema", () => {
       m.preRollBars = v;
       expect(() => SongManifestSchema.parse(m), String(v)).toThrow();
     }
+  });
+
+  // -- sections carry no absolute start beat --------------------------------
+  it("rejects a section with an authored start beat `b`", () => {
+    // Start beats are inferred from order + length, not authored — a redundant
+    // `b` that could disagree with the running total is a schema error.
+    const m = validManifest() as any;
+    m.sections[0].b = 0;
+    expect(() => SongManifestSchema.parse(m)).toThrow(/unrecognized|b/i);
+  });
+});
+
+describe("sectionStarts", () => {
+  it("returns each section's start plus a one-past-end song-end beat", () => {
+    // Sections run back-to-back from beat 0: 8 bars, then 18 bars, in 4/4.
+    const starts = sectionStarts(
+      [{ bars: 8 }, { bars: 18 }],
+      [4, 4],
+    );
+    expect(starts).toEqual([0, 32, 32 + 18 * 4]);
+  });
+
+  it("honors a per-section meter override in the running total", () => {
+    // A 2/4 pickup bar contributes 2 beats, not the song-default 4.
+    const starts = sectionStarts(
+      [{ bars: 1, timeSignature: [2, 4] }, { bars: 4 }],
+      [4, 4],
+    );
+    expect(starts).toEqual([0, 2, 2 + 16]);
+  });
+
+  it("returns [0] (just the song end at 0) for no sections", () => {
+    expect(sectionStarts([], [4, 4])).toEqual([0]);
   });
 });

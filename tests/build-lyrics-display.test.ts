@@ -6,11 +6,6 @@ import { Curve } from "../src/curve.js";
 
 // --- fixtures --------------------------------------------------------------
 
-/** A constant-spacing detected-beat grid. spacing 0.5s = 120 BPM. */
-function mkBeats(n: number, spacing = 0.5, t0 = 0): { time: number }[] {
-  return Array.from({ length: n }, (_, i) => ({ time: t0 + i * spacing }));
-}
-
 /** Align input from [text, startMs, endMs] triples (one char per word, enough for the bridge). */
 function mkAlign(words: [string, number, number][]): AlignInput {
   return {
@@ -23,7 +18,12 @@ function mkAlign(words: [string, number, number][]): AlignInput {
   };
 }
 
-/** A valid manifest with overridable parts. */
+/**
+ * A valid manifest with overridable parts. The default recording beat-map pins
+ * song beats 0 and 1 at 0s and 0.5s; at 120 BPM the curve extrapolates at the
+ * same 2 beats/sec, so `beat = 2 · seconds` everywhere (the old anchor {t:0,b:0}
+ * 120-BPM case).
+ */
 function mkManifest(over: Record<string, unknown> = {}): SongManifest {
   return SongManifestSchema.parse({
     schema: "clickbait/song@1",
@@ -35,8 +35,7 @@ function mkManifest(over: Record<string, unknown> = {}): SongManifest {
       recording: {
         kind: "audio",
         file: "source.m4a",
-        beats: { file: "source.beats.json", "produced-by": "clickbait-audio beats" },
-        anchor: { t: 0, b: 0 },
+        beatMap: [{ startBeat: 0, times: [0, 0.5] }],
       },
     },
     songCurve: "constantBpm",
@@ -64,9 +63,8 @@ describe("alignWords", () => {
 describe("buildLyricsDisplay", () => {
   // #1 words: beats kept, seconds dropped, order preserved, schema set
   it("turns aligned words into beat-only LyricWords in order", () => {
-    const beats = mkBeats(20); // 120 BPM, anchor {t:0,b:0} => musical beat = 2 * seconds
     const align = mkAlign([["WHEN", 1000, 1100], ["THE", 1200, 1300], ["SAINTS", 1500, 1800]]);
-    const out = buildLyricsDisplay(mkManifest(), align, beats);
+    const out = buildLyricsDisplay(mkManifest(), align);
 
     expect(out.schema).toBe("clickbait/lyrics-display@1");
     expect(out.words.map((w) => w.text)).toEqual(["WHEN", "THE", "SAINTS"]);
@@ -77,42 +75,39 @@ describe("buildLyricsDisplay", () => {
     expect(out.words[0]).not.toHaveProperty("startSeconds");
   });
 
-  // #2 curves wired right: the bar-1 anchor offsets the musical beat
-  it("applies the recording bar-1 anchor to word beats", () => {
-    const beats = mkBeats(20); // detected beat i at 0.5*i s
-    // declare detected beat 2 is musical beat 0 => offset -2
+  // #2 curves wired right: the beat-map offset shifts the musical beat
+  it("applies the recording beat-map offset to word beats", () => {
+    // Pin song beat -2 at 0s (i.e. the downbeat is 1.0s in) => beat = 2·t - 2.
     const m = mkManifest({
       sources: {
         recording: {
           kind: "audio",
           file: "source.m4a",
-          beats: { file: "b.json", "produced-by": "x" },
-          anchor: { t: 1.0, b: 0 }, // 1.0s == beats[2].time
+          beatMap: [{ startBeat: -2, times: [0, 0.5] }],
         },
       },
     });
-    // word at 2.0s => detected beat 4 => musical beat 4 - 2 = 2
+    // word at 2.0s => musical beat 2·2 - 2 = 2
     const align = mkAlign([["X", 2000, 2050]]);
-    const out = buildLyricsDisplay(m, align, beats);
+    const out = buildLyricsDisplay(m, align);
     expect(out.words[0].startBeat).toBeCloseTo(2.0);
   });
 
   // #3 line slicing by align-normalized word count, not whitespace
   it("slices authored lines into word ranges by normalized word count", () => {
-    const beats = mkBeats(40);
     // 9 aligned words
     const align = mkAlign(
       ["GO A MARCHIN IN WHEN THE SAINTS GO IN".split(" ").map((t, i) => [t, 1000 + i * 200, 1100 + i * 200] as [string, number, number])][0],
     );
     const m = mkManifest({
       sections: [
-        { name: "Verse 1", b: 0, bars: 8, lines: [
+        { name: "Verse 1", bars: 8, lines: [
           { text: "go a-marchin' in" }, // 4 normalized words (hyphen splits)
           { text: "when the saints go in" }, // 5 normalized words
         ] },
       ],
     });
-    const out = buildLyricsDisplay(m, align, beats);
+    const out = buildLyricsDisplay(m, align);
     expect(out.display.lines).toHaveLength(2);
     expect(out.display.lines[0].words).toEqual([0, 3]); // 4 words: indices 0..3
     expect(out.display.lines[1].words).toEqual([4, 8]); // 5 words: indices 4..8
@@ -121,15 +116,14 @@ describe("buildLyricsDisplay", () => {
 
   // #4 sections copied as display labels
   it("copies manifest sections to display.sections", () => {
-    const beats = mkBeats(20);
     const align = mkAlign([["A", 1000, 1100]]);
     const m = mkManifest({
       sections: [
-        { name: "Chorus 1", b: 0, bars: 16, cue: true },
-        { name: "Instrumental", b: 64, bars: 20 },
+        { name: "Chorus 1", bars: 16, cue: true },
+        { name: "Instrumental", bars: 20 },
       ],
     });
-    const out = buildLyricsDisplay(m, align, beats);
+    const out = buildLyricsDisplay(m, align);
     expect(out.display.sections).toEqual([
       { name: "Chorus 1", startBeat: 0, cue: true },
       { name: "Instrumental", startBeat: 64 },
@@ -139,16 +133,15 @@ describe("buildLyricsDisplay", () => {
   // #5 explicit section membership — a pickup groups under its section even
   // though its measured beat lands before the section's start beat.
   it("uses the containing section, so a pickup groups under its section", () => {
-    const beats = mkBeats(200);
     // "PICKUP" sung at 30s => beat 60, which is BEFORE Verse 1's beat (64).
     const align = mkAlign([["EARLY", 1000, 1100], ["PICKUP", 30000, 30100]]);
     const m = mkManifest({
       sections: [
-        { name: "Intro", b: 0, bars: 16, lines: [{ text: "early" }] },
-        { name: "Verse 1", b: 64, bars: 16, lines: [{ text: "pickup" }] },
+        { name: "Intro", bars: 16, lines: [{ text: "early" }] },
+        { name: "Verse 1", bars: 16, lines: [{ text: "pickup" }] },
       ],
     });
-    const out = buildLyricsDisplay(m, align, beats);
+    const out = buildLyricsDisplay(m, align);
     expect(out.display.lines[0].section).toBe("Intro");
     // pickup beat 60 < Verse 1's 64, yet it's grouped under Verse 1 by authorship
     expect(out.words[out.display.lines[1].words[0]].startBeat).toBeCloseTo(60);
@@ -158,10 +151,9 @@ describe("buildLyricsDisplay", () => {
   // pre-roll: downbeat sits at the pre-roll offset; count-in is negative beats
   // at positive time; word beats (downbeat-relative) are unchanged.
   it("places the downbeat at the pre-roll offset, count-in at negative beats", () => {
-    const beats = mkBeats(40); // 120 BPM grid, anchor {t:0,b:0} => beat = 2*seconds
     const align = mkAlign([["A", 1000, 1100]]); // word at 1.0s => beat 2
     const m = mkManifest({ bpm: 120, timeSignature: [4, 4], preRollBars: 2 });
-    const out = buildLyricsDisplay(m, align, beats);
+    const out = buildLyricsDisplay(m, align);
 
     const c = new Curve(out.curve);
     // 2 bars @ 120 BPM 4/4 = 8 beats = 4s pre-roll.
@@ -173,7 +165,7 @@ describe("buildLyricsDisplay", () => {
 
   // #6 curve anchors carried for the client's beat<->seconds
   it("carries the song curve anchors", () => {
-    const out = buildLyricsDisplay(mkManifest({ bpm: 120 }), mkAlign([["A", 0, 100]]), mkBeats(20));
+    const out = buildLyricsDisplay(mkManifest({ bpm: 120 }), mkAlign([["A", 0, 100]]));
     // constant 120 BPM => 2 anchors, slope 2 beats/sec
     expect(out.curve.length).toBeGreaterThanOrEqual(2);
     const [a0, a1] = out.curve;
@@ -183,19 +175,18 @@ describe("buildLyricsDisplay", () => {
 
   // #7 end to end: well-formed, tags carried
   it("produces a well-formed display end to end", () => {
-    const beats = mkBeats(40);
     const align = mkAlign(
       "WHEN THE SAINTS GO MARCHIN IN".split(" ").map((t, i) => [t, 1000 + i * 300, 1200 + i * 300] as [string, number, number]),
     );
     const m = mkManifest({
       title: "When the Saints Go Marching In",
       artist: "Louis Armstrong",
-      sections: [{ name: "Chorus 1", b: 0, bars: 16, cue: true, lines: [
+      sections: [{ name: "Chorus 1", bars: 16, cue: true, lines: [
         { text: "when the saints", tag: "Lead" },
         { text: "go marchin' in", tag: "Response" },
       ] }],
     });
-    const out = buildLyricsDisplay(m, align, beats);
+    const out = buildLyricsDisplay(m, align);
     expect(out.title).toBe("When the Saints Go Marching In");
     expect(out.artist).toBe("Louis Armstrong");
     expect(out.slug).toContain("saints");

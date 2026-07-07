@@ -38,17 +38,39 @@ fundamental**. The output still has both coordinates resolved.
 2. **One curve per source.** A "source" is a recording, a stem-split group
    sharing a parent recording's curve, or eventually sheet music. Stems
    inherit a parent recording's curve by reference.
-3. **Common case has two curves**: the recording's observed curve (from
-   `.beats.json`) for stretch-marker generation, and the song's intended
+3. **Common case has two curves**: the recording's curve (the inline
+   `beatMap`, see below) for stretch-marker generation, and the song's intended
    curve (`constantBpm` once stretched). Lyrics resolve against the song
    curve.
+
+   **Recording curve = the clip's `beatMap`** (REVISED 2026-07-06, was
+   "`.beats.json` + a single `anchor`"). The recording source carries an inline,
+   authored beat-map: `source-time ↔ song-beat` control points, spelled as
+   `{beat, t}` pins or `{startBeat, stride?, times[]}` runs (see
+   `src/beat-map.ts`). The curve runs piecewise-linear through the points and
+   extrapolates at the song BPM past the outermost pin. Point *density* is the
+   only knob: pin every beat (a stride-1 run) and the curve follows the
+   recording's micro-timing (detection just seeds this); leave a gap and those
+   beats interpolate linearly — a deliberate stretch, e.g. a rubato intro
+   compressed into fewer bars (Zombie: `{beat:0,t:1.07}` then a run from
+   `startBeat:12` compresses 1.07→11.0s across 3 bars ≈ 16% faster); pin every
+   Nth beat (a strided run) and the in-between beats float. This one structure
+   absorbs the old `anchor`, `smStride`, `smLeadSource`, and hand-tuned intros.
+   The map is inline (durable in the manifest) rather than a `.beats.json`
+   reference; the detector's raw output is a regenerable cache.
 4. **JSON + schema, no TS execution.** Inert data, validated (likely zod).
 5. **No structural reuse.** Loops are unrolled in the source. Practice
    looping is a playback-time concern (REAPER region loop + count-in audio),
    not a schema concern. Static absolute lyric positions survive looping.
 6. **Sections carry their lyric lines** (REVISED 2026-07-01, was "labels, flat
-   list"). A section has a start beat *and* nests the lyric lines that belong
-   to it, in sung order. This makes section membership explicit so a pickup —
+   list"). A section is an ordered entry with a length in `bars` and nests the
+   lyric lines that belong to it, in sung order. Its start beat is NOT authored
+   — sections run back-to-back from measure 1 beat 1, so each one's start is
+   inferred from the lengths of the sections before it (see `sectionStarts` in
+   `manifest.ts`). Carrying an absolute start alongside the length would be
+   redundant and could silently disagree with the running total (REVISED
+   2026-07-03, was "has a start beat *and* nests…").
+   This makes section membership explicit so a pickup —
    sung a beat or two before the section downbeat — groups under its section
    instead of being guessed into the previous one from its measured beat.
    Timing is still measured (alignment), not authored; only the grouping is
@@ -82,9 +104,11 @@ fundamental**. The output still has both coordinates resolved.
     "recording": {
       "kind": "audio",
       "file":     "source.m4a",
-      "beats":    { "file": "source.m4a.beats.effective.json", "produced-by": "clickbait-audio beats", "edited": true },
-      "analysis": { "file": "source.analysis.json",            "produced-by": "clickbait-audio analyze" },
-      "anchor":   { "t": 22.890, "b": 0 }
+      "analysis": { "file": "source.analysis.json", "produced-by": "clickbait-audio analyze" },
+      "beatMap": [
+        { "beat": 0, "t": 1.07 },
+        { "startBeat": 12, "times": [11.0, 11.73, 12.49, "…detected beats to end…"] }
+      ]
     },
     "stems": {
       "kind": "audio-group",
@@ -103,8 +127,8 @@ fundamental**. The output still has both coordinates resolved.
   "songCurve": "constantBpm",
 
   "sections": [
-    { "name": "Verse 1", "b": 0,  "bars": 8, "cue": true },
-    { "name": "Refrain", "b": 32, "bars": 8, "cue": true }
+    { "name": "Verse 1", "bars": 8, "cue": true },
+    { "name": "Refrain", "bars": 8, "cue": true }
   ],
 
   "lyrics": {

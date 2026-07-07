@@ -101,6 +101,28 @@ export interface BuildOptions {
   /** Rig routing + record-track layout (default.json). Optional — without it,
    *  no hardware routing is emitted and no record tracks are added. */
   rig?: Rig;
+  /** Per-section stretch-marker stride, in SONG beats (pre-padding). Within a
+   *  range, only every `stride`-th beat becomes a stretch marker (so a loose
+   *  passage keeps its feel between downbeats). Outside all ranges, every beat. */
+  strideRanges?: { startBeat: number; endBeat: number; stride: number }[];
+  /** Seconds the stems play PAST the song end (natural decay, 1:1, no stretch)
+   *  while the click halts at the end. For songs that end on a hit/abrupt stop. */
+  ringOutSec?: number;
+  /** Source position (seconds) for the leading stretch marker (item 0) of items
+   *  that begin at the song start — the intro's single stretch segment when the
+   *  first section uses `smStride: 0`. Default 0 (identity). Captures a
+   *  hand-tuned loose-intro timing so regeneration reproduces it. */
+  introLeadSource?: number;
+  /** Verbatim intro stretch markers (itemPosition, sourcePosition seconds),
+   *  captured from a hand-tuned REAPER intro. When present they REPLACE the
+   *  generated leading markers on song-start items; the beat grid resumes after
+   *  (the intro section must use smStride:0 so no generated intro markers remain). */
+  introMarkers?: { itemPosition: number; sourcePosition: number }[];
+  /** Per-beat source times for the recording, shared by every stem (they play
+   *  the same recording). Supplied by the manifest path from the beat-map (see
+   *  beatMapToBeats). When present it replaces reading each audio node's
+   *  `beatsFile`; the `.ts` DSongL path omits it and still reads `beatsFile`. */
+  recordingBeats?: { time: number }[];
 }
 
 /** Track options (mainsend/hwout/mute/gain) for a generated track from a rig
@@ -400,8 +422,13 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // Stems default to unity — balance is set downstream (on the mixer), not
   // baked into the render. A rig stems Route can override gain/mute/send.
   const stemsR = routeOpts(opts.rig?.generated?.stems, true);
+  const strideTimeRanges = (opts.strideRanges ?? []).map(r => ({
+    tStart: curve.toTime(r.startBeat + paddingBeats),
+    tEnd: curve.toTime(r.endBeat + paddingBeats),
+    stride: r.stride,
+  }));
   for (const [trackName, audioEvents] of audioByTrack) {
-    const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs);
+    const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs, strideTimeRanges, opts.ringOutSec ?? 0, opts.introLeadSource ?? 0, opts.introMarkers, opts.recordingBeats);
     rppLines.push(buildTrack(trackName, stemsR.gain, items, {
       beat: -1, mainsend: stemsR.mainsend, hwout: stemsR.hwout, muted: stemsR.muted,
     }));
@@ -554,6 +581,11 @@ function buildAudioFileItems(
   groupId: number | undefined,
   projectEndSec: number | undefined,
   defaultSoffs: number,
+  strideRanges: { tStart: number; tEnd: number; stride: number }[] = [],
+  ringOutSec = 0,
+  introLeadSource = 0,
+  introMarkers?: { itemPosition: number; sourcePosition: number }[],
+  recordingBeats?: { time: number }[],
 ): string {
   const lines: string[] = [];
   for (let i = 0; i < audioEvents.length; i++) {
@@ -583,12 +615,14 @@ function buildAudioFileItems(
         0,
       );
       length = timelineLen;
-    } else if (e.beatsFile) {
+    } else if (recordingBeats || e.beatsFile) {
       const bpm = tempoMap[0]?.bpm ?? 120;
-      const beatsData = JSON.parse(readFileSync(e.beatsFile, "utf8"));
-      // Drop beats that fall inside the soffs trim — their source positions
-      // would be negative relative to the item and REAPER rejects those.
-      const beats: Beat[] = (beatsData.beats as Beat[]).filter(b => b.time >= soffs);
+      // Manifest path supplies the recording's per-beat source times directly
+      // (from the beat-map, shared across stems); the `.ts` path reads a
+      // `beatsFile` sidecar. Either way: drop beats inside the soffs trim —
+      // their source positions would be negative relative to the item.
+      const allBeats: Beat[] = recordingBeats ?? JSON.parse(readFileSync(e.beatsFile!, "utf8")).beats;
+      const beats: Beat[] = allBeats.filter(b => b.time >= soffs);
       // If the first beat isn't at source 0, there's leading source audio
       // before the first beat (e.g. a quiet arpeggio or room noise) that
       // would otherwise be clipped — the first SM at (item 0, source
@@ -598,17 +632,53 @@ function buildAudioFileItems(
       // beats[0].time, so source 0 now plays at item-time 0 at 1:1 rate and
       // the first beat still lands at the user-authored project position.
       const preRegion = soffs === 0 && beats.length > 0 ? beats[0].time : 0;
-      const markers = beatsToStretchMarkers(beats, {
+      let markers = beatsToStretchMarkers(beats, {
         bpm,
         sourceAnchor: beats[0]?.time ?? soffs,
         itemAnchor: preRegion,
         stride: e.smStride,
       });
+      // Per-section stride: thin markers to every Nth beat inside a range so a
+      // loose passage (e.g. a triplet solo) keeps its feel between downbeats.
+      // A marker's absolute project time is position + beat*beatLen (the
+      // preRegion shift cancels). Ranges arrive resolved to project time.
+      if (strideRanges.length > 0 && markers.length > 0) {
+        const beatLen = 60 / bpm;
+        markers = markers.filter(m => {
+          const absT = position + m.beat * beatLen;
+          for (const r of strideRanges) {
+            if (absT >= r.tStart - 1e-6 && absT < r.tEnd - 1e-6) {
+              if (r.stride === 0) return false; // no stretch markers in this section — play 1:1
+              const firstBeat = Math.round((r.tStart - position) / beatLen);
+              return (m.beat - firstBeat) % r.stride === 0;
+            }
+          }
+          return true;
+        });
+      }
+      // Ring-out: drop stretch markers past the song end so the last marker
+      // sits ON the end; the tail after it plays 1:1 (natural decay) while the
+      // click halts at the end. Item length then extends ringOutSec beyond it.
+      if (ringOutSec > 0 && projectEndSec !== undefined && markers.length > 0) {
+        const beatLen = 60 / bpm;
+        markers = markers.filter(m => position + m.beat * beatLen <= projectEndSec + 1e-6);
+      }
       if (markers.length > 0) {
-        if (preRegion > 0) {
-          // Prepend identity SM at (item 0, source 0) so the pre-first-beat
-          // audio plays 1:1 from the start of the item.
-          markers.unshift({ beat: -1, itemPosition: 0, sourcePosition: 0 });
+        if (introMarkers && introMarkers.length > 0) {
+          // Verbatim hand-tuned intro markers (captured from REAPER) REPLACE the
+          // generated leading markers. The intro section uses smStride:0 so no
+          // generated markers remain in its span; these define the intro's
+          // stretch, and the beat grid resumes at the drums entry. No preRegion
+          // shift — the markers' item positions already place the audio.
+          markers.unshift(
+            ...introMarkers.map(m => ({ beat: -1, itemPosition: m.itemPosition, sourcePosition: m.sourcePosition })),
+          );
+        } else if (preRegion > 0) {
+          // Prepend a leading SM at (item 0, source `introLeadSource`). Default
+          // 0 = identity (pre-first-beat audio plays 1:1). A non-zero value
+          // (hand-tuned loose intro, captured in the manifest) re-times the
+          // segment from item 0 to the next marker.
+          markers.unshift({ beat: -1, itemPosition: 0, sourcePosition: introLeadSource });
           // Move the item earlier in the project so the first beat still
           // lands at its authored position.
           position -= preRegion;
@@ -616,14 +686,14 @@ function buildAudioFileItems(
         // REAPER reads SM source positions as file-absolute (not relative to
         // soffs), so pass 0 here regardless of the item's soffs value.
         smLines = formatStretchMarkers(markers, 0, 0);
-        // Item length = last marker's grid position (stretched timeline)
-        length = Math.min(markers[markers.length - 1].itemPosition, sourceCap);
+        // Item length = last marker's grid position (+ ring-out tail played 1:1)
+        length = Math.min(markers[markers.length - 1].itemPosition + ringOutSec, sourceCap);
       }
     }
 
-    // Trim to project end so REAPER stops playback cleanly
+    // Trim to project end (+ ring-out) so REAPER stops playback cleanly
     if (projectEndSec !== undefined) {
-      const maxLength = projectEndSec - position;
+      const maxLength = projectEndSec + ringOutSec - position;
       if (maxLength > 0 && length > maxLength) {
         length = maxLength;
       }

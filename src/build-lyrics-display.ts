@@ -12,9 +12,10 @@
  * the CLI that calls it.
  */
 
-import type { SongManifest } from "./manifest.js";
+import { sectionStarts, type SongManifest } from "./manifest.js";
 import { Curve } from "./curve.js";
-import { recordingCurveFromBeats, bridgeTokens, type AlignInput } from "./lyrics-timing.js";
+import { beatMapCurve } from "./beat-map.js";
+import { bridgeTokens, type AlignInput } from "./lyrics-timing.js";
 import type {
   LyricsDisplay,
   LyricWord,
@@ -46,16 +47,15 @@ function slugify(s: string): string {
 export function buildLyricsDisplay(
   manifest: SongManifest,
   align: AlignInput,
-  beats: readonly { time: number }[],
 ): LyricsDisplay {
-  // Recording curve (recording time -> musical beat, with the bar-1 anchor)
-  // and the song's constant-tempo curve (beat -> song seconds). The pre-roll
-  // sets the curve's t0: the downbeat (beat 0) sits `preRollBars` bars into the
+  // Recording curve (recording time -> musical beat, from the beat-map) and the
+  // song's constant-tempo curve (beat -> song seconds). The pre-roll sets the
+  // curve's t0: the downbeat (beat 0) sits `preRollBars` bars into the
   // show-track timeline, so the count-in is at negative beats / positive time
   // (see docs/timing-frames.md). Word beats are downbeat-relative regardless —
   // they come from the recording curve — so only t0 (the song-time origin)
   // moves.
-  const recordingCurve = recordingCurveFromBeats(beats, manifest.sources.recording.anchor);
+  const recordingCurve = beatMapCurve(manifest.sources.recording.beatMap, manifest.bpm);
   const preRollSeconds = (manifest.preRollBars * manifest.timeSignature[0] * 60) / manifest.bpm;
   const songCurve = Curve.constantBpm(manifest.bpm, { t0: preRollSeconds });
 
@@ -67,10 +67,12 @@ export function buildLyricsDisplay(
     endBeat: t.endB,
   }));
 
-  // Sections become display labels (beat-only).
-  const sections: DisplaySection[] = manifest.sections.map((s) => ({
+  // Sections become display labels (beat-only). Start beats are inferred from
+  // section order + length, not authored.
+  const starts = sectionStarts(manifest.sections, manifest.timeSignature);
+  const sections: DisplaySection[] = manifest.sections.map((s, i) => ({
     name: s.name,
-    startBeat: s.b,
+    startBeat: starts[i],
     ...(s.cue !== undefined ? { cue: s.cue } : {}),
   }));
 

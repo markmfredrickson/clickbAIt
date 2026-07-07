@@ -31,10 +31,7 @@ if (!alignRef) {
 }
 const align = JSON.parse(readFileSync(join(dir, alignRef.file), "utf8")) as AlignInput;
 
-const beatsRaw = JSON.parse(readFileSync(join(dir, manifest.sources.recording.beats.file), "utf8"));
-const beats = (beatsRaw.beats ?? beatsRaw) as { time: number }[];
-
-const display = buildLyricsDisplay(manifest, align, beats);
+const display = buildLyricsDisplay(manifest, align);
 
 const out = process.argv[3] ?? join(dir, `${display.slug}.lyrics-display.json`);
 writeFileSync(out, JSON.stringify(display, null, 2));

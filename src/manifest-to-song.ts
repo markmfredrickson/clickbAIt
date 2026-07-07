@@ -18,6 +18,7 @@ import { resolve } from "node:path";
 import { song, seq, span, audio, bars, cue } from "./dsongl/index.js";
 import type { Song, Node } from "./dsongl/index.js";
 import type { SongManifest } from "./manifest.js";
+import { beatMapToBeats } from "./beat-map.js";
 import { Curve } from "./curve.js";
 
 /**
@@ -35,7 +36,6 @@ export function stemOffset(
 
 export function manifestToSong(
   manifest: SongManifest,
-  beats: readonly { time: number }[],
   manifestDir: string,
 ): Song {
   // Sections -> spans. Structure only (name, duration, cue, meter override);
@@ -50,17 +50,17 @@ export function manifestToSong(
     return marks.length > 0 ? span(s.name, bars(s.bars), opts, marks) : span(s.name, bars(s.bars), opts);
   });
 
-  // Stems -> audio tracks. All share the recording's beats and the anchor-
-  // derived offset (and any group-level source trim).
+  // Stems -> audio tracks. All share the recording's beat-map: the offset (the
+  // song beat of the recording's first control point) places the item on the
+  // grid; the per-beat source times feed the stretch-marker engine in build-rpp
+  // (passed there as a shared `recordingBeats`, not per node). Plus any
+  // group-level source trim.
   const stems = manifest.sources.stems;
-  const rec = manifest.sources.recording;
-  const offset = stemOffset(rec.anchor, beats);
-  const beatsFile = resolve(manifestDir, rec.beats.file);
+  const { offset } = beatMapToBeats(manifest.sources.recording.beatMap, manifest.bpm);
   const audios: Node[] = stems
     ? Object.entries(stems.files).map(([key, file]) =>
         audio(titleCase(key), resolve(manifestDir, stems.dir, file), {
           offset,
-          beatsFile,
           ...(stems.soffs !== undefined ? { soffs: stems.soffs } : {}),
           ...(stems.sourceEnd !== undefined ? { sourceEnd: stems.sourceEnd } : {}),
         }),

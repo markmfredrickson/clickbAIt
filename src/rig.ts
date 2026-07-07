@@ -44,7 +44,7 @@ const ChannelSchema = z.union([
 const RecordTrackSchema = z.object({
   name: z.string(),
   channel: ChannelSchema,
-  arm: z.boolean().default(true),
+  arm: z.boolean().default(false),
   /** Play back out to the same channel it records from (virtual soundcheck). */
   roundTrip: z.boolean().default(true),
 });
@@ -65,7 +65,7 @@ export const RigSchema = z.object({
   bandBlock: z
     .object({
       channels: z.number().int().positive(),
-      arm: z.boolean().default(true),
+      arm: z.boolean().default(false),
       roundTrip: z.boolean().default(true),
       names: z.record(z.string(), z.string()).default({}),
     })

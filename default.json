@@ -9,7 +9,7 @@
 
   "bandBlock": {
     "channels": 16,
-    "arm": true,
+    "arm": false,
     "roundTrip": true,
     "names": {
       "1": "Guitar Kr",

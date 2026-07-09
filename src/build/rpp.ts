@@ -144,13 +144,15 @@ function routeOpts(route: Route | undefined, fallbackToMaster: boolean): {
 
 export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // Slug = auto-inserted region at the top of the RPP holding the song-title
-  // TTS announcement. Default 4 bars; grows if the title TTS is long.
+  // TTS announcement + the count-in bar. Kept as short as possible (title bars +
+  // 1 count-in bar) so there isn't a long stretch of click before the downbeat;
+  // floor of 2 (title bar + count-in), grows only if the title TTS is long.
   const beatsPerBar = song.timeSignature[0];
   const barSeconds = (60 / song.bpm) * beatsPerBar;
   const titleSlugName = song.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
   const titleFile = `${opts.cueDir}/${titleSlugName}.wav`;
   const titleDur = audioDuration(titleFile);
-  const slugBars = Math.max(4, Math.ceil(titleDur / barSeconds) + 1);
+  const slugBars = Math.max(2, Math.ceil(titleDur / barSeconds) + 1);
   const slugBeats = slugBars * beatsPerBar;
 
   const { events, paddingBeats } = linearize(song, { withPadding: true, minPaddingBeats: slugBeats });

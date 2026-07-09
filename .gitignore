@@ -1,10 +1,11 @@
-# Python
+# Python (setuptools artifacts — anchored to repo root so they don't shadow
+# source dirs like src/build/, which is TypeScript, not build output)
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-dist/
-build/
+/dist/
+/build/
 *.egg
 .eggs/
 

@@ -82,7 +82,7 @@ describe("buildRpp", () => {
     expect(rpp).toContain(`${defaultOpts.cueDir}/chorus.wav`);
   });
 
-  it("places count beat numbers 1 bar before cue sections", () => {
+  it("places the section name + 2..N count in the bar before a cue section", () => {
     const s = song("Test", 120,
       seq(
         span("Intro", bars(4)),  // 16 beats
@@ -90,12 +90,43 @@ describe("buildRpp", () => {
       ),
     );
     const { rpp } = buildRpp(s, defaultOpts);
-    // Count for Verse: 1 bar before = beat 12, at 120bpm = 6s
-    // Should have 4 count items (4/4 time): beats 12, 13, 14, 15
-    expect(rpp).toContain(`${defaultOpts.countDir}/1.wav`);
+    // The count bar is 1 bar before the section (beat 12). Beat 1 is now the
+    // section NAME (a pickup resolving onto the "1"); "2 3 4" fill the rest —
+    // there is no separate "1.wav".
+    expect(rpp).toContain(`${defaultOpts.cueDir}/verse.wav`);
     expect(rpp).toContain(`${defaultOpts.countDir}/2.wav`);
     expect(rpp).toContain(`${defaultOpts.countDir}/3.wav`);
     expect(rpp).toContain(`${defaultOpts.countDir}/4.wav`);
+    expect(rpp).not.toContain(`${defaultOpts.countDir}/1.wav`);
+  });
+
+  it("counts a meter-change section in the PREVIOUS section's meter", () => {
+    // B is 3/4 but its count-in sits in A's last bar (4/4), so it counts a full
+    // 4 beats ("… 2 3 4"), not the new meter's 3 — counting the new meter would
+    // land the numbers on the wrong beats of the old bar.
+    const s = song("Test", 120, { timeSignature: [4, 4] },
+      seq(
+        span("Intro", bars(2)),                                        // 4/4
+        span("Chorus", bars(2), { cue: true, timeSignature: [3, 4] }), // 3/4, follows 4/4
+      ),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).toContain(`${defaultOpts.countDir}/4.wav`); // 4th beat = old 4/4 meter
+  });
+
+  it("does not overflow a short old bar: a 5/4 section after a 2/4 pickup counts only 2", () => {
+    const s = song("Test", 120, { timeSignature: [4, 4] },
+      seq(
+        span("Intro", bars(2)),                                        // 4/4
+        span("Verse", bars(1), { timeSignature: [2, 4] }),             // 2/4 pickup (not cued)
+        span("Chorus", bars(2), { cue: true, timeSignature: [5, 4] }), // 5/4, follows the 2/4
+      ),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    // Count-in sits in the 2/4 pickup, so it's just "… 2" — never a 5/4 "… 5"
+    // that would overflow the 2-beat bar and collide with the prior cue.
+    expect(rpp).toContain(`${defaultOpts.countDir}/2.wav`);
+    expect(rpp).not.toContain(`${defaultOpts.countDir}/5.wav`);
   });
 
   it("handles 5/4 time signature for counts", () => {

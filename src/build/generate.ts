@@ -20,6 +20,8 @@ import { RigSchema } from "../rig.js";
 import { buildRpp } from "./rpp.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
 import { extractSections } from "./sections.js";
+import { cueOnset } from "./cue-onset.js";
+import { pCenterSeconds, type AlignChar } from "./pcenter.js";
 import { linearize } from "./linearize.js";
 import { songSlug } from "../core/dsongl/index.js";
 import type { AlignInput } from "./lyrics-timing.js";
@@ -108,7 +110,41 @@ const ringOutSec = (manifest.ringOutBars ?? 0) * manifest.timeSignature[0] * (60
 const introLeadSource = manifest.sections[0]?.smLeadSource ?? 0;
 // Hand-tuned intro stretch markers (captured from REAPER), emitted verbatim.
 const introMarkers = manifest.sections[0]?.stretchMarkers?.map((m) => ({ itemPosition: m.item, sourcePosition: m.source }));
-const { rpp } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, introLeadSource, introMarkers, recordingBeats: beats });
+
+// Perceptual-center offset per cue WAV (seconds into the file) to land on its
+// beat. Primary: FORCED ALIGNMENT (wav2vec2 `align`) → character times → P-center
+// (pcenter.ts): a count number's/manual cue's FIRST-syllable P-center, a section
+// name's LAST-syllable (pickup resolving on the "1"). Energy-envelope (cue-onset.ts)
+// is the fallback if alignment fails. Cue WAVs are deterministic, so this is stable.
+const NUM_WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const alignChars = (wav: string, text: string): AlignChar[] => {
+  const j = JSON.parse(execSync(`"${audioBin}" align "${wav}" --text ${JSON.stringify(text)}`, { stdio: ["pipe", "pipe", "ignore"] }).toString());
+  return (j.words ?? []).flatMap((w: { chars?: AlignChar[] }) => w.chars ?? []);
+};
+const pcenterOr = (wav: string, text: string, mode: "first" | "last"): number | undefined => {
+  try { return pCenterSeconds(alignChars(wav, text), mode); }
+  catch { try { return cueOnset(wav, mode); } catch { return undefined; } }
+};
+const cueOnsets: Record<string, number> = {};
+for (const s of sections) {
+  if (!s.cue) continue;
+  const slug = slugify(s.name);
+  const v = pcenterOr(join(cueDir, `${slug}.wav`), s.name, "last");
+  if (v !== undefined) cueOnsets[slug] = v;
+}
+for (let n = 1; n <= maxBeatsPerBar; n++) {
+  const v = pcenterOr(join(cueDir, `${n}.wav`), NUM_WORDS[n - 1] ?? String(n), "first");
+  if (v !== undefined) cueOnsets[String(n)] = v;
+}
+for (const e of events) {
+  if (e.type !== "cue") continue;
+  const sl = slugify(e.value);
+  if (sl in cueOnsets) continue; // numbers already measured
+  const v = pcenterOr(join(cueDir, `${sl}.wav`), e.value, "first");
+  if (v !== undefined) cueOnsets[sl] = v;
+}
+
+const { rpp } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets });
 const slug = songSlug(song);
 writeFileSync(join(outDir, `${slug}.RPP`), rpp);
 

@@ -1,0 +1,29 @@
+{
+  "schema": "clickbait/song@1",
+  "title": "Count Test",
+  "bpm": 120,
+  "timeSignature": [4, 4],
+  "preRollBars": 0,
+  "sources": {
+    "recording": {
+      "kind": "audio",
+      "file": "none.wav",
+      "beatMap": [{ "startBeat": 0, "times": [0, 0.5] }]
+    }
+  },
+  "songCurve": "constantBpm",
+  "sections": [
+    { "name": "Intro", "bars": 2, "cue": true },
+    { "name": "Verse 1", "bars": 2, "cue": true },
+    { "name": "Chorus", "bars": 2, "cue": true },
+    { "name": "Bridge", "bars": 2, "cue": true, "timeSignature": [3, 4] },
+    { "name": "Pre-Chorus", "bars": 2, "cue": true },
+    { "name": "Instrumental Break", "bars": 2, "cue": true, "timeSignature": [6, 8] },
+    { "name": "Refrain", "bars": 2, "cue": true },
+    { "name": "Pickup", "bars": 1, "cue": true, "timeSignature": [2, 4] },
+    { "name": "Solo", "bars": 2, "cue": true, "timeSignature": [5, 4] },
+    { "name": "Outro", "bars": 2, "cue": true },
+    { "name": "Tag", "bars": 2, "cue": true }
+  ],
+  "lyrics": {}
+}

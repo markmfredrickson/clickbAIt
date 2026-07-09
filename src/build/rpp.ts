@@ -123,6 +123,12 @@ export interface BuildOptions {
    *  beatMapToBeats). When present it replaces reading each audio node's
    *  `beatsFile`; the `.ts` DSongL path omits it and still reads `beatsFile`. */
   recordingBeats?: { time: number }[];
+  /** Attack offset (seconds INTO each cue WAV) to land on its beat, keyed by WAV
+   *  basename (section-name slug, or the count number "2","3",…). For a section
+   *  name it's the LAST syllable's onset (the name plays as a pickup resolving on
+   *  the "1"); for a count number it's the digit's onset. Absent → a name falls
+   *  back to its full duration, a number to 0 (starts on the beat). See cue-onset.ts. */
+  cueOnsets?: Record<string, number>;
 }
 
 /** Track options (mainsend/hwout/mute/gain) for a generated track from a rig
@@ -262,47 +268,60 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   cueNames.add(song.title);
   trackItems.push({ position: 0, length: titleDur, file: titleFile });
 
-  // Track when the cue track is "free" (no overlapping items)
-  let cueTrackFreeAfter = titleDur;
+  // (Section names are no longer announced 2 bars ahead — the name now leads the
+  // count-in bar as a pickup; see the count-in loop below.)
 
-  // Auto-cues: sections with cue=true get a TTS announcement 2 bars before
-  // Skipped if it would overlap with the title cue or a previous section cue
-  for (const sec of sections) {
-    if (!sec.cue) continue;
-    const beatsPerBar = sec.timeSignature[0];
-    const cueBeat = sec.beat - beatsPerBar * 2; // 2 bars before section
-    if (cueBeat < 0) continue;
-    const cueSec = curve.toTime(cueBeat);
-    if (cueSec < cueTrackFreeAfter) continue; // would overlap — skip
-    const cueSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
-    const file = `${opts.cueDir}/${cueSlug}.wav`;
-    const dur = audioDuration(file);
-    cueNames.add(sec.name);
-    trackItems.push({ position: cueSec, length: dur, file });
-    cueTrackFreeAfter = cueSec + dur;
-  }
-
-  // Manual cue() events (ad-hoc band notes, already padded)
+  // Manual cue() events (ad-hoc band notes, already padded). Onset-anchored like
+  // the count-in: shift the WAV earlier by its attack so the word/hit SOUNDS on
+  // the authored beat rather than starting there (and landing late).
   for (const e of events) {
     if (e.type === "cue") {
       const slug = e.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
       const file = `${opts.cueDir}/${slug}.wav`;
       cueNames.add(e.value);
-      trackItems.push({ position: e.seconds, length: audioDuration(file), file });
+      const onset = opts.cueOnsets?.[slug] ?? 0;
+      trackItems.push({ position: Math.max(0, e.seconds - onset), length: audioDuration(file), file });
     }
   }
 
-  // Counts: 1 bar before each cue section (sections already padded)
-  for (const sec of sections.filter(s => s.cue)) {
-    const beatsPerBar = sec.timeSignature[0];
+  // Count-in, one bar before each cued section, placed IN THAT BAR'S METER — the
+  // PREVIOUS section's meter (the pulse the band is still feeling), NOT the new
+  // section's. So a 4/4→3/4 change still counts "1 2 3 4" on the real beats
+  // (counting the new meter would land the numbers on the wrong beats of the old
+  // bar), and a larger new meter can't overflow a short old bar (e.g. a 2/4
+  // pickup). The first section's count-in sits in the slug, in the song's default
+  // meter. The section NAME leads the bar as a pickup resolving on beat 1, then
+  // "2..N". Counts stay distinct per-beat WAVs.
+  //
+  // TODO (unresolved): odd/compound meters like 7/8 or 5/8. This counts one number
+  // per beat-unit of the meter numerator, which is fine for x/4 but wrong-feeling
+  // for compound 8ths — e.g. 7/8 usually groups (2+2+3) and would want "1 2 3" over
+  // the groups, not seven evenly-spaced numbers. Changing INTO such a meter is also
+  // unknown territory (see docs/count-in-meters.md). Handle with explicit count
+  // cues for now.
+  for (let idx = 0; idx < sections.length; idx++) {
+    const sec = sections[idx];
+    if (!sec.cue) continue;
+    const beatsPerBar = (idx > 0 ? sections[idx - 1].timeSignature : song.timeSignature)[0];
     const barStartBeat = sec.beat - beatsPerBar;
     if (barStartBeat < 0) continue;
 
-    for (let i = 0; i < beatsPerBar; i++) {
-      const beatPos = barStartBeat + i;
-      const beatSec = curve.toTime(beatPos);
-      const file = `${opts.countDir}/${i + 1}.wav`;
-      trackItems.push({ position: beatSec, length: audioDuration(file), file });
+    // Beat 1: section name, last syllable resolving onto the beat.
+    const nameSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+    const nameFile = `${opts.cueDir}/${nameSlug}.wav`;
+    const nameDur = audioDuration(nameFile);
+    cueNames.add(sec.name);
+    // Anchor the name so its last-syllable onset (not the file end) lands on the
+    // beat — the name plays as a pickup and resolves ON the "1".
+    const nameAnchor = opts.cueOnsets?.[nameSlug] ?? nameDur;
+    trackItems.push({ position: Math.max(0, curve.toTime(barStartBeat) - nameAnchor), length: nameDur, file: nameFile });
+
+    // Beats 2..N: count numbers, each digit's onset landing on its beat.
+    for (let i = 1; i < beatsPerBar; i++) {
+      const num = String(i + 1);
+      const file = `${opts.countDir}/${num}.wav`;
+      const numAnchor = opts.cueOnsets?.[num] ?? 0;
+      trackItems.push({ position: Math.max(0, curve.toTime(barStartBeat + i) - numAnchor), length: audioDuration(file), file });
     }
   }
 

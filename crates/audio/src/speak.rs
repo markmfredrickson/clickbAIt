@@ -7,7 +7,7 @@ use std::path::Path;
 /// Target sample rate for all output WAVs — matches REAPER project and stems.
 const TARGET_SAMPLE_RATE: u32 = 44100;
 
-pub fn run(text: &str, output: &str, voice: &str) -> Result<()> {
+pub fn run(text: &str, output: &str, voice: &str, length_scale: Option<f32>) -> Result<()> {
     let model_dir = model_dir()?;
     let config_path = model_dir.join(format!("{voice}.onnx.json"));
     let onnx_path = model_dir.join(format!("{voice}.onnx"));
@@ -26,7 +26,7 @@ pub fn run(text: &str, output: &str, voice: &str) -> Result<()> {
 
     eprintln!("Synthesizing: \"{text}\"");
     let (samples, sample_rate) = piper
-        .create(text, false, None, None, None, None)
+        .create(text, false, None, length_scale, None, None)
         .map_err(|e| anyhow::anyhow!("Synthesis failed: {e}"))?;
 
     let (out_samples, out_rate) = if sample_rate != TARGET_SAMPLE_RATE {

@@ -95,6 +95,10 @@ enum Commands {
         /// Piper voice model
         #[arg(long, default_value = "en_US-lessac-medium")]
         voice: String,
+        /// Piper length_scale (duration multiplier): <1 faster, >1 slower.
+        /// Omit for the model default. Used to fit cue speech to the tempo.
+        #[arg(long)]
+        length_scale: Option<f32>,
     },
 }
 
@@ -143,6 +147,6 @@ fn main() -> Result<()> {
         Commands::Unstretch { file } => unstretch::run(&file),
         Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),
         Commands::Align { file, text, output } => align::run(&file, &text, output.as_deref()),
-        Commands::Speak { text, output, voice } => speak::run(&text, &output, &voice),
+        Commands::Speak { text, output, voice, length_scale } => speak::run(&text, &output, &voice, length_scale),
     }
 }

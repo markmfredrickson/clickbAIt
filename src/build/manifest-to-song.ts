@@ -18,7 +18,8 @@ import { resolve } from "node:path";
 import { song, seq, span, audio, bars, cue } from "../core/dsongl/index.js";
 import type { Song, Node } from "../core/dsongl/index.js";
 import type { SongManifest } from "../manifest.js";
-import { beatMapToBeats } from "../core/beat-map.js";
+import { sectionStarts } from "../manifest.js";
+import { beatMapToBeats, beatMapCurve } from "../core/beat-map.js";
 import { Curve } from "../core/curve.js";
 
 /**
@@ -56,16 +57,58 @@ export function manifestToSong(
   // (passed there as a shared `recordingBeats`, not per node). Plus any
   // group-level source trim.
   const stems = manifest.sources.stems;
-  const { offset } = beatMapToBeats(manifest.sources.recording.beatMap, manifest.bpm);
-  const audios: Node[] = stems
-    ? Object.entries(stems.files).map(([key, file]) =>
-        audio(titleCase(key), resolve(manifestDir, stems.dir, file), {
-          offset,
-          ...(stems.soffs !== undefined ? { soffs: stems.soffs } : {}),
-          ...(stems.sourceEnd !== undefined ? { sourceEnd: stems.sourceEnd } : {}),
-        }),
-      )
-    : [];
+  const beatMap = manifest.sources.recording.beatMap;
+  const { offset } = beatMapToBeats(beatMap, manifest.bpm);
+  const audios: Node[] = [];
+  if (stems) {
+    const files = Object.entries(stems.files);
+    if (stems.clips && stems.clips.length > 0) {
+      // Clips assemble each stem from the source, laid end-to-end on the
+      // timeline. A clip's timeline length in beats comes from the global
+      // beat-map (source-seconds -> beats); silence advances the cursor with no
+      // audio. Every stem shares the same clip arrangement, so each clip emits
+      // one same-named node per stem -> grouped into one track downstream.
+      const curve = beatMapCurve(beatMap, manifest.bpm);
+      const bps = manifest.bpm / 60;
+      let cursorBeat = offset; // timeline beat where the next clip begins
+      for (const clip of stems.clips) {
+        if ("silence" in clip) {
+          cursorBeat += clip.silence * bps; // gap on the timeline
+          continue;
+        }
+        const to = clip.from + clip.seconds;
+        const lenBeats = curve.toBeat(to) - curve.toBeat(clip.from);
+        for (const [key, file] of files) {
+          audios.push(
+            audio(titleCase(key), resolve(manifestDir, stems.dir, file), {
+              offset: cursorBeat,
+              soffs: clip.from,
+              sourceEnd: to,
+            }),
+          );
+        }
+        cursorBeat += lenBeats;
+      }
+      // Clips must tile the section timeline, or audio and click drift apart.
+      const clipsBeats = cursorBeat - offset;
+      const songBeats = sectionStarts(manifest.sections, manifest.timeSignature).at(-1)!;
+      if (Math.abs(clipsBeats - songBeats) > 0.25) {
+        throw new Error(
+          `clips span ${clipsBeats.toFixed(2)} beats but sections span ${songBeats} beats — they must match`,
+        );
+      }
+    } else {
+      for (const [key, file] of files) {
+        audios.push(
+          audio(titleCase(key), resolve(manifestDir, stems.dir, file), {
+            offset,
+            ...(stems.soffs !== undefined ? { soffs: stems.soffs } : {}),
+            ...(stems.sourceEnd !== undefined ? { sourceEnd: stems.sourceEnd } : {}),
+          }),
+        );
+      }
+    }
+  }
 
   return song(
     manifest.title,

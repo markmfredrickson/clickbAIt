@@ -601,7 +601,7 @@ function buildAudioFileItems(
 
     // Load stretch markers from beats sidecar if available
     let smLines: string[] = [];
-    if (e.sourceEnd !== undefined && !e.beatsFile) {
+    if (e.sourceEnd !== undefined && !e.beatsFile && !recordingBeats) {
       // Rigid segment with two anchor SMs: REAPER applies one uniform stretch
       // across the segment, preserving feel between anchors but locking edges
       // to the click. Timeline length comes from the next item's position.
@@ -620,9 +620,20 @@ function buildAudioFileItems(
       // Manifest path supplies the recording's per-beat source times directly
       // (from the beat-map, shared across stems); the `.ts` path reads a
       // `beatsFile` sidecar. Either way: drop beats inside the soffs trim —
-      // their source positions would be negative relative to the item.
+      // their source positions would be negative relative to the item — and,
+      // for a clip (a source-time slice), drop beats past `sourceEnd` so its
+      // stretch markers don't spill into the following source region (a repeated
+      // slice would otherwise drag in the beats after it).
       const allBeats: Beat[] = recordingBeats ?? JSON.parse(readFileSync(e.beatsFile!, "utf8")).beats;
-      const beats: Beat[] = allBeats.filter(b => b.time >= soffs);
+      // Quarter-beat tolerance on the clip window: the authored clip seconds are
+      // rounded, so a boundary beat landing ~on soffs/sourceEnd can fall just
+      // outside and get dropped — and with downbeat-only stride that loses a
+      // whole bar. A quarter beat is far below the beat spacing, so it recovers
+      // the boundary beat without ever grabbing the neighbour.
+      const beatEps = e.sourceEnd !== undefined ? 0.25 * (60 / bpm) : 0;
+      const beats: Beat[] = allBeats.filter(
+        b => b.time >= soffs - beatEps && (e.sourceEnd === undefined || b.time <= e.sourceEnd + beatEps),
+      );
       // If the first beat isn't at source 0, there's leading source audio
       // before the first beat (e.g. a quiet arpeggio or room noise) that
       // would otherwise be clipped — the first SM at (item 0, source
@@ -686,8 +697,15 @@ function buildAudioFileItems(
         // REAPER reads SM source positions as file-absolute (not relative to
         // soffs), so pass 0 here regardless of the item's soffs value.
         smLines = formatStretchMarkers(markers, 0, 0);
-        // Item length = last marker's grid position (+ ring-out tail played 1:1)
-        length = Math.min(markers[markers.length - 1].itemPosition + ringOutSec, sourceCap);
+        // Item length is a TIMELINE span: the last marker's grid position, plus
+        // any source past that marker up to sourceEnd played 1:1 (a clip authored
+        // a hair longer than its last downbeat — e.g. a half-beat ring on the
+        // final hit), plus any global ring-out tail. NOT capped by sourceCap
+        // (source-seconds axis) — when stretched, that min would clip the final
+        // beat short. projectEndSec (below) bounds it to song end.
+        const lastMarker = markers[markers.length - 1];
+        const trailing = e.sourceEnd !== undefined ? Math.max(0, e.sourceEnd - lastMarker.sourcePosition) : 0;
+        length = lastMarker.itemPosition + trailing + ringOutSec;
       }
     }
 

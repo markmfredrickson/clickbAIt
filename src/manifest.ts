@@ -85,6 +85,19 @@ const RecordingSource = z
   })
   .strict();
 
+/**
+ * A clip that assembles part of a track from the source. Either AUDIO — play
+ * `seconds` of source starting at `from` (source seconds; the global beatMap
+ * gives its timeline length + internal stretch) — or SILENCE, a `silence`-second
+ * gap on the timeline. Clips are laid end-to-end; a track's audio is their
+ * concatenation. Boundaries are free source-time positions, NOT tied to
+ * sections (a clip edge landing on a section edge is coincidence). See
+ * docs/song-schema-migration.md.
+ */
+const AudioClip = z.object({ from: z.number().nonnegative(), seconds: z.number().positive() }).strict();
+const SilenceClip = z.object({ silence: z.number().positive() }).strict();
+const Clip = z.union([AudioClip, SilenceClip]);
+
 /** A group of stems that inherit another source's curve by reference. */
 const StemsSource = z
   .object({
@@ -98,6 +111,14 @@ const StemsSource = z
     soffs: z.number().nonnegative().optional(),
     /** File-absolute source end in seconds; caps item length to sourceEnd - soffs. */
     sourceEnd: z.number().positive().optional(),
+    /**
+     * Ordered clips assembling every stem from the source (all stems share the
+     * arrangement). Absent = one implicit clip over the whole recording — the
+     * default, byte-identical to the pre-clip single-item behavior. Use clips to
+     * repeat/rearrange source regions (e.g. repeat a chorus as the outro). The
+     * clips' total timeline length must equal the section timeline.
+     */
+    clips: z.array(Clip).min(1).optional(),
   })
   .strict();
 

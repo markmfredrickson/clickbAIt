@@ -73,6 +73,69 @@ describe("manifestToSong", () => {
   });
 });
 
+describe("manifestToSong clips", () => {
+  // beat-map is identity-ish: beat i at 0.5i s (bpm 120), so toBeat(t) = 2t.
+  const base = {
+    schema: "clickbait/song@1" as const, title: "T", bpm: 120, timeSignature: [4, 4] as [number, number],
+    songCurve: "constantBpm" as const, lyrics: {},
+  };
+  const recording = { kind: "audio" as const, file: "s.m4a", beatMap: [{ startBeat: 0, times: mkTimes(40, 0.5) }] };
+
+  it("expands a repeat into per-clip items sharing one track", () => {
+    const m = SongManifestSchema.parse({
+      ...base,
+      sources: {
+        recording,
+        stems: { kind: "audio-group", curveRef: "recording", "produced-by": "y", dir: "stems/",
+          files: { vocals: "v.wav", drums: "d.wav" },
+          // clip 1: 8s of source (=16 beats) from 0; clip 2: repeat first 4s (=8 beats) from 0.
+          clips: [{ from: 0, seconds: 8 }, { from: 0, seconds: 4 }] },
+      },
+      // sections must tile the clips' 24 beats (= 6 bars).
+      sections: [{ name: "Verse", bars: 4 }, { name: "Outro", bars: 2 }],
+    });
+    const s: any = manifestToSong(m, "/x");
+    const audios = s.children.filter((c: any) => c.kind === "audio");
+    // 2 clips x 2 stems = 4 nodes; same names => grouped into 2 tracks downstream.
+    expect(audios.map((a: any) => a.name)).toEqual(["Vocals", "Drums", "Vocals", "Drums"]);
+    // clip 1 at timeline beat 0, source [0, 8]
+    expect(audios[0]).toMatchObject({ name: "Vocals", offset: 0, soffs: 0, sourceEnd: 8 });
+    // clip 2 placed after clip 1 (16 beats), source [0, 4] — the repeat
+    expect(audios[2]).toMatchObject({ name: "Vocals", offset: 16, soffs: 0, sourceEnd: 4 });
+  });
+
+  it("advances the timeline cursor across a silence clip without emitting audio", () => {
+    const m = SongManifestSchema.parse({
+      ...base,
+      sources: {
+        recording,
+        stems: { kind: "audio-group", curveRef: "recording", "produced-by": "y", dir: "stems/",
+          files: { vocals: "v.wav" },
+          clips: [{ from: 0, seconds: 8 }, { silence: 2 }, { from: 0, seconds: 4 }] },
+      },
+      // 16 (clip1) + 4 (silence: 2s @120bpm) + 8 (clip2) = 28 beats = 7 bars.
+      sections: [{ name: "A", bars: 7 }],
+    });
+    const s: any = manifestToSong(m, "/x");
+    const audios = s.children.filter((c: any) => c.kind === "audio");
+    expect(audios.length).toBe(2); // silence emits no audio node
+    expect(audios[1]).toMatchObject({ offset: 20, soffs: 0, sourceEnd: 4 }); // 16 + 4 silence
+  });
+
+  it("throws when clips don't tile the section timeline", () => {
+    const m = SongManifestSchema.parse({
+      ...base,
+      sources: {
+        recording,
+        stems: { kind: "audio-group", curveRef: "recording", "produced-by": "y", dir: "stems/",
+          files: { vocals: "v.wav" }, clips: [{ from: 0, seconds: 8 }, { from: 0, seconds: 4 }] },
+      },
+      sections: [{ name: "A", bars: 4 }], // 16 beats, but clips span 24
+    });
+    expect(() => manifestToSong(m, "/x")).toThrow(/clips span/);
+  });
+});
+
 describe("manifestToSong cue marks", () => {
   it("maps section.cues to cue() events at section-relative beats", () => {
     const m = SongManifestSchema.parse({

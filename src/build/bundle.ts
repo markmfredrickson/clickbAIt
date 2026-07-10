@@ -1,133 +1,121 @@
 /**
  * Practice Bundle builder.
  *
- * Assembles a self-contained directory per song that the band can open in
- * any browser. Plays a pre-rendered mix.wav while the existing teleprompter
- * UI scrolls in sync (no server, no OSC).
+ * Assembles a self-contained folder per song that a band member can open in any
+ * browser — no repo, no REAPER, no server. It plays a pre-rendered mix while the
+ * teleprompter UI scrolls the lyrics in sync, driven off the <audio> element's
+ * clock (not OSC).
  *
  * Usage:
- *   npx tsx src/bundle.ts <artist>/<slug> [--out <dir>]
+ *   npm run bundle -- songs/<artist>/<song>        [--out <dir>]
  *
- * Prerequisites (user must do first):
- *   1. Generate the song: `npx tsx bin/generate.mjs songs/<artist>/<slug>.ts songs/<artist>`
- *      → writes `songs/<artist>/<slug>.json` and the RPP.
- *   2. Open the RPP in REAPER, render master → save as `songs/<artist>/mix.wav`.
+ * Inputs (already produced by the normal pipeline), found in the song folder:
+ *   - <slug>.lyrics-display.json  — from `npm run generate` (the built display)
+ *   - mix.opus | mix.ogg | mix.m4a | mix.wav — the rendered show mix
+ *     (render the song's RPP in REAPER and save it into the song folder).
  *
- * Output: `bundles/<slug>/` containing index.html + style.css + teleprompter.js
- *         + song.json (with `"bundle": true` added) + mix.wav + README.txt.
+ * Output: bundles/<slug>/ with index.html + style.css + teleprompter.js +
+ *         song.json + the mix + README.txt. The display data is also inlined
+ *         into index.html (window.__SONG_DATA__) so it works over file://.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { resolve, basename, join, dirname } from "path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
+import { resolve, join } from "path";
 
 function fail(msg: string): never {
   console.error("error: " + msg);
   process.exit(1);
 }
 
-function parseArgs(argv: string[]): { target: string; outDir?: string } {
+function parseArgs(argv: string[]): { songDir: string; outDir?: string } {
   const args = argv.slice(2);
-  let target: string | undefined;
+  let songDir: string | undefined;
   let outDir: string | undefined;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--out" && args[i + 1]) {
-      outDir = args[++i];
-    } else if (!target && !args[i].startsWith("-")) {
-      target = args[i];
-    }
+    if (args[i] === "--out" && args[i + 1]) outDir = args[++i];
+    else if (!songDir && !args[i].startsWith("-")) songDir = args[i];
   }
-  if (!target) {
+  if (!songDir) {
     fail(
-      "usage: npx tsx src/bundle.ts <artist>/<slug> [--out <dir>]\n" +
-      '  e.g. npx tsx src/bundle.ts aimee-mann/save-me-aimee-mann'
+      "usage: npm run bundle -- songs/<artist>/<song> [--out <dir>]\n" +
+      "  e.g. npm run bundle -- songs/chappell-roan/pink-pony-club",
     );
   }
-  return { target: target!, outDir };
+  return { songDir, outDir };
 }
 
-const { target, outDir: outArg } = parseArgs(process.argv);
-
-// Parse "<artist>/<slug>". slug is the JSON file's basename without .json,
-// which is what generate.ts emits via songSlug().
-const slash = target.indexOf("/");
-if (slash < 0) fail(`target must be "<artist>/<slug>", got "${target}"`);
-const artist = target.slice(0, slash);
-const slug = target.slice(slash + 1);
-
-// Resolve repo root. This file lives at src/bundle.ts; from the process cwd
-// we expect the user runs from repo root.
+const { songDir: songDirArg, outDir: outArg } = parseArgs(process.argv);
 const repoRoot = process.cwd();
-const artistDir = resolve(repoRoot, "songs", artist);
-const songJsonPath = resolve(artistDir, `${slug}.json`);
-// Mix file: prefer Opus (smallest), then m4a/AAC, then WAV. First one found wins.
-const mixCandidates = ["mix.opus", "mix.ogg", "mix.m4a", "mix.wav"];
-const mixFile = mixCandidates.find((n) => existsSync(resolve(artistDir, n)));
-const mixPath = mixFile ? resolve(artistDir, mixFile) : resolve(artistDir, "mix.wav");
-const clientDir = resolve(repoRoot, "src", "teleprompter", "client");
+const songDir = resolve(repoRoot, songDirArg);
+if (!existsSync(songDir)) fail(`song folder not found: ${songDir}`);
+
+// The built teleprompter display (there is exactly one per song folder).
+const displayFiles = readdirSync(songDir).filter((f) => f.endsWith(".lyrics-display.json"));
+if (displayFiles.length === 0) {
+  fail(
+    `no *.lyrics-display.json in ${songDir}\n` +
+    `  Build the song first:  npm run generate -- ${songDirArg}/<slug>.song.json`,
+  );
+}
+if (displayFiles.length > 1) fail(`multiple *.lyrics-display.json in ${songDir}: ${displayFiles.join(", ")}`);
+const displayPath = join(songDir, displayFiles[0]);
+
+// Display data — mark it a bundle so the client drives off <audio>, not OSC.
+const songData = JSON.parse(readFileSync(displayPath, "utf8"));
+songData.bundle = true;
+const slug: string = songData.slug ?? displayFiles[0].replace(".lyrics-display.json", "");
 const outDir = resolve(repoRoot, outArg ?? `bundles/${slug}`);
 
-// Verify inputs.
-if (!existsSync(songJsonPath)) {
-  fail(
-    `song JSON not found at ${songJsonPath}\n` +
-    `  Generate it first with:\n` +
-    `    npx tsx bin/generate.mjs songs/${artist}/${slug.replace(/-.*$/, "")}.ts songs/${artist}`
-  );
-}
+// The rendered mix (smallest format first). Prefer a slug-named render
+// (<slug>.opus, what current RPPs render to); fall back to the older mix.* name.
+const exts = ["opus", "ogg", "m4a", "wav"];
+const mixCandidates = [...exts.map((e) => `${slug}.${e}`), ...exts.map((e) => `mix.${e}`)];
+const mixFile = mixCandidates.find((n) => existsSync(join(songDir, n)));
 if (!mixFile) {
   fail(
-    `no mix file found in ${artistDir}\n` +
+    `no mix file in ${songDir}\n` +
     `  Looked for: ${mixCandidates.join(", ")}\n` +
-    `  Render the RPP in REAPER and save the result as one of those names.`
+    `  Render the song's RPP in REAPER and save the result into the song folder.`,
   );
 }
-if (!existsSync(clientDir)) {
-  fail(`client dir missing: ${clientDir}`);
-}
+// Name the bundle's audio with the song slug so it's identifiable on someone's
+// drive (e.g. "pink-pony-club-chappell-roan.opus"), like the .RPP.
+const bundleMix = `${slug}.${mixFile.split(".").pop()}`;
 
-// Assemble bundle.
+const clientDir = resolve(repoRoot, "src", "teleprompter", "client");
+if (!existsSync(clientDir)) fail(`teleprompter client dir missing: ${clientDir}`);
+
+// Assemble.
 mkdirSync(outDir, { recursive: true });
-
-// 1. style.css + teleprompter.js — verbatim copies
 copyFileSync(join(clientDir, "style.css"), join(outDir, "style.css"));
 copyFileSync(join(clientDir, "teleprompter.js"), join(outDir, "teleprompter.js"));
+copyFileSync(join(songDir, mixFile), join(outDir, bundleMix));
+writeFileSync(join(outDir, "song.json"), JSON.stringify(songData, null, 2)); // for HTTP-served debugging
 
-// 2. mix file (whatever format we found)
-copyFileSync(mixPath, join(outDir, mixFile!));
-
-// 3. Song data — embedded inline in index.html so bundles work over file://
-//    (no fetch needed). teleprompter.js checks window.__SONG_DATA__ first.
-//    Also written as song.json for HTTP-served debugging.
-const songData = JSON.parse(readFileSync(songJsonPath, "utf8"));
-songData.bundle = true;
-writeFileSync(join(outDir, "song.json"), JSON.stringify(songData, null, 2));
-
-// 4. index.html — inject <audio> inside the sticky header so transport stays
-//    visible when scrolling, and inject inline song data before teleprompter.js.
+// index.html — put the mix player in the sticky header, and inline the display
+// data before teleprompter.js so the bundle works when opened over file://.
 const indexHtmlSrc = readFileSync(join(clientDir, "index.html"), "utf8");
 const audioTag =
-  `    <audio id="mix-audio" src="${mixFile}" controls preload="auto" style="width:100%;margin-top:0.5rem"></audio>`;
-const songScript =
-  `  <script>window.__SONG_DATA__ = ${JSON.stringify(songData)};</script>`;
+  `    <audio id="mix-audio" src="${bundleMix}" controls preload="auto" style="width:100%;margin-top:0.5rem"></audio>`;
+const songScript = `  <script>window.__SONG_DATA__ = ${JSON.stringify(songData)};</script>`;
 const indexHtml = indexHtmlSrc
   .replace(/(<\/header>)/, `${audioTag}\n  $1`)
   .replace(/(<script src="teleprompter\.js"><\/script>)/, `${songScript}\n  $1`);
 writeFileSync(join(outDir, "index.html"), indexHtml);
 
-// 5. README.txt
-const readme =
+writeFileSync(
+  join(outDir, "README.txt"),
   `${songData.title} — practice bundle\n\n` +
-  `How to use:\n` +
-  `  1. Double-click index.html to open in your browser.\n` +
-  `  2. Press play on the audio control; lyrics scroll automatically.\n` +
-  `  3. Use the Offset slider to get lyrics a beat or two ahead.\n\n` +
-  `If audio doesn't play when opened directly (some browsers block file:// audio):\n` +
-  `  cd into this folder and run:\n` +
-  `    npx serve .\n` +
-  `  then open the URL it prints.\n`;
-writeFileSync(join(outDir, "README.txt"), readme);
+    `How to use:\n` +
+    `  1. Double-click index.html to open it in your browser.\n` +
+    `  2. Press play on the audio control; the lyrics scroll automatically.\n` +
+    `  3. Use the Offset slider to get the lyrics a beat or two ahead.\n\n` +
+    `If audio doesn't play when opened directly (some browsers block file:// audio):\n` +
+    `  cd into this folder and run:  npx serve .\n` +
+    `  then open the URL it prints.\n`,
+);
 
 console.log(`wrote ${outDir}`);
-console.log(`  ${songData.title} — ${songData.artist ?? "?"}`);
-console.log(`  ${songData.sections?.length ?? 0} sections, ${songData.bpm} BPM`);
+console.log(`  ${songData.title} — ${songData.artist ?? "?"} (${songData.bpm} BPM)`);
+console.log(`  mix: ${mixFile}  |  ${songData.display?.sections?.length ?? 0} sections, ${songData.words?.length ?? 0} words`);
 console.log(`\nOpen ${join(outDir, "index.html")} in a browser to test.`);

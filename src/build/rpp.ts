@@ -359,11 +359,12 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   rppLines.push(`  LOOP 0`);
 
   // Render settings — 24-bit WAV, LUFS-I -15, normalize on. Output written next
-  // to the .RPP as `mix.wav` (RENDER_PATTERN=mix). We render WAV from REAPER
-  // because REAPER's Opus encoder produces files that Safari/QuickTime can't
-  // play; ffmpeg post-encode handles Opus reliably (see bin/render-bundle.mjs).
+  // to the .RPP named with the song slug (e.g. `wicked-game-chris-isaak.wav`),
+  // so a rendered mix carries song/artist info on disk like the .RPP does. We
+  // render WAV from REAPER because REAPER's Opus encoder produces files that
+  // Safari/QuickTime can't play; ffmpeg post-encode handles Opus reliably.
   rppLines.push(`  RENDER_FILE ""`);
-  rppLines.push(`  RENDER_PATTERN mix`);
+  rppLines.push(`  RENDER_PATTERN ${slug}`);
   rppLines.push(`  RENDER_FMT 0 2 44100`);
   rppLines.push(`  RENDER_1X 0`);
   rppLines.push(`  RENDER_RANGE 1 0 0 0 1000`);

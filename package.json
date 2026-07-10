@@ -28,6 +28,7 @@
     "lyrics:txt": "npx tsx src/authoring/lyrics-text-cli.ts",
     "scaffold": "npx tsx src/authoring/scaffold-cli.ts",
     "generate": "npx tsx src/build/generate.ts",
+    "bundle": "npx tsx src/build/bundle.ts",
     "teleprompter": "npx tsx scripts/teleprompter.ts",
     "build:skill": "npx tsx scripts/render-skill.ts",
     "sandbox": "scripts/sandbox.sh",

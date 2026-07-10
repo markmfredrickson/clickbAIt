@@ -186,10 +186,28 @@ const Section = z
      *  Item positions are relative to the item's left edge; source positions are
      *  file-absolute (may be negative — REAPER reads pre-file as silence). */
     stretchMarkers: z.array(z.object({ item: z.number(), source: z.number() }).strict()).optional(),
-    /** Manual spoken cues at beats relative to this section's start (e.g. a
-     *  count-in "1,2,3,4" or a "hit"). Distinct from `cue` (which auto-announces
-     *  the section name); these are extra band cues placed by hand. */
-    cues: z.array(z.object({ at: z.number(), label: z.string().min(1) }).strict()).optional(),
+    /** Manual cues at beats relative to this section's start (e.g. a count-in
+     *  "1,2,3,4", a "hit", or a cold-open pitch). Distinct from `cue` (which
+     *  auto-announces the section name); these are extra band cues placed by
+     *  hand. A cue is either SPOKEN (`label`, Piper TTS) or a PITCH (`tone`: note
+     *  names sounded together and held for `bars`, synthesized — for a cold vocal
+     *  open). One of `label`/`tone` is required. A pitch cue sits at its authored
+     *  beat and is not onset-anchored, so it can overlap the count-in. */
+    cues: z
+      .array(
+        z
+          .object({
+            at: z.number(),
+            label: z.string().min(1).optional(),
+            tone: z.array(z.string().min(1)).min(1).optional(),
+            bars: z.number().positive().optional(),
+          })
+          .strict()
+          .refine((c) => c.label !== undefined || c.tone !== undefined, {
+            message: "a cue needs a `label` (spoken) or a `tone` (pitch)",
+          }),
+      )
+      .optional(),
     lines: z.array(LyricLine).optional(),
   })
   .strict();

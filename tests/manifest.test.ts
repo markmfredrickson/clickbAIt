@@ -52,6 +52,20 @@ describe("SongManifestSchema", () => {
     expect(m.bpm).toBeCloseTo(122.449);
   });
 
+  it("accepts a pitch (tone) cue and rejects a cue with neither label nor tone", () => {
+    const withTone = validManifest() as { sections: { cues?: unknown }[] };
+    withTone.sections[0].cues = [{ at: -4, tone: ["F#3", "A#3", "C#4"], bars: 1 }];
+    expect(() => SongManifestSchema.parse(withTone)).not.toThrow();
+
+    const spoken = validManifest() as { sections: { cues?: unknown }[] };
+    spoken.sections[0].cues = [{ at: -4, label: "F sharp" }];
+    expect(() => SongManifestSchema.parse(spoken)).not.toThrow();
+
+    const empty = validManifest() as { sections: { cues?: unknown }[] };
+    empty.sections[0].cues = [{ at: -4 }]; // neither label nor tone
+    expect(() => SongManifestSchema.parse(empty)).toThrow();
+  });
+
   it("accepts a minimal manifest (only required fields)", () => {
     const minimal = {
       schema: "clickbait/song@1",

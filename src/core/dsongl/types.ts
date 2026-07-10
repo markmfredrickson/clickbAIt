@@ -8,6 +8,10 @@ export interface Event {
   type: "chord" | "lyric" | "cue" | "marker";
   value: string;
   tag?: string;     // grouping label — could map to a track, person, instrument, whatever
+  /** A pitch cue (cold-open prep tone): note names sounded together, synthesized
+   *  instead of spoken. Placed at the authored beat, held for `toneBars` bars. */
+  tone?: string[];
+  toneBars?: number;
 }
 
 /**

@@ -22,6 +22,13 @@ import { sectionStarts } from "../manifest.js";
 import { beatMapToBeats, beatMapCurve } from "../core/beat-map.js";
 import { Curve } from "../core/curve.js";
 
+/** Stable, slug-safe id for a pitch cue's synthesized WAV, from its notes.
+ *  e.g. ["F#3","A#3","C#4"] → "tone-f-3-a-3-c-4". Idempotent under the cue-file
+ *  slugging in build-rpp, so the write path and read path agree. */
+export function toneSlug(notes: string[]): string {
+  return "tone-" + notes.join("-").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+}
+
 /**
  * The stem's beat offset: where detected-beat-0 lands relative to the downbeat.
  * Equivalent to the offset the recording curve applies, derived from the same
@@ -46,8 +53,14 @@ export function manifestToSong(
       ...(s.cue !== undefined ? { cue: s.cue } : {}),
       ...(s.timeSignature ? { timeSignature: s.timeSignature } : {}),
     };
-    // Manual spoken cues become cue() events at section-relative beats.
-    const marks: Node[] = (s.cues ?? []).map((m) => cue(m.label, m.at));
+    // Manual cues become cue() events at section-relative beats. A pitch cue
+    // (`tone`) carries its notes + duration; its `value` is a stable slug for the
+    // synthesized WAV. A spoken cue keeps its label.
+    const marks: Node[] = (s.cues ?? []).map((m) =>
+      m.tone
+        ? { ...cue(toneSlug(m.tone), m.at), tone: m.tone, toneBars: m.bars ?? 1 }
+        : cue(m.label!, m.at),
+    );
     return marks.length > 0 ? span(s.name, bars(s.bars), opts, marks) : span(s.name, bars(s.bars), opts);
   });
 

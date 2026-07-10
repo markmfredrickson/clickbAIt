@@ -16,6 +16,7 @@ import { resolve, dirname, join } from "node:path";
 import { SongManifestSchema, sectionStarts } from "../manifest.js";
 import { beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
+import { chordWav } from "./tone.js";
 import { RigSchema } from "../rig.js";
 import { buildRpp } from "./rpp.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
@@ -70,7 +71,7 @@ const maxBeatsPerBar = Math.max(...sections.map((s) => s.timeSignature[0]), song
 const cueWords = new Set<string>([
   song.title,
   ...sections.filter((s) => s.cue).map((s) => s.name),
-  ...events.filter((e) => e.type === "cue").map((e) => e.value),
+  ...events.filter((e) => e.type === "cue" && !e.tone).map((e) => e.value),
   ...Array.from({ length: maxBeatsPerBar }, (_, i) => String(i + 1)),
 ]);
 
@@ -79,6 +80,16 @@ function speak(text: string, wavPath: string): void {
   execSync(`"${audioBin}" speak "${text}" -o "${wavPath}"`, { stdio: "pipe" });
 }
 for (const word of cueWords) speak(word, join(cueDir, `${slugify(word)}.wav`));
+
+// Pitch cues (cold-open prep tones): synthesize a held chord instead of speaking.
+// Filename matches build-rpp's cue-file slug so it's picked up by placement.
+const cueFileSlug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+for (const e of events) {
+  if (e.type !== "cue" || !e.tone) continue;
+  const beatsPerBar = manifest.timeSignature[0];
+  const seconds = (e.toneBars ?? 1) * beatsPerBar * (60 / manifest.bpm);
+  writeFileSync(join(cueDir, `${cueFileSlug(e.value)}.wav`), chordWav(e.tone, seconds));
+}
 
 // Absolute section start beats, inferred from section order + length (a
 // section starts where the sections before it end). starts[i+1] is section i's
@@ -137,7 +148,7 @@ for (let n = 1; n <= maxBeatsPerBar; n++) {
   if (v !== undefined) cueOnsets[String(n)] = v;
 }
 for (const e of events) {
-  if (e.type !== "cue") continue;
+  if (e.type !== "cue" || e.tone) continue; // pitch cues aren't onset-anchored — placed at the authored beat
   const sl = slugify(e.value);
   if (sl in cueOnsets) continue; // numbers already measured
   const v = pcenterOr(join(cueDir, `${sl}.wav`), e.value, "first");

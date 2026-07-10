@@ -17,6 +17,10 @@ export interface LinearEvent {
   beatsFile?: string;
   /** For audio events: emit a stretch marker every Nth beat (default 1) */
   smStride?: number;
+  /** For a pitch cue: note names to synthesize together (a held prep tone). */
+  tone?: string[];
+  /** For a pitch cue: how many bars the tone is held. */
+  toneBars?: number;
 }
 
 interface Context {
@@ -57,6 +61,7 @@ function walk(node: Node, ctx: Context, out: LinearEvent[]): void {
         type: node.type,
         value: node.value,
         tag: node.tag ?? ctx.tag,
+        ...(node.tone ? { tone: node.tone, toneBars: node.toneBars } : {}),
       });
       break;
     }

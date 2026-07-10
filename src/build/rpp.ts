@@ -464,7 +464,14 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     // The mute lives on the folder PARENT, not the children — muting the parent
     // silences the whole group, so "ship muted" means the user unmutes one track
     // (Stems) to hear all the backing, not four. Individual stems stay unmuted.
-    rppLines.push(buildTrack("Stems", 1, "", { mainsend: "1 0", isbus: "1 1", muted: stemsR.muted }));
+    //
+    // The parent sits -3 dB so the click/cues ride over the backing in the master
+    // render (the bundle mix). Live is unaffected: the rig sends stems to hardware
+    // via the CHILD tracks' HWOUT (at unity), not through this parent, and the
+    // parent's master send is muted on stage. (Interim; per-part levels become
+    // tweakable in the multitrack bundle.)
+    const STEMS_FOLDER_GAIN = Math.pow(10, -3 / 20); // -3 dB ≈ 0.708
+    rppLines.push(buildTrack("Stems", STEMS_FOLDER_GAIN, "", { mainsend: "1 0", isbus: "1 1", muted: stemsR.muted }));
     stemNames.forEach((trackName, i) => {
       const audioEvents = audioByTrack.get(trackName)!;
       const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs, strideTimeRanges, opts.ringOutSec ?? 0, opts.introLeadSource ?? 0, opts.introMarkers, opts.recordingBeats);

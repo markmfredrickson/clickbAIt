@@ -252,6 +252,34 @@ describe("buildRpp", () => {
     expect(trackCount).toBe(2);
   });
 
+  it("wraps stems in a folder with the parent as a submix bus", () => {
+    const guitarsPath = resolve(fixturesDir, "stems", "guitars.wav");
+    const bassPath = resolve(fixturesDir, "stems", "bass.wav");
+    const s = song("Test", 120,
+      seq(span("Intro", bars(2)), span("Verse", bars(4))),
+      audio("Guitars", guitarsPath),
+      audio("Bass", bassPath),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    // A "Stems" folder parent exists and opens a folder.
+    expect(rpp).toContain("NAME Stems");
+    // Folder is balanced: exactly one opener and one closer across the stem block.
+    expect((rpp.match(/ISBUS 1 1/g) ?? []).length).toBe(1);
+    expect((rpp.match(/ISBUS 2 -1/g) ?? []).length).toBe(1);
+    // The opener (parent) comes before the closer (last child).
+    expect(rpp.indexOf("ISBUS 1 1")).toBeLessThan(rpp.indexOf("ISBUS 2 -1"));
+  });
+
+  it("emits no stems folder when the song has no audio", () => {
+    const s = song("Test", 120,
+      seq(span("Intro", bars(2)), span("Verse", bars(4))),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).not.toContain("NAME Stems");
+    expect(rpp).not.toContain("ISBUS 1 1");
+    expect(rpp).not.toContain("ISBUS 2 -1");
+  });
+
   it("includes SOFFS when audio has source offset", () => {
     const vocalsPath = resolve(fixturesDir, "stems", "vocals.wav");
     const s = song("Test", 120,

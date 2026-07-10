@@ -448,11 +448,22 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     tEnd: curve.toTime(r.endBeat + paddingBeats),
     stride: r.stride,
   }));
-  for (const [trackName, audioEvents] of audioByTrack) {
-    const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs, strideTimeRanges, opts.ringOutSec ?? 0, opts.introLeadSource ?? 0, opts.introMarkers, opts.recordingBeats);
-    rppLines.push(buildTrack(trackName, stemsR.gain, items, {
-      beat: -1, mainsend: stemsR.mainsend, hwout: stemsR.hwout, muted: stemsR.muted,
-    }));
+  // Wrap the stems in a folder so the whole backing can be muted or ridden from
+  // one place. The folder parent ("Stems") is a submix bus: its fader is the
+  // group volume, its mute the group mute, and the children sum into it. REAPER
+  // folder encoding (ISBUS): parent = "1 1", the last child closes the folder
+  // with "2 -1"; regular children stay "0 0".
+  const stemNames = [...audioByTrack.keys()];
+  if (stemNames.length > 0) {
+    rppLines.push(buildTrack("Stems", 1, "", { mainsend: "1 0", isbus: "1 1" }));
+    stemNames.forEach((trackName, i) => {
+      const audioEvents = audioByTrack.get(trackName)!;
+      const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs, strideTimeRanges, opts.ringOutSec ?? 0, opts.introLeadSource ?? 0, opts.introMarkers, opts.recordingBeats);
+      rppLines.push(buildTrack(trackName, stemsR.gain, items, {
+        beat: -1, mainsend: stemsR.mainsend, hwout: stemsR.hwout, muted: stemsR.muted,
+        isbus: i === stemNames.length - 1 ? "2 -1" : "0 0",
+      }));
+    });
   }
 
   // Record tracks (band block + drum feeds) from the rig. Each records from a
@@ -543,6 +554,10 @@ interface TrackOptions {
   recinput?: number;
   /** Hardware output field (HWOUT). See rig.hwoutField. */
   hwout?: number;
+  /** ISBUS folder field, "<folder-state> <indent-change>". Default "0 0"
+   *  (regular track). Folder parent = "1 1"; the last child that closes the
+   *  folder = "2 -1". */
+  isbus?: string;
 }
 
 function buildTrack(name: string, volume: number, itemContent: string, trackOpts?: TrackOptions): string {
@@ -554,7 +569,7 @@ function buildTrack(name: string, volume: number, itemContent: string, trackOpts
   lines.push(`    MUTESOLO ${trackOpts?.muted ? 1 : 0} 0 0`);
   lines.push(`    IPHASE 0`);
   if (trackOpts?.playoffs) lines.push(`    PLAYOFFS ${trackOpts.playoffs}`);
-  lines.push(`    ISBUS 0 0`);
+  lines.push(`    ISBUS ${trackOpts?.isbus ?? "0 0"}`);
   lines.push(`    BUSCOMP 0 0 0 0 0`);
   lines.push(`    SHOWINMIX 1 0.6667 0.5 1 0.5 0 0 0`);
   lines.push(`    REC ${trackOpts?.recarm ? 1 : 0} ${trackOpts?.recinput ?? 0} 1 0 0 0 0 0`);

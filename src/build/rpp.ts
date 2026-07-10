@@ -52,6 +52,11 @@ export interface RppProject {
   /** Beats of slug padding prepended to the song. Pass this to exportSongPayload
    *  so the teleprompter's beat frame matches REAPER's. */
   slugBeats: number;
+  /** Beats from the rendered timeline's start (project time 0) to the downbeat
+   *  (beat 0) — the actual pre-song padding. Usually == slugBeats, but larger if
+   *  a long count-in/pre-roll or a negative-offset cue forced more room. The
+   *  rendered mix starts here, so a bundle needs this to align its audio clock. */
+  paddingBeats: number;
 }
 
 
@@ -489,6 +494,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     rpp: rppLines.join("\n"),
     cueWavsNeeded: [...cueNames],
     slugBeats,
+    paddingBeats,
   };
 }
 

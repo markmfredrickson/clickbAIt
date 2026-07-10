@@ -47,17 +47,24 @@ function slugify(s: string): string {
 export function buildLyricsDisplay(
   manifest: SongManifest,
   align: AlignInput,
+  opts: { renderOffsetBeats?: number } = {},
 ): LyricsDisplay {
   // Recording curve (recording time -> musical beat, from the beat-map) and the
-  // song's constant-tempo curve (beat -> song seconds). The pre-roll sets the
-  // curve's t0: the downbeat (beat 0) sits `preRollBars` bars into the
-  // show-track timeline, so the count-in is at negative beats / positive time
-  // (see docs/timing-frames.md). Word beats are downbeat-relative regardless —
-  // they come from the recording curve — so only t0 (the song-time origin)
-  // moves.
+  // song's constant-tempo curve (beat -> song seconds). Word beats are
+  // downbeat-relative regardless — they come from the recording curve — so only
+  // t0 (the song-time ORIGIN) moves; changing it never shifts a word's beat.
+  //
+  // t0 = where the downbeat (beat 0) sits on the CURVE's time axis. The bundle
+  // player is the only consumer of this time axis (it maps <audio>.currentTime →
+  // beat; live mode uses REAPER's /beat/str, ignoring time). The rendered mix
+  // starts at project time 0, which is `renderOffsetBeats` bars of slug/pre-roll
+  // BEFORE the downbeat — so anchor t0 there and the bundle emits the same beats
+  // as live. Without a render offset (e.g. the standalone lyrics CLI), fall back
+  // to preRollBars. See docs/timing-frames.md.
   const recordingCurve = beatMapCurve(manifest.sources.recording.beatMap, manifest.bpm);
-  const preRollSeconds = (manifest.preRollBars * manifest.timeSignature[0] * 60) / manifest.bpm;
-  const songCurve = Curve.constantBpm(manifest.bpm, { t0: preRollSeconds });
+  const offsetBeats = opts.renderOffsetBeats ?? manifest.preRollBars * manifest.timeSignature[0];
+  const downbeatSeconds = (offsetBeats * 60) / manifest.bpm;
+  const songCurve = Curve.constantBpm(manifest.bpm, { t0: downbeatSeconds });
 
   // Resolve each aligned word to its musical beat; keep beats, drop seconds.
   const tokens = bridgeTokens(align, recordingCurve, songCurve);

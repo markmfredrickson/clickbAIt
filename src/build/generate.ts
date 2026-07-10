@@ -155,7 +155,7 @@ for (const e of events) {
   if (v !== undefined) cueOnsets[sl] = v;
 }
 
-const { rpp } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets });
+const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets });
 const slug = songSlug(song);
 writeFileSync(join(outDir, `${slug}.RPP`), rpp);
 
@@ -163,7 +163,7 @@ writeFileSync(join(outDir, `${slug}.RPP`), rpp);
 let lyricsMsg = "(no alignment — skipped LyricsDisplay)";
 if (manifest.lyrics.alignment) {
   const align = JSON.parse(readFileSync(join(dir, manifest.lyrics.alignment.file), "utf8")) as AlignInput;
-  const display = buildLyricsDisplay(manifest, align);
+  const display = buildLyricsDisplay(manifest, align, { renderOffsetBeats: paddingBeats });
   writeFileSync(join(outDir, `${slug}.lyrics-display.json`), JSON.stringify(display, null, 2));
   lyricsMsg = `${display.words.length} words, ${display.display.lines.length} lines`;
 }

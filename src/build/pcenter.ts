@@ -28,6 +28,14 @@ const VOWELS = "AEIOU";
 const isVowel = (c: string) => VOWELS.includes(c);
 /** Leading voiceless fricative letters (H also catches th/sh/ph digraphs). */
 const FRICATIVE = "FSH";
+/**
+ * When a voiceless fricative is a syllable's DIRECT onset (nothing between it and
+ * the vowel — "four", "six", "F sharp"), landing the vowel fully on the beat sits
+ * a hair late. Put a point this far into the fricative on the beat instead:
+ * 0 = vowel onset (old behavior), 1 = the fricative's start. 0.5 = its midpoint.
+ * Not a per-word rule — it fires for any fricative-initial syllable.
+ */
+const FRICATIVE_LEAD = 0.5;
 
 /** The P-center offset (seconds into the WAV) to land on the beat. */
 export function pCenterSeconds(chars: AlignChar[], mode: "first" | "last"): number {
@@ -57,11 +65,23 @@ export function pCenterSeconds(chars: AlignChar[], mode: "first" | "last"): numb
   //    the single consonant just before its vowel (intro → the "r" of "-tro"),
   //    so step back only one consonant.
   let onset = vs;
+  let fricative = -1;
   for (let i = vs - 1; i >= 0; i--) {
     const ch = C[i].u;
-    if (isVowel(ch) || FRICATIVE.includes(ch)) break;
+    if (isVowel(ch)) break;
+    if (FRICATIVE.includes(ch)) { fricative = i; break; }
     onset = i;
     if (mode === "last") break;
+  }
+
+  // If a voiceless fricative is the syllable's DIRECT onset (onset never advanced
+  // past the vowel — no stop/sonorant between the fricative and the vowel), the
+  // felt beat sits inside the fricative, not at the vowel. Pull back by a fraction
+  // of the fricative's duration. When there IS a cluster onset after the fricative
+  // (e.g. "three": th → R), that onset stays on the beat and the fricative leads in.
+  if (fricative >= 0 && onset === vs) {
+    const vowelMs = C[vs].ms;
+    return (vowelMs - FRICATIVE_LEAD * (vowelMs - C[fricative].ms)) / 1000;
   }
   return C[onset].ms / 1000;
 }

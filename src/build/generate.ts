@@ -12,7 +12,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, relative } from "node:path";
 import { SongManifestSchema, sectionStarts } from "../manifest.js";
 import { beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
@@ -157,7 +157,14 @@ for (const e of events) {
 
 const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets });
 const slug = songSlug(song);
-writeFileSync(join(outDir, `${slug}.RPP`), rpp);
+// Emit RELATIVE media paths so the project folder is self-contained and portable
+// (REAPER resolves paths against the .RPP's own folder). In-folder media —
+// cues/, stems/, source — drop the outDir prefix; the shared click samples
+// (repo assets/) become a path relative to the song folder (…/assets/clicks).
+const rppRel = rpp
+  .split(outDir + "/").join("")
+  .split(clickDir + "/").join(relative(outDir, clickDir) + "/");
+writeFileSync(join(outDir, `${slug}.RPP`), rppRel);
 
 // LyricsDisplay, when an alignment is referenced.
 let lyricsMsg = "(no alignment — skipped LyricsDisplay)";

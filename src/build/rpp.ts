@@ -455,12 +455,15 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // with "2 -1"; regular children stay "0 0".
   const stemNames = [...audioByTrack.keys()];
   if (stemNames.length > 0) {
-    rppLines.push(buildTrack("Stems", 1, "", { mainsend: "1 0", isbus: "1 1" }));
+    // The mute lives on the folder PARENT, not the children — muting the parent
+    // silences the whole group, so "ship muted" means the user unmutes one track
+    // (Stems) to hear all the backing, not four. Individual stems stay unmuted.
+    rppLines.push(buildTrack("Stems", 1, "", { mainsend: "1 0", isbus: "1 1", muted: stemsR.muted }));
     stemNames.forEach((trackName, i) => {
       const audioEvents = audioByTrack.get(trackName)!;
       const items = buildAudioFileItems(audioEvents, tempoMap, 1, projectEndSec, defaultSoffs, strideTimeRanges, opts.ringOutSec ?? 0, opts.introLeadSource ?? 0, opts.introMarkers, opts.recordingBeats);
       rppLines.push(buildTrack(trackName, stemsR.gain, items, {
-        beat: -1, mainsend: stemsR.mainsend, hwout: stemsR.hwout, muted: stemsR.muted,
+        beat: -1, mainsend: stemsR.mainsend, hwout: stemsR.hwout,
         isbus: i === stemNames.length - 1 ? "2 -1" : "0 0",
       }));
     });

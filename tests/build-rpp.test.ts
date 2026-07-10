@@ -318,10 +318,14 @@ describe("buildRpp", () => {
       expect(rpp).toContain("HWOUT 1042 0 1 0 0 0 0 -1:U -1"); // cues → mono 19
     });
 
-    it("mutes stems when the rig says so", () => {
+    it("mutes the stems group parent, not individual stems, when the rig says so", () => {
       const { rpp } = buildRpp(s, { ...defaultOpts, rig });
+      // The "Stems" folder parent carries the group mute...
+      const parentBlock = rpp.slice(rpp.indexOf("NAME Stems"), rpp.indexOf("NAME Vocals"));
+      expect(parentBlock).toMatch(/MUTESOLO 1 0 0/);
+      // ...the individual stem is left unmuted.
       const vocalsBlock = rpp.slice(rpp.indexOf("NAME Vocals"));
-      expect(vocalsBlock).toMatch(/MUTESOLO 1 0 0/);
+      expect(vocalsBlock).toMatch(/MUTESOLO 0 0 0/);
     });
 
     it("adds armed round-trip record tracks (band block + drums)", () => {

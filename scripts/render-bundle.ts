@@ -34,8 +34,10 @@ if (!manifest) {
 }
 const manifestPath = join(dir, manifest);
 const q = (s: string) => JSON.stringify(s);
+// Ignore stdin (don't inherit it): REAPER/ffmpeg otherwise read from the parent's
+// stdin, which eats lines when this script runs inside a `while read` batch loop.
 const run = (cmd: string, env?: Record<string, string>) =>
-  execSync(cmd, { stdio: "inherit", env: env ? { ...process.env, ...env } : process.env });
+  execSync(cmd, { stdio: ["ignore", "inherit", "inherit"], env: env ? { ...process.env, ...env } : process.env });
 
 // 1. No-rig render project (everything → master).
 console.error("→ [1/5] generating no-rig render project…");

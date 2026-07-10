@@ -18,6 +18,19 @@ import { Curve, type Anchor } from "./curve.js";
 import type { BeatMap } from "../manifest.js";
 
 /**
+ * Build a beat-map from a detected beat grid: a single stride-1 run pinning
+ * consecutive song beats `startBeat, startBeat + 1, …` to the given source
+ * times. Pure and geometric — no BPM or curve, it just records "this beat lands
+ * at this source second". `startBeat` is where the grid's first beat sits in
+ * song-beat terms; negative for a pickup (beats sounding before the downbeat at
+ * beat 0). The inverse of `expandBeatMap` for a single dense run.
+ */
+export function beatsToBeatMap(times: number[], startBeat = 0): BeatMap {
+  if (times.length === 0) throw new Error("beatsToBeatMap: no beats to map");
+  return [{ startBeat, times: [...times] }];
+}
+
+/**
  * Flatten a beat-map to sorted `(beat, source-time)` control points. A pin is
  * one point; a run expands to `startBeat + i·stride` at `times[i]`. Sorted by
  * beat (which, for a valid map, is the same order as by time).

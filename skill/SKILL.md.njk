@@ -2,262 +2,140 @@
 name: clickbait
 description: Build REAPER DAW show tracks (click, cues, backing tracks, lyrics) for cover bands. Looks up BPM, key, lyrics, and song structure from multiple sources, then helps design the project. Use this skill whenever the user mentions building show tracks, click tracks, cue tracks, backing tracks, song charts, wants to set up a song for their band, says they have stems to work with, or wants to set up the teleprompter/lyrics display, even if they don't explicitly say "clickbait."
 argument-hint: <song-title> [artist]
-allowed-tools: Bash(.claude/skills/clickbait/bin/clickbait-audio *), Bash(mkdir *), Read, Write, Glob
+allowed-tools: Bash(.claude/skills/clickbait/bin/clickbait-audio *), Bash(npx clickbait-lookup *), Bash(npx tsx *), Bash(npm run *), Bash(mkdir *), Read, Write, Edit, Glob
 ---
 
 # clickbAIt — Song Project Builder
 
 Help the user build show tracks for a song — click, cues, backing tracks, and synchronized lyrics, all in a REAPER project. This is a conversation — you're a musical collaborator helping a musician think through their song, not a tool running a pipeline.
 
-**Working directory:** All paths are relative to your working directory (the directory where this Claude session was launched). Never construct absolute paths or prepend the session directory to relative paths.
+**Working directory:** All paths are relative to your working directory (where this session was launched). Never construct absolute paths or prepend the session directory.
 
-**Reading data:** Use the `Read` tool to read JSON sidecars and song files directly — do not shell out to `cat` or `node -e` to parse them. You can reason about JSON content after reading it.
+**Reading data:** Use `Read` on JSON sidecars and song files directly — don't shell out to `cat`/`node -e`.
 
 ## Binary
 
-The binary is always at `.claude/skills/clickbait/bin/clickbait-audio`. Use that path directly in all commands — no variable needed.
-
-All commands write progress to stderr and JSON to stdout. Never redirect stderr (`2>&1`) — keep stdout clean for JSON output.
-
-If the binary is missing, tell the user to run `setup.sh`.
+`clickbait-audio` is always at `.claude/skills/clickbait/bin/clickbait-audio`. Use that path directly. Commands write progress to stderr and JSON to stdout — never redirect stderr (`2>&1`). If the binary is missing, tell the user to run `setup.sh`.
 
 ## First run: check configuration
 
-Check whether `.claude/skills/clickbait/bin/clickbait-audio` exists. If not, tell the user to run `setup.sh`.
-
-Check whether `.env` exists and has a `GENIUS_API_TOKEN` set:
-- If missing or empty, offer to help. It's free — instructions in `skill/setup.md`. Write or update `.env`:
-  ```
-  GENIUS_API_TOKEN=your-token-here
-  ```
-- If present, proceed silently.
-
-If this looks like a first run (no `songs/` directory or it's empty), suggest running setup to download models:
-```bash
-.claude/skills/clickbait/bin/clickbait-audio setup
-```
-See `skill/setup.md` for details.
+- If `.claude/skills/clickbait/bin/clickbait-audio` is missing, tell the user to run `setup.sh`.
+- Check `.env` for a `GENIUS_API_TOKEN`. If missing/empty, offer to help (it's free — see `skill/setup.md`) and write `.env` with `GENIUS_API_TOKEN=...`. If present, proceed silently.
+- If this looks like a first run (no `songs/`), suggest `.claude/skills/clickbait/bin/clickbait-audio setup` to download models (see `skill/setup.md`).
 
 ## Arguments
 
 The user provides a song title and optionally an artist: `$ARGUMENTS`
 
+## How a song is built
+
+A song is authored as a **manifest** — `<song-slug>.song.json`, inert JSON that references the audio artifacts and carries the structure. Everything downstream (REAPER project, teleprompter) is generated from it. The flow:
+
+1. **Stems + audio analysis** — split the mix, detect beats (two passes + unify), align the vocals.
+2. **Look up song data** — BPM, key, lyrics with section markers.
+3. **Present findings, confirm** — cross-check BPM, agree on structure.
+4. **Scaffold + author the manifest** — a tool writes the mechanical first cut; you shape the sections.
+5. **Generate the REAPER project** — manifest → RPP + spoken cues + lyrics-display.
+
+For the manifest format, authoring rules, section patterns, and cue/meter details, read **`skill/manifest.md`** when you reach Step 4.
+
+## Directory convention (IMPORTANT)
+
+Every song gets its own folder: **`songs/<artist-slug>/<song-slug>/`**. All of a song's files — manifest, stems, cues, sidecars, RPP, lyrics-display — live inside it. Never put a song's files flat in the artist folder. The source audio lives in the song folder as **`source.m4a`** (rename it off any download filename); the manifest's `sources.recording.file` is just `"source.m4a"`. `songs/dls/` is only a staging area — move and rename the file into the song folder; don't reference `dls/` from a manifest.
+
 ## Step 1: Stems and audio analysis
 
-**Check for stems or audio first, before any web lookups.**
+**Check for stems or audio first, before any web lookups.** If the user has audio:
 
-If the user mentions stems, audio files, or backing tracks:
-1. If they have a full mix (not yet split), split it into the song's project directory. The binary accepts WAV, MP3, and M4A — pass the file directly, no conversion needed:
+1. **Split** a full mix into the song folder (WAV/MP3/M4A accepted directly; default `4stem`, use `6stem` for piano/guitar separation):
    ```bash
-   .claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 4stem
+   .claude/skills/clickbait/bin/clickbait-audio split "<source>" --output-dir "songs/<artist-slug>/<song-slug>/stems" --model 4stem
    ```
-   Stems live alongside the song file — they'll be referenced as audio tracks in REAPER. Default to `4stem` (vocals/drums/bass/other) unless the user asks for piano/guitar separation, in which case use `6stem`.
-2. Once stems exist, check for cached sidecars before running anything expensive:
-   - `<original-file>.analysis.json` — cached BPM/onsets for the full mix (source of pre-roll + cross-check BPM)
-   - `<original-file>.beats.json` — DBN beat positions for the full mix (drives stretch markers for every stem)
-   - `<drums-stem>.analysis.json` — cached BPM/onsets from drum stem (cross-check)
-   - `<vocals-stem>.align.json` — cached wav2vec2 forced alignment (word + line timings)
-
-   If sidecars exist, use the `Read` tool to read them directly — the binary will also use them automatically. If missing, run:
+2. **Detect beats — two passes, then unify** (the grid drives every stem's stretch markers, so it must be right through drum-silent passages too). Always constrain `--min-bpm`/`--max-bpm` near the expected tempo:
    ```bash
-   .claude/skills/clickbait/bin/clickbait-audio analyze "<original-file>"
-   .claude/skills/clickbait/bin/clickbait-audio analyze "<drums-stem>"
-   .claude/skills/clickbait/bin/clickbait-audio beats "<original-file>" --activation spectral-flux --min-bpm <low> --max-bpm <high> > "<original-file>.beats.json"
-   .claude/skills/clickbait/bin/clickbait-audio align "<vocals-stem>" --text "<path-to-lyrics.txt>"
+   .claude/skills/clickbait/bin/clickbait-audio beats "<source>" --activation spectral-flux --min-bpm <low> --max-bpm <high> > "<song>.fullmix.beats.json"
+   .claude/skills/clickbait/bin/clickbait-audio beats "<drums-stem>" --activation energy > "<song>.drums.beats.json"
+   npm run beats:unify -- "<song>.fullmix.beats.json" "<song>.drums.beats.json" "<song>.beats.json"
    ```
-   **Always run `beats` on the full mix, not the drum stem.** The full mix carries beat information through drum-silent passages (intros, breakdowns) — drum-stem beats hallucinate onsets in those sections and SMs drift. Every `audio()` node in the DSongL file should point its `beatsFile` at the full-mix beats JSON so all stems share one consistent grid.
+3. **Align the vocals** (when Genius lyrics exist — the normal case). Extract the flat lyric text first (file-to-file, so lyrics don't pass through you):
+   ```bash
+   npm run lyrics:txt -- "songs/<artist-slug>/<song-slug>/<song-slug>.lookup.json" "<song>.lyrics.txt"
+   .claude/skills/clickbait/bin/clickbait-audio align "<vocals-stem>" --text "<song>.lyrics.txt"
+   ```
+   `align` (wav2vec2 CTC) maps the supplied text onto the audio and can't hallucinate. Use `transcribe` (Whisper) only when no lyrics can be fetched.
 
-   **Use `align`, not `transcribe`, when lyrics are available.** `align` does CTC forced alignment with wav2vec2 — it maps the supplied text onto the audio and cannot hallucinate. Whisper (`transcribe`) is strictly a fallback for when no lyrics exist (rare).
-
-   To prepare the `--text` argument: extract the Genius lyrics from `<slug>.lookup.json` (the block between `---lyrics-raw---` markers), strip `[Section]` headers and blank lines, and write to `<slug>.lyrics.txt`. The resulting alignment is saved to `<vocals-stem>.align.json` with `{words: [{text, startMs, endMs, chars}], lines: [...]}` shape.
-
-   Each command writes its sidecar alongside the input file. Read sidecars with the `Read` tool and reason about the JSON content directly. Sidecars are human-editable — if a lyric is wrong or the BPM is off, edit the JSON and the next run will use your correction.
-
-3. Record stem analysis results — they are the source of truth. Web data supplements, never overrides.
-
-**If no audio is provided**, skip to Step 2 and use online sources only.
+Sidecars are human-editable — fix a wrong lyric or beat in the JSON and the next step uses your correction. See `skill/stems.md` for detail (pre-existing/warped stems, grid fitting, unstretch). **If no audio is provided**, skip to Step 2.
 
 ## Step 2: Look up song data
 
 ```bash
-npx clickbait-lookup "<title>" -a "<artist>" > "songs/<artist-slug>/<song-slug>.lookup.json"
+npx clickbait-lookup "<title>" -a "<artist>" > "songs/<artist-slug>/<song-slug>/<song-slug>.lookup.json"
 ```
 
-This fetches from Deezer (BPM), Genius (lyrics with section markers), and MusicBrainz (metadata) in parallel. Saving to a sidecar lets you `Read` it directly and re-use it without re-fetching.
-
-**When audio is available**, online data serves as a bumper — it cross-checks stem analysis but never overrides it:
-- If Deezer BPM agrees with drum stem BPM → high confidence
-- If they diverge → flag to user and trust the stem
-- Genius lyrics are the truth on words; `align` provides the timing directly. No merging needed — feed Genius lyrics into `align` as the target text and read back `.align.json` for line/word timings.
-
-**When no audio is available**, online sources are primary: Deezer for BPM, Genius for lyrics and song structure markers, MusicBrainz for metadata.
-
-## Haiku delegations
-
-Fuzzy per-song judgment is delegated to Haiku subagents via the built-in `Agent` tool. Each task has a prompt template and JSON shape in `skill/haiku-tasks.md` — read that file to run any of these.
-
-| Task | When to run | Output sidecar |
-| --- | --- | --- |
-| Lyric alignment | Genius lyrics + Whisper `words.json` both exist | `<slug>.lyrics.json` |
-| Pronunciation map | Generating TTS cues and something in title/artist/lyrics would mispronounce | `<slug>.pronunciation.json` |
-| Structure detection | Need section boundaries in beats for DSongL authoring | `<slug>.structure.json` |
-
-How-to mechanics (Agent invocation, JSON validation, retry-once rule) are also in `skill/haiku-tasks.md`. Do not put this logic in the skill flow itself — consult the task file when you need it.
-
-If a lyrics/pronunciation/structure sidecar already exists, treat it as the human-edited version. Never overwrite.
+Fetches Deezer (BPM), Genius (lyrics with section markers), MusicBrainz (metadata). Despite the `.json` name it's line-oriented text with lyrics between `---lyrics-raw---` sentinels. When audio exists, online data is a cross-check, not truth: if Deezer BPM diverges from the detected value, flag it and trust the detected one. When no audio exists, online sources are primary.
 
 ## Step 3: Present findings and confirm
 
-Show the user:
-- **BPM** — stem analysis (primary when available), Deezer as cross-check
-- **Key** — audio analysis or user knowledge
-- **Song structure** — Genius section markers, audio analysis
-- **Duration** — audio file or MusicBrainz/Deezer
+Show BPM (detected primary, Deezer cross-check), key, structure (Genius markers), duration. Flag any estimate; never default to round-number BPMs without evidence.
 
-If BPM or key data is missing, use your musical knowledge but flag it as an estimate. Never default to round-number BPMs (120, 140) without evidence.
+**BPM: keep full decimal precision.** Pass full decimals to the manifest (e.g. `107.1429`) — rounding drifts the click off the music over a song.
 
-### BPM: keep full decimal precision, watch for half/double folds
+**Watch for half/double detection.** Trackers often lock onto twice or half the felt tempo. If the BPM feels off by 2×, fold it at scaffold time with `CLICKBAIT_BPM_FOLD=half` (or `double`) — it folds the BPM and the beat grid together. Ground check: a 4-bar intro should last about the time you'd count "1,2,3,4" ×4; twice as many beats → `half`, half as many → `double`.
 
-- **Pass full decimals through to DSongL** (e.g. `107.1429`, not `107`). Humans read "~107" either way, but REAPER's beat grid stays tight against the actual audio when the BPM is precise. Rounding to integers causes the click to drift off the music over the course of a song.
-- **Watch for double-time / half-time detection.** Beat trackers (and Deezer) often lock onto twice or half the felt tempo — especially for slow ballads with busy hi-hats (detected at ~143 when the real beat is ~72) or songs with a strong backbeat at quarter-note vs half-note. If the reported BPM feels off by 2× in either direction, fold it:
-  - For `scripts/build-dsongl.mjs`: pass `CLICKBAIT_BPM_FOLD=half` (or `double`) — the generator folds both the BPM *and* the `beats.json` grid so bar counts and lyric beat-indices come out right at the felt tempo.
-  - Ground check: a 4-bar intro at the felt tempo should last ~the time you'd actually count "one, two, three, four" × 4 while listening. If the beat grid has twice that many beats in the same span, you need `half`; if half that many, you need `double`.
+Ask the user to confirm before proceeding.
 
-Ask the user to confirm or adjust before proceeding.
+## Step 4: Scaffold and author the manifest
 
-## DS(ong)L API Reference
+**Read `skill/manifest.md`** for the format, authoring rules, section patterns, and cue/meter details.
 
-Import from `@clickbait/dsongl`. Types and builder signatures below are generated from the package source.
-
-### Types
-
-```typescript
-{{ dsongl_types }}
-```
-
-### Builder functions
-
-```typescript
-{{ dsongl_builders }}
-```
-
-## Step 4: Write the DS(ong)L file
-
-Once the user confirms the structure, write the song as a TypeScript file at `songs/<artist-slug>/<song-slug>.ts`.
-
-### Auto-generate the first cut (recommended)
-
-Run the helper to produce a draft DSongL from the data you already have:
+**Scaffold the mechanical first cut** — BPM, `beatMap` (from the unified beats), stems, alignment ref, and the Genius lyric block parsed into labeled sections with lines nested:
 
 ```bash
-node scripts/build-dsongl.mjs <songDir> <slug> "<title>" "<artist>" [key]
+npm run scaffold -- \
+  --title "<title>" --artist "<artist>" [--key <key>] \
+  --source source.m4a \
+  --beats "songs/<artist-slug>/<song-slug>/<song>.beats.json" \
+  --lookup "songs/<artist-slug>/<song-slug>/<song-slug>.lookup.json" \
+  --align "songs/<artist-slug>/<song-slug>/stems/<vocals-stem>.align.json" \
+  --stems-dir "songs/<artist-slug>/<song-slug>/stems" \
+  --out "songs/<artist-slug>/<song-slug>/<song-slug>.song.json"
 ```
 
-Inputs read:
-- `<songDir>/source.analysis.json` — pre-roll + BPM from full-mix analysis
-- `<songDir>/source.m4a.beats.json` — DBN beat grid (source of truth for timing)
-- `<songDir>/stems/source_vocals.align.json` — wav2vec2 forced-alignment line/word timings
-- `<songDir>/<slug>.lookup.json` — Genius section markers + lyrics
+(BPM-fold env overrides: `CLICKBAIT_BPM_FOLD=half|double`, `CLICKBAIT_BPM_PHASE=1`.)
 
-It emits `<songDir>/<slug>.ts` with:
-- Correct BPM and pre-roll
-- Sections laid out on bar boundaries from Genius structure
-- Synthetic instrumental sections (Intro / Pre-Chorus / Post-Chorus / Break / Outro) inferred from gaps (see "Section patterns" table below)
-- Bayesian bar-length snap (strong prior for multiples of 4; non-round lengths kept when the data clearly disagrees)
-- Lyrics placed at their true sung beats
+The scaffolder does the mechanical parts only. **Your job on review** (see `skill/manifest.md`): set the real **bar counts** (placeholders come out at 8; favor even/×8), add the **instrumental sections** Genius doesn't label, mark `cue: true` where you want announcements, and add manual `cues` for meter changes and in-song hits.
 
-Environment overrides when the defaults miss:
-- `CLICKBAIT_BPM_FOLD=half` (or `double`) — fold detected BPM by 2× when the tracker locked onto the wrong tempo subdivision. Also writes a folded beats sidecar so REAPER stretch markers match.
-- `CLICKBAIT_BPM_PHASE=1` — with `fold=half`, keeps odd-indexed beats instead of even (picks the other "on" vs "off" pulse).
-- `CLICKBAIT_BEAT_ZERO_OFFSET=N` — shifts `beats[0]` N beats earlier in the REAPER timeline when the song opens with a pickup (N=1 → beats[0] lands on REAPER 4.4 instead of 5.1).
-
-Then **review and hand-edit** the generated `.ts`: reshape sections the generator couldn't infer, adjust bar counts (the user knows the song), rename synthetic sections to match the band's chart, add manual `cue()` events for in-song hits.
-
-### Authoring from scratch
-
-If the auto-generator isn't available (no align/beats/lookup data) or the song is too structurally weird, do all of the following together as one output:
-- Define the section structure (Intro, Verse, Chorus, Bridge, etc.) as a sequence of spans
-- Set measure counts for each section
-- Mark sections with `{ cue: true }` so buildRpp auto-places TTS announcements 2 bars before each section and count-ins 1 bar before. Do NOT use manual `cue()` for section announcements — that's only for ad-hoc band notes (e.g. `cue("Hit the flanger pedal", 24)`).
-- Map lyrics from Genius into `lyric()` events at appropriate beat offsets within sections, typically one per bar or per phrase, tagged with the vocalist role (e.g. "Lead Vocal")
-- Place `chord()` events where chord changes are known
-- Handle any tempo or time signature changes with span options
-- Set the `key` option on the song if known
-- Add `audio()` nodes for each stem if stems are available
-
-**Slug vs. Intro — do not confuse these:**
-- **Slug** — an auto-inserted region at the top of the RPP (generator-owned). Holds the song-title TTS announcement. Default 4 bars, grows if the title TTS is long. The user never writes it in DSongL; it appears automatically at RPP build time.
-- **Intro** (or whatever you want to call it) — the author's *musical* introduction, if the song has one. This is a regular span like any other. A song can skip it entirely and open on a verse.
-
-### Section patterns Genius doesn't label
-
-Genius only marks sections that contain sung lyrics (`[Verse 1]`, `[Chorus]`, `[Bridge]`, `[Guitar Solo]` if empty, etc.). Everything purely instrumental is invisible to Genius, but bands rely on those sections to know what's coming. When you see a gap of `≥ 2 bars` between two Genius sections (or before the first / after the last), **suggest a synthetic section and ask the user whether to split**. Common patterns, by where the gap sits:
-
-| Where | Typical name | Typical length | Notes |
-| --- | --- | --- | --- |
-| Before first vocal | `Intro` | 4–16 bars | If Genius already opens with `[Intro]` containing a vocal line, extend that section back instead of adding a second "Intro". |
-| Verse → Chorus | `Pre-Chorus` or `Ramp` | 2–4 bars | Short buildup; call it `Ramp` if it's ≤ 2 bars and feels like a transition rather than its own part. |
-| Chorus → Verse | `Post-Chorus` or `Re-intro` | 2–8 bars | `Post-Chorus` if it's a natural tail off the chorus riff; `Re-intro` if it restates the intro motif. |
-| Chorus → Bridge | `Post-Chorus` or `Break` | 2–8 bars | If it's a drum/guitar breakdown, `Break` reads better. |
-| Bridge → Chorus | `Pre-Chorus` or `Ramp` | 2–4 bars | Same as Verse → Chorus. |
-| Verse → Verse (rare) | `Instrumental` | 4–16 bars | Usually means there's an implicit Chorus or Solo the transcriber dropped. |
-| Between two choruses | `Post-Chorus` + `Re-intro` | — | Two separate synthetic sections if the gap is long. |
-| After last vocal | `Outro` | 4–32 bars | Extend to song end. If Genius already labels `[Outro]` with a vocal line, extend that section to song end instead. |
-
-These are starting points — the band's preference wins. When autogenerating, flag each synthetic section to the user with a one-line prompt like: *"Bar 27–44 is 18 bars of instrumental between Verse 1 and Verse 2 — call it `Instrumental`, `Guitar Solo`, or split into multiple?"* — and default to the table above if the user says "you pick."
-
-The auto-generator (see "Auto-generate the first cut" above) applies this table automatically. Review its output and rename/split where the band's chart differs.
-
-**Authoring rules:**
-- Author the song as it actually starts musically. The first section can be `Intro`, `Verse 1`, `Chorus`, or anything else — no reserved bars required.
-- If the first section needs a spoken count-in before its downbeat, put `cue: true` on it. The generator places a section-name TTS 2 bars before and a 4-beat count-in 1 bar before, which plays inside the slug region without collision.
-- Audio/backing tracks should be top-level siblings of `seq()` inside `song()` (not nested inside a section). The generator shifts them by the slug length automatically so the first note lands on the first user-authored section's downbeat.
-- `offset` on audio nodes is relative to the song root (beat 0 of the user-authored music, which lives *after* the slug).
-- If the full-mix audio has **pre-roll silence** before the first musical onset (very common with YouTube/Deezer rips — typically 0.5–2s), set `preRollSeconds` on the `song(...)` options. The generator applies that value as `soffs` to every audio node automatically so file-time beat 0 lands on bar 1. Read the first-onset time from the full-mix `.analysis.json` and pass it through. Individual audio nodes can still override with their own `soffs` if a stem needs a different trim.
-
-The goal is a complete, reviewable dsongl file in one shot. The user will read the code and tell you what to adjust.
-
-## Pre-flight checklist (before writing DSongL)
-
-- [ ] BPM cross-checked between drum-stem analysis, full-mix analysis, and Deezer. Divergences flagged to the user, stem value used as truth.
-- [ ] Full-mix `.beats.json` exists (run `beats` on the original audio file, not a stem). Drives stretch-marker generation and covers drum-silent sections where drum-stem beats hallucinate.
-- [ ] Pre-roll silence measured from the full-mix `.analysis.json` (first onset's `time`). If > ~0.05s, the DSongL file will need `preRollSeconds` set on the `song(...)` options so the builder trims it via soffs uniformly across stems.
-- [ ] If the user wants count-ins to specific mid-song hits (big downbeats, stops, the final hit), those spots are identified so `cue: true` sections or manual `cue("1"/"2"/"3"/"4")` events can be placed.
-
-## Post-flight checklist (after generate)
-
-- [ ] `grep -c 'SM ' <rpp>` returns > 0 for songs with `beatsFile`-bearing audio nodes. If zero, stretch markers are missing — investigate before shipping.
-- [ ] Warn the user to close REAPER before opening the regenerated RPP — REAPER does not hot-reload.
-- [ ] Verify the first region in the RPP is the slug (region #1 is the song-title slug, region #2 is the author's first section).
-
-## Step 5: Generate REAPER project
-
-Once the song file is finalized, generate the RPP:
+## Step 5: Generate the REAPER project
 
 ```bash
-npx tsx bin/generate.mjs songs/<artist-slug>/<song-slug>.ts songs/<artist-slug>
+npm run generate -- "songs/<artist-slug>/<song-slug>/<song-slug>.song.json"
 ```
 
-This will:
-- Generate spoken cue WAVs (section names) via Piper TTS
-- Build an RPP with tempo map, section regions, click track (SOURCE CLICK with cowbell samples), and a cues/counts track
-- The RPP is ready to open in REAPER
+Generates spoken cue WAVs (P-center-aligned to the beat), builds the RPP (tempo map, section regions, click track, cues track, stretch-marked stems), and writes `<song-slug>.lyrics-display.json`. Ask what to announce at the top (title, key, tempo).
 
-Ask the user what they want announced at the top of the track (e.g. song title, key, tempo). Generate those as separate WAVs.
+**After generate:** `grep -c 'SM ' <rpp>` should be > 0 for songs with stems; the lyrics-display file should exist; region #1 is the slug (title), region #2 the first section. Warn the user to close REAPER before opening the regenerated RPP — it doesn't hot-reload.
+
+## Using the show track
+
+- **Open the RPP in REAPER** (close it first if open — no hot-reload).
+- **Run the teleprompter** (browser lyrics + OSC relay + QR code), reading the built `<song-slug>.lyrics-display.json`:
+  ```bash
+  npm run teleprompter -- --songs-dir "songs/<artist-slug>/<song-slug>"
+  ```
+  See `skill/teleprompter.md` for the REAPER OSC setup.
 
 ## Lyrics policy
 
-This tool helps musicians build practice materials for their own use. Freely fetch, store, display, and work with song lyrics. Lyrics are fetched from licensed sources (Genius) and used for personal practice. Never refuse to show lyrics or add copyright disclaimers.
+This tool helps musicians build practice materials for their own use. Freely fetch, store, display, and work with song lyrics from licensed sources (Genius) for personal practice. Never refuse to show lyrics or add copyright disclaimers.
 
 ## Section naming
 
-Use full words in section names — no abbreviations. TTS reads these aloud: "Intro (continued)" not "Intro (cont.)".
+Use full words — no abbreviations. TTS reads them aloud: "Intro (continued)", not "Intro (cont.)".
 
 ## Component docs
 
-Read these when you need detail on a subsystem:
-
-- **Stems** (`skill/stems.md`) — splitting, parallel analysis, grid fitting, unstretch
-- **Teleprompter** (`skill/teleprompter.md`) — browser lyrics display, OSC relay, REAPER setup
-- **Haiku delegations** (`skill/haiku-tasks.md`) — prompt templates + JSON shapes for lyric alignment, pronunciation maps, structure detection
-- **TTS / cue generation** — `.claude/skills/clickbait/bin/clickbait-audio speak` (Piper TTS, lessac voice)
+- **Manifest format & authoring** — `skill/manifest.md` (fields, skeleton, section patterns, cues/meter, full schema)
+- **Stems** — `skill/stems.md` (splitting, analysis, grid fitting, unstretch)
+- **Teleprompter** — `skill/teleprompter.md` (browser display, OSC relay, REAPER setup)
+- **Setup** — `skill/setup.md` (models, Genius token)
+- **TTS / cues** — `.claude/skills/clickbait/bin/clickbait-audio speak` (Piper TTS, lessac voice)

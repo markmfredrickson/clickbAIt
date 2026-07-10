@@ -1,0 +1,30 @@
+MusicBrainz: Lorem Ipsum by Testus Maximus
+  Album: Placeholder Sessions
+  Duration: 2:00
+Deezer: Lorem Ipsum by Testus Maximus
+  BPM: 120
+  Duration: 2:00
+Genius: Lorem Ipsum by Testus Maximus
+  ---lyrics-raw---
+[Intro]
+
+[Verse 1]
+Lorem ipsum dolor sit amet
+Consectetur adipiscing elit
+Sed do eiusmod tempor incididunt
+Ut labore et dolore magna aliqua
+
+[Chorus]
+Ut enim ad minim veniam
+Quis nostrud exercitation ullamco
+
+[Verse 2: Testus Maximus]
+Duis aute irure dolor in reprehenderit
+Voluptate velit esse cillum dolore
+
+[Chorus]
+Ut enim ad minim veniam
+Quis nostrud exercitation ullamco
+
+[Outro]
+  ---end-lyrics-raw---

@@ -1,0 +1,33 @@
+{
+  "words": [
+    {
+      "text": "lorem",
+      "startMs": 2000,
+      "endMs": 2400,
+      "confidence": 0.9,
+      "chars": [
+        { "text": "l", "startMs": 2000, "endMs": 2080, "confidence": 0.9 },
+        { "text": "o", "startMs": 2080, "endMs": 2180, "confidence": 0.9 },
+        { "text": "r", "startMs": 2180, "endMs": 2260, "confidence": 0.9 },
+        { "text": "e", "startMs": 2260, "endMs": 2340, "confidence": 0.9 },
+        { "text": "m", "startMs": 2340, "endMs": 2400, "confidence": 0.9 }
+      ]
+    },
+    {
+      "text": "ipsum",
+      "startMs": 2500,
+      "endMs": 2900,
+      "confidence": 0.9,
+      "chars": [
+        { "text": "i", "startMs": 2500, "endMs": 2600, "confidence": 0.9 },
+        { "text": "p", "startMs": 2600, "endMs": 2700, "confidence": 0.9 },
+        { "text": "s", "startMs": 2700, "endMs": 2780, "confidence": 0.9 },
+        { "text": "u", "startMs": 2780, "endMs": 2860, "confidence": 0.9 },
+        { "text": "m", "startMs": 2860, "endMs": 2900, "confidence": 0.9 }
+      ]
+    }
+  ],
+  "lines": [
+    { "text": "Lorem ipsum dolor sit amet", "startMs": 2000, "endMs": 3500 }
+  ]
+}

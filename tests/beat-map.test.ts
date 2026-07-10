@@ -1,6 +1,32 @@
 import { describe, it, expect } from "vitest";
-import { expandBeatMap, beatMapCurve } from "../src/core/beat-map.js";
+import { expandBeatMap, beatMapCurve, beatsToBeatMap } from "../src/core/beat-map.js";
 import type { BeatMap } from "../src/manifest.js";
+
+describe("beatsToBeatMap", () => {
+  it("maps a detected grid to one stride-1 run from beat 0", () => {
+    expect(beatsToBeatMap([0, 0.5, 1.0, 1.5])).toEqual([
+      { startBeat: 0, times: [0, 0.5, 1.0, 1.5] },
+    ]);
+  });
+
+  it("places a pickup grid at a negative startBeat", () => {
+    // Two beats sound before the downbeat at beat 0.
+    expect(beatsToBeatMap([0.22, 0.77, 1.32], -2)).toEqual([
+      { startBeat: -2, times: [0.22, 0.77, 1.32] },
+    ]);
+  });
+
+  it("round-trips through expandBeatMap (pure, no curve)", () => {
+    const times = [0, 0.5, 1.0, 1.5, 2.0];
+    const map = beatsToBeatMap(times, 0);
+    expect(expandBeatMap(map).map((p) => p.t)).toEqual(times);
+    expect(expandBeatMap(map).map((p) => p.b)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("throws on an empty grid (a run needs at least one time)", () => {
+    expect(() => beatsToBeatMap([])).toThrow(/no beats/i);
+  });
+});
 
 describe("expandBeatMap", () => {
   it("expands a stride-1 run to consecutive beats", () => {

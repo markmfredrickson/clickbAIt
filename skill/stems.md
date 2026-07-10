@@ -5,38 +5,30 @@
 When the user provides a full mix (MP3, WAV, etc.) and wants stems:
 
 ```bash
-.claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/stems" --model 4stem
+.claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/<song-slug>/stems" --model 4stem
 ```
 
-**Always split into the song's project directory** (`songs/<artist-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the song file.
+**Always split into the song's project directory** (`songs/<artist-slug>/<song-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the manifest.
 
 Models: `4stem` (default — vocals, drums, bass, other), `6stem` (vocals, drums, bass, guitar, piano, other — use when piano/guitar separation is needed), `finetune` (best quality 4-stem, slower). The model auto-downloads on first use (~84-333 MB, cached).
 
 Output is JSON with stem file paths. Runs on GPU (Metal) by default, takes a few minutes per song.
 
-## After splitting: parallel analysis
+## After splitting: beats + alignment
 
-Run all three of these in parallel — they're independent:
+The main skill's Step 1 covers this; the short version:
 
-1. **Full mix -> analyze** (REQUIRED — provides pre-roll silence measurement that feeds `preRollSeconds` on the `song(...)` node, plus a BPM cross-check)
-   ```bash
-   .claude/skills/clickbait/bin/clickbait-audio analyze "<original-file>"
-   ```
+1. **Beats — two passes, then unify.** Full mix with `--activation spectral-flux` (carries a pulse through drum-silent passages) and the drum stem with `--activation energy` (tight where drums play), merged with `npm run beats:unify`. The unified `<song>.beats.json` becomes the manifest's `beatMap` (source-second per beat), which drives every stem's stretch markers.
 
-2. **Drums stem -> analyze** (cleanest rhythmic signal for BPM)
-   ```bash
-   .claude/skills/clickbait/bin/clickbait-audio analyze "<dir>/<song>_drums.wav"
-   ```
-
-3. **Vocals stem -> forced alignment** (when Genius lyrics are available — the normal case)
+2. **Vocals stem -> forced alignment** (when Genius lyrics are available — the normal case):
    ```bash
    .claude/skills/clickbait/bin/clickbait-audio align "<dir>/<song>_vocals.wav" --text "<lyrics.txt>"
    ```
-   Writes `<song>_vocals.align.json` with word + line timings. Uses wav2vec2 CTC — cannot hallucinate, handles long instrumental passages cleanly. Falls back to Whisper `transcribe` only if no lyrics can be fetched.
+   Writes `<song>_vocals.align.json` with word + character timings. Uses wav2vec2 CTC — cannot hallucinate, handles long instrumental passages cleanly. Falls back to Whisper `transcribe` only if no lyrics can be fetched.
 
-Compare drum-stem BPM with full-mix BPM and online lookups. Agreement = high confidence. Divergence = flag to user and trust the stem.
+Compare the detected BPM (both passes) with online lookups. Agreement = high confidence. Divergence = flag to the user and trust the detected value.
 
-Full-mix analyze is not optional — without it, you can't set `preRollSeconds` correctly and every stem will drift by the intro silence.
+There is no separate "pre-roll silence" field: silence before the first note is naturally encoded in the `beatMap` times (beat 0's source second is wherever the downbeat is), and stems trim it via `soffs`. `preRollBars` is a musical count-in, not a silence trim. The `analyze` command still exists for a rough onset/BPM cross-check, but the two-pass beats detection is the source of the grid.
 
 ## Working with pre-existing stems
 
@@ -78,18 +70,24 @@ You have onset candidates (noisy but thorough) and song context (structure, time
 
 Present the grid and any tempo warping analysis to the user for confirmation.
 
-### Step S4: Incorporate into the song project
+### Step S4: Incorporate into the manifest
 
 Once confirmed:
-- Set section boundaries from beat positions
-- If tempo warping detected, note recording BPM — user may want to unstretch
-- Add `audio()` nodes for each stem:
-  ```typescript
-  audio("Guitars", "stems/guitars.mp3"),
-  audio("Bass", "stems/bass.mp3", { soffs: 0.164 }),  // trim silence
+- Fold the confirmed beat grid into the manifest's `beatMap` (via the scaffolder, or by hand).
+- If tempo warping detected, note the recording BPM — the user may want to unstretch.
+- Wire the stems into `sources.stems`:
+  ```json
+  "stems": {
+    "kind": "audio-group",
+    "curveRef": "recording",
+    "produced-by": "clickbait-audio split --model 4stem",
+    "dir": "stems/",
+    "files": { "vocals": "source_vocals.wav", "drums": "source_drums.wav", "bass": "source_bass.wav", "other": "source_other.wav" },
+    "soffs": 0.164
+  }
   ```
-- Place at correct beat offset if they don't start at beat 0
-- Continue with normal Step 3/Step 4 flow to generate RPP
+  `soffs` trims silence off the start of every stem; `sourceEnd` caps the end. Individual timing lives in the shared `beatMap`, not per-stem offsets.
+- Continue with the normal Step 4/Step 5 flow to author the manifest and generate the RPP.
 
 ### Unstretch workflow
 

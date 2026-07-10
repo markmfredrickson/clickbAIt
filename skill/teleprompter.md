@@ -48,7 +48,7 @@ REAPER sends bundles — the relay unwraps them recursively.
 
 ## Multi-song mode
 
-The relay loads song JSONs from a configurable `--songs-dir`. File naming: `<slug>.json` where slug is `title-artist` sanitized to `[a-z0-9-]`. The generate step writes these sidecar files automatically.
+The relay loads built lyrics-display files from a configurable `--songs-dir`. For a region/slug it looks for `<slug>.lyrics-display.json` (then falls back to `<slug>.json`), where slug is `title-artist` sanitized to `[a-z0-9-]`. The generate step (`src/build/generate.ts`) writes `<slug>.lyrics-display.json` next to the manifest automatically.
 
 Song switch: REAPER sends `/lastregion/name "Intro"` (or whatever the first region is). But for song identification, the first region in a clickbAIt RPP should match the song slug. The relay calls `toSlug()` on the region name and looks for a matching JSON file.
 
@@ -80,12 +80,14 @@ Features:
 
 ## Launching
 
-```bash
-# Single song from .ts file
-npx tsx scripts/teleprompter.ts songs/amy-winehouse/valerie.ts
+The teleprompter reads the built `<slug>.lyrics-display.json` files (produced by the generate step), not the manifest. Point `--songs-dir` at one or more song folders:
 
-# Multi-song from JSON directory
-npx tsx scripts/teleprompter.ts --songs-dir ./output
+```bash
+# One song folder
+npx tsx scripts/teleprompter.ts --songs-dir songs/<artist-slug>/<song-slug>
+
+# Several folders (searched in order; first slug match wins)
+npx tsx scripts/teleprompter.ts --songs-dir songs/<artist-a>/<song-a> --songs-dir songs/<artist-b>/<song-b>
 
 # Demo mode (simulated REAPER with loops)
 npx tsx scripts/teleprompter-demo.ts

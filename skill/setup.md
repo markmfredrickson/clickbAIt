@@ -35,8 +35,9 @@ If `.env` doesn't exist yet, create it. That's all — no OAuth flow needed.
 
 ## Models downloaded by `setup`
 
-- **Whisper** (`base.en`, ~150 MB) — transcribes vocals for word-level lyric timing. Saved to `~/.cache/clickbait/models/`.
+- **wav2vec2** — CTC forced alignment (`align`), the primary path for lyric timing: it maps known lyrics onto the vocal stem and can't hallucinate. Saved to `~/.cache/clickbait/models/`.
+- **Whisper** (`base.en`, ~150 MB) — transcription (`transcribe`), used only as a fallback when no lyrics can be fetched. Saved to `~/.cache/clickbait/models/`.
 - **Piper** (`en_US-lessac-medium`, ~65 MB) — generates spoken section cues. Saved to `~/.cache/clickbait/voices/`.
-- **Demucs** (6-stem, ~80 MB) — splits a full mix into stems. Saved to `~/.cache/demucs-rs/`.
+- **Demucs** (4-stem, ~80 MB) — splits a full mix into stems (vocals/drums/bass/other). Saved to `~/.cache/demucs-rs/`.
 
 All models are global — shared across projects and working directories.

@@ -38,7 +38,7 @@ function parseArgs(argv: string[]): { songDir: string; outDir?: string } {
   if (!songDir) {
     fail(
       "usage: npm run bundle -- songs/<artist>/<song> [--out <dir>]\n" +
-      "  e.g. npm run bundle -- songs/chappell-roan/pink-pony-club",
+      "  e.g. npm run bundle -- songs/<artist>/<song>",
     );
   }
   return { songDir, outDir };
@@ -79,7 +79,7 @@ if (!mixFile) {
   );
 }
 // Name the bundle's audio with the song slug so it's identifiable on someone's
-// drive (e.g. "pink-pony-club-chappell-roan.opus"), like the .RPP.
+// drive (e.g. "<song>-<artist>.opus"), like the .RPP.
 const bundleMix = `${slug}.${mixFile.split(".").pop()}`;
 
 const clientDir = resolve(repoRoot, "src", "teleprompter", "client");

@@ -79,7 +79,7 @@ export type Rig = z.infer<typeof RigSchema>;
  * REAPER's HWOUT/MASTERHWOUT first field.
  * - stereo pair at physical output P (1-based) → P − 1
  * - mono at physical output P → 1024 + (P − 1)
- * Verified against the my-favorite-mistake RPP (master 17/18 → 16, cue 19 →
+ * Verified against a generated RPP (master 17/18 → 16, cue 19 →
  * 1042, click 20 → 1043).
  */
 export function hwoutField(h: Hw): number {

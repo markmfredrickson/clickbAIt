@@ -4,7 +4,7 @@
  * into an existing DSongL song file.
  *
  * Usage:
- *   npx tsx scripts/inject-lyrics.ts songs/audioslave/like-a-stone.ts
+ *   npx tsx scripts/inject-lyrics.ts songs/<artist>/<song>.ts
  *
  * Looks for <song-slug>.lookup.json next to the .ts file.
  * Matches Genius [Section] headers to span names in the song file.

@@ -364,7 +364,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   rppLines.push(`  LOOP 0`);
 
   // Render settings — 24-bit WAV, LUFS-I -15, normalize on. Output written next
-  // to the .RPP named with the song slug (e.g. `wicked-game-chris-isaak.wav`),
+  // to the .RPP named with the song slug (e.g. `<song>-<artist>.wav`),
   // so a rendered mix carries song/artist info on disk like the .RPP does. We
   // render WAV from REAPER because REAPER's Opus encoder produces files that
   // Safari/QuickTime can't play; ffmpeg post-encode handles Opus reliably.

@@ -115,6 +115,19 @@ Generates spoken cue WAVs (P-center-aligned to the beat), builds the RPP (tempo 
 
 **After generate:** `grep -c 'SM ' <rpp>` should be > 0 for songs with stems; the lyrics-display file should exist; region #1 is the slug (title), region #2 the first section. Warn the user to close REAPER before opening the regenerated RPP — it doesn't hot-reload.
 
+## Rebuilding after edits (incremental)
+
+`generate` also makes the song an **incremental build unit** — it writes a `package.json` with [wireit](https://github.com/google/wireit) build steps into the song folder. After the first generate, don't re-run `generate` by hand; rebuild from the repo root:
+
+```bash
+npm run build:songs             # regenerate every song whose manifest/align/beats/rig changed
+npm run build:songs -- bundle   # also render the mix + rebuild the bundle (REAPER; on demand)
+```
+
+Edit a `.song.json` and run `build:songs`: only that song re-runs, the rest are skipped (wireit content-hashes the inputs). Fiddling with count-ins/bars rebuilds the RPP fast; **bundling renders and is opt-in** (`-- bundle`). The rig (`default.json`) is a tracked input, so a routing change re-triggers the affected songs automatically.
+
+After updating **clickbait itself** (the tool code — not tracked as an input), force a full rebuild: `rm -rf songs/*/*/.wireit` then `npm run build:songs`.
+
 ## Using the show track
 
 - **Open the RPP in REAPER** (close it first if open — no hot-reload).

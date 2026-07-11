@@ -28,6 +28,7 @@
     "lyrics:txt": "npx tsx src/authoring/lyrics-text-cli.ts",
     "scaffold": "npx tsx src/authoring/scaffold-cli.ts",
     "generate": "npx tsx src/build/generate.ts",
+    "build:songs": "npx tsx scripts/build-songs.ts",
     "bundle": "npx tsx src/build/bundle.ts",
     "bundle:render": "npx tsx scripts/render-bundle.ts",
     "teleprompter": "npx tsx scripts/teleprompter.ts",
@@ -47,7 +48,8 @@
     "esbuild": "^0.25.0",
     "nunjucks": "^3.2.4",
     "typescript": "^5.0.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "wireit": "^0.14.13"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

@@ -10,9 +10,9 @@
  * manifest.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { resolve, dirname, join, relative } from "node:path";
+import { resolve, dirname, join, relative, basename } from "node:path";
 import { SongManifestSchema, sectionStarts } from "../manifest.js";
 import { beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
@@ -173,6 +173,35 @@ if (manifest.lyrics.alignment) {
   const display = buildLyricsDisplay(manifest, align, { renderOffsetBeats: paddingBeats });
   writeFileSync(join(outDir, `${slug}.lyrics-display.json`), JSON.stringify(display, null, 2));
   lyricsMsg = `${display.words.length} words, ${display.display.lines.length} lines`;
+}
+
+// Emit the per-song build unit: a package.json with wireit `build`/`bundle`
+// steps so the song is an incremental target — `npm run build` regenerates it
+// only when its manifest / align / beats / rig change; `npm run bundle` renders
+// + bundles on demand. Skip flat multi-manifest dirs (a flat folder holding several manifests): one
+// package.json can't describe several songs. Tool code changes aren't tracked —
+// after those, force a full rebuild (see the skill).
+if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1) {
+  const rel = relative(outDir, root) || ".";
+  const manifestBase = basename(manifestPath);
+  const unit = {
+    name: `clickbait-song-${slug}`,
+    private: true,
+    scripts: { build: "wireit", bundle: "wireit" },
+    wireit: {
+      build: {
+        command: `npx tsx ${rel}/src/build/generate.ts ${manifestBase}`,
+        files: [manifestBase, "*.beats.json", "stems/*.align.json", `${rel}/default.json`],
+        output: ["*.RPP", "*.lyrics-display.json", "cues/**"],
+      },
+      bundle: {
+        command: `npx tsx ${rel}/scripts/render-bundle.ts .`,
+        files: [manifestBase, "*.beats.json", "stems/**", "source.*", `${rel}/default.json`],
+        output: ["*.opus", `${rel}/bundles/${slug}/**`, `${rel}/bundles/${slug}.zip`],
+      },
+    },
+  };
+  writeFileSync(join(outDir, "package.json"), JSON.stringify(unit, null, 2) + "\n");
 }
 
 console.error(`wrote ${slug}.RPP + ${slug}.lyrics-display.json (${lyricsMsg}) + cues/ in ${outDir}`);

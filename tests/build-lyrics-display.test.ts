@@ -148,6 +148,53 @@ describe("buildLyricsDisplay", () => {
     expect(out.display.lines[1].section).toBe("Verse 1");
   });
 
+  // #5b clips re-anchor — a section whose audio is a REPLAYED clip draws its
+  // lines from the replay's words, not from words left un-consumed at the tail
+  // of the previous clip. The clip boundary is deliberately a hair AFTER the
+  // section downbeat (240.0006-vs-240 in the field): curve-derived boundaries
+  // and bar-count-derived section starts don't land exactly equal, and an exact
+  // range check silently files the section under the previous clip.
+  it("re-anchors a replayed-clip section to its own words across a fuzzy boundary", () => {
+    // beat = 2·seconds. clip0 = source [0, 2.0003] -> ends at beat 4.0006, a
+    // hair past the Outro's downbeat (beat 4). clip1 replays source [0, 1.9997].
+    const align = mkAlign([
+      ["a", 500, 600],
+      ["b", 1000, 1100],
+      ["adlib", 1500, 1600], // in clip0's window but NOT in any authored line
+    ]);
+    const m = mkManifest({
+      sources: {
+        recording: {
+          kind: "audio",
+          file: "source.m4a",
+          beatMap: [{ startBeat: 0, times: [0, 0.5] }],
+        },
+        stems: {
+          kind: "audio-group",
+          curveRef: "recording",
+          "produced-by": "test",
+          dir: "stems",
+          files: { drums: "drums.wav" },
+          clips: [
+            { from: 0, seconds: 2.0003 },
+            { from: 0, seconds: 1.9997 },
+          ],
+        },
+      },
+      sections: [
+        { name: "Intro", bars: 1, lines: [{ text: "a" }] }, // consumes 1 of clip0's 3 words
+        { name: "Outro", bars: 1, lines: [{ text: "a b" }] }, // replay: must draw clip1's a,b
+      ],
+    });
+    const out = buildLyricsDisplay(m, align);
+    const outro = out.display.lines.find((l) => l.section === "Outro")!;
+    // The Outro's words are the replay's a,b (beats ~5,6) — NOT the drifted
+    // clip0 tail (b,adlib at beats 2,3, which precede the Outro downbeat).
+    expect(outro.words.map((i) => out.words[i].text)).toEqual(["a", "b"]);
+    expect(out.words[outro.words[0]].startBeat).toBeGreaterThanOrEqual(4);
+    expect(out.words[outro.words[0]].startBeat).toBeCloseTo(5.0, 1);
+  });
+
   // pre-roll: downbeat sits at the pre-roll offset; count-in is negative beats
   // at positive time; word beats (downbeat-relative) are unchanged.
   it("places the downbeat at the pre-roll offset, count-in at negative beats", () => {

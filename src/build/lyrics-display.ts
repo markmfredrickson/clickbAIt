@@ -12,9 +12,9 @@
  * the CLI that calls it.
  */
 
-import { sectionStarts, type SongManifest } from "../manifest.js";
+import { sectionStarts, type SongManifest, type Clip } from "../manifest.js";
 import { Curve } from "../core/curve.js";
-import { beatMapCurve } from "../core/beat-map.js";
+import { beatMapCurve, beatMapToBeats } from "../core/beat-map.js";
 import { bridgeTokens, type AlignInput } from "./lyrics-timing.js";
 import type {
   LyricsDisplay,
@@ -44,6 +44,64 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+/** A played audio clip's place on the timeline + where its words start in the
+ *  flattened word list. Used to re-anchor line assignment at clip boundaries. */
+export interface ClipSegment {
+  startBeat: number;
+  endBeat: number;
+  firstWord: number; // index into `words` of this clip's first word
+}
+export interface ClipMapping {
+  words: LyricWord[];
+  segments: ClipSegment[];
+}
+
+/**
+ * Map aligned words onto the timeline THROUGH the clip arrangement, so lyrics
+ * follow the rearranged audio. Mirrors the clip walk in manifest-to-song: each
+ * audio clip plays source `[from, from+seconds]` at `cursorBeat…`; silence just
+ * advances the cursor. A word (keyed by its SOURCE time) is emitted once per clip
+ * whose window contains it — so a replayed region's words appear again at the
+ * replay's beats. `offset` is the timeline origin (the beat-map's first beat).
+ * Also returns each played clip's timeline range + first-word index, so line
+ * assignment can re-anchor per clip (a replay's words aren't confused with the
+ * original's). One stream in; loop over per-voice alignments for streams later.
+ */
+export function clipAwareWords(
+  align: AlignInput,
+  recordingCurve: Curve,
+  clips: Clip[],
+  offset: number,
+  bpm: number,
+): ClipMapping {
+  const bps = bpm / 60;
+  const words: LyricWord[] = [];
+  const segments: ClipSegment[] = [];
+  let cursorBeat = offset;
+  for (const clip of clips) {
+    if ("silence" in clip) {
+      cursorBeat += clip.silence * bps;
+      continue;
+    }
+    const to = clip.from + clip.seconds;
+    const fromBeat = recordingCurve.toBeat(clip.from);
+    const segStart = cursorBeat;
+    const firstWord = words.length;
+    for (const word of align.words) {
+      const s = word.startMs / 1000;
+      if (s < clip.from || s >= to) continue; // word's onset lies outside this clip
+      words.push({
+        text: word.text,
+        startBeat: cursorBeat + (recordingCurve.toBeat(s) - fromBeat),
+        endBeat: cursorBeat + (recordingCurve.toBeat(word.endMs / 1000) - fromBeat),
+      });
+    }
+    cursorBeat += recordingCurve.toBeat(to) - fromBeat;
+    segments.push({ startBeat: segStart, endBeat: cursorBeat, firstWord });
+  }
+  return { words, segments };
+}
+
 export function buildLyricsDisplay(
   manifest: SongManifest,
   align: AlignInput,
@@ -67,12 +125,23 @@ export function buildLyricsDisplay(
   const songCurve = Curve.constantBpm(manifest.bpm, { t0: downbeatSeconds });
 
   // Resolve each aligned word to its musical beat; keep beats, drop seconds.
-  const tokens = bridgeTokens(align, recordingCurve, songCurve);
-  const words: LyricWord[] = tokens.map((t) => ({
-    text: t.text,
-    startBeat: t.startB,
-    endBeat: t.endB,
-  }));
+  // When the stems are assembled from clips, the recording is rearranged on the
+  // timeline — so map words THROUGH the clip walk (a replayed region's words
+  // appear at both spots). Otherwise the recording plays linearly and each word
+  // lands at its recording-curve beat.
+  const clips = manifest.sources.stems?.clips;
+  let words: LyricWord[];
+  let segments: ClipSegment[] | undefined;
+  if (clips && clips.length > 0) {
+    const { offset } = beatMapToBeats(manifest.sources.recording.beatMap, manifest.bpm);
+    ({ words, segments } = clipAwareWords(align, recordingCurve, clips, offset, manifest.bpm));
+  } else {
+    words = bridgeTokens(align, recordingCurve, songCurve).map((t) => ({
+      text: t.text,
+      startBeat: t.startB,
+      endBeat: t.endB,
+    }));
+  }
 
   // Sections become display labels (beat-only). Start beats are inferred from
   // section order + length, not authored.
@@ -110,7 +179,30 @@ export function buildLyricsDisplay(
   // rather than being guessed into the previous section from its beat.
   const lines: DisplayLine[] = [];
   let cursor = 0;
-  for (const section of manifest.sections) {
+  let prevSeg = -1;
+  for (let si = 0; si < manifest.sections.length; si++) {
+    const section = manifest.sections[si];
+    // With clips, re-anchor the cursor when a section moves into a new played
+    // clip — so a replayed clip's lines draw from ITS words, not leftover
+    // (unauthored ad-lib) words trailing the previous clip. Sections within one
+    // clip keep slicing sequentially (pickups intact). No clips → never resets.
+    if (segments) {
+      const secStart = starts[si];
+      // A section belongs to the LAST clip that starts at (or within a beat
+      // before) its downbeat. An exact range check can't be trusted: clip
+      // boundaries come from the recording curve while section starts come from
+      // bar counts, so a boundary meant to coincide with a section can land a
+      // fraction of a beat off (e.g. clip start 240.0006 vs section start 240) —
+      // which would silently file the section under the previous clip.
+      let seg = 0;
+      for (let i = 0; i < segments.length; i++) {
+        if (segments[i].startBeat <= secStart + 0.5) seg = i;
+      }
+      if (seg !== prevSeg) {
+        cursor = segments[seg].firstWord;
+        prevSeg = seg;
+      }
+    }
     for (const line of section.lines ?? []) {
       const count = alignWords(line.text).length;
       if (count === 0) continue;

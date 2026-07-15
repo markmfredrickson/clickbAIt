@@ -284,6 +284,7 @@ export const SongManifestSchema = z
 
 export type SongManifest = z.infer<typeof SongManifestSchema>;
 export type BeatMap = z.infer<typeof BeatMap>;
+export type Clip = z.infer<typeof Clip>;
 
 /** A section as far as placement is concerned: length in bars, optional meter. */
 type PlaceableSection = { bars: number; timeSignature?: readonly [number, number] };

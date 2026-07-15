@@ -165,16 +165,20 @@
     setupBundleControls(audio);
 
     function tick() {
-      if (song) {
-        // Keep playback inside the loop (wrap at the end; a scrub earlier is
-        // left alone so a manual lead-in works). Skip while a seek is still in
-        // flight: currentTime reads stale (>= endTime) until the seek settles,
-        // so re-checking every frame would fire a second seek — an audible
-        // double click at the loop seam.
-        if (loop && !audio.seeking && audio.currentTime >= loop.endTime) {
+      if (song && !audio.seeking) {
+        // Only act on a SETTLED clock. While a seek is in flight, currentTime
+        // reads its stale pre-seek value, which would (a) fire a second wrap
+        // (double click) and (b) emit a beat that flickers the highlight back
+        // to the section's last line before the seek lands at the start.
+        //
+        // Keep playback inside the loop: wrap at the end (a scrub earlier is
+        // left alone so a manual lead-in works). Setting currentTime starts the
+        // seek, so we skip the emit this frame and resume once it settles.
+        if (loop && audio.currentTime >= loop.endTime) {
           audio.currentTime = loop.startTime;
+        } else {
+          clock.emit(beatFromSeconds(audio.currentTime || 0));
         }
-        clock.emit(beatFromSeconds(audio.currentTime || 0));
       }
       requestAnimationFrame(tick);
     }

@@ -434,11 +434,22 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
                 "label": {
                   "type": "string",
                   "minLength": 1
+                },
+                "tone": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "bars": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
                 }
               },
               "required": [
-                "at",
-                "label"
+                "at"
               ],
               "additionalProperties": false
             }

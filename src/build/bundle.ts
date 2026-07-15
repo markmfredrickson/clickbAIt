@@ -109,7 +109,9 @@ writeFileSync(
     `How to use:\n` +
     `  1. Double-click index.html to open it in your browser.\n` +
     `  2. Press play on the audio control; the lyrics scroll automatically.\n` +
-    `  3. Use the Offset slider to get the lyrics a beat or two ahead.\n\n` +
+    `  3. Use the Offset slider to get the lyrics a beat or two ahead.\n` +
+    `  4. To drill a part: pick it from "Loop" (or click a section name) — it\n` +
+    `     repeats that section. "Speed" slows playback down (pitch preserved).\n\n` +
     `If audio doesn't play when opened directly (some browsers block file:// audio):\n` +
     `  cd into this folder and run:  npx serve .\n` +
     `  then open the URL it prints.\n`,

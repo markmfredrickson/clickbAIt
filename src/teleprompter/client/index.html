@@ -18,6 +18,19 @@
         <span id="offset-value">0</span> beats ahead
       </label>
       <button id="scroll-mode-btn" title="Toggle auto-scroll">Auto</button>
+      <span id="bundle-controls" hidden>
+        <label>
+          Loop
+          <select id="loop-select" title="Loop a section (click a section name too)">
+            <option value="-1">Off</option>
+          </select>
+        </label>
+        <label>
+          Speed
+          <input type="range" id="speed-slider" min="0.5" max="1" step="0.05" value="1" title="Slow down (pitch preserved)">
+          <span id="speed-value">100%</span>
+        </label>
+      </span>
       <label>
         Size
         <input type="range" id="size-slider" min="0.75" max="8" step="0.25" value="1.5">

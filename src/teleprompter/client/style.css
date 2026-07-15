@@ -91,6 +91,23 @@ body {
   border-color: var(--accent);
 }
 
+#bundle-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+#bundle-controls select {
+  background: var(--section-bg);
+  color: var(--text);
+  border: 1px solid var(--text-dim);
+  border-radius: 4px;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.8rem;
+}
+
+#speed-slider { width: 70px; }
+
 /* ── Transport indicator ── */
 #transport-light {
   width: 18px;
@@ -129,6 +146,7 @@ body {
   margin-bottom: 0.5rem;
   padding: 0.2rem 0;
   border-bottom: 1px solid var(--text-dim);
+  cursor: pointer; /* click to loop this section (bundle mode) */
 }
 
 .lyric-line {

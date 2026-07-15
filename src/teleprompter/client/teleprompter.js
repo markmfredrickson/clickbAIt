@@ -55,6 +55,15 @@
         const slope = (a[lo + 1].b - a[lo].b) / (a[lo + 1].t - a[lo].t);
         return a[lo].b + (t - a[lo].t) * slope;
       },
+      // Inverse (beat -> time), for section-loop bounds. Mirror of toBeat.
+      toTime: function (b) {
+        if (b <= a[0].b) return a[0].t + (b - a[0].b) / leadBps;
+        if (b >= a[last].b) return a[last].t + (b - a[last].b) / tailBps;
+        let lo = 0, hi = last;
+        while (lo < hi - 1) { const m = (lo + hi) >> 1; if (a[m].b <= b) lo = m; else hi = m; }
+        const slope = (a[lo + 1].b - a[lo].b) / (a[lo + 1].t - a[lo].t);
+        return a[lo].t + (b - a[lo].b) / slope;
+      },
     };
   }
 
@@ -92,6 +101,13 @@
   const sizeSlider = document.getElementById("size-slider");
   const darkModeBtn = document.getElementById("dark-mode-btn");
   const transportLight = document.getElementById("transport-light");
+  const bundleControls = document.getElementById("bundle-controls");
+  const loopSelect = document.getElementById("loop-select");
+  const speedSlider = document.getElementById("speed-slider");
+  const speedValue = document.getElementById("speed-value");
+
+  // Bundle-mode section loop: audio-time window we keep playback inside, or null.
+  let loop = null;
 
   // ── Init ──
   function renderWaiting() {
@@ -146,11 +162,68 @@
     audio.addEventListener("pause", function () { transportLight.className = "stopped"; });
     audio.addEventListener("ended", function () { transportLight.className = "stopped"; });
 
+    setupBundleControls(audio);
+
     function tick() {
-      if (song) clock.emit(beatFromSeconds(audio.currentTime || 0));
+      if (song) {
+        // Keep playback inside the loop (wrap at the end; a scrub earlier is
+        // left alone so a manual lead-in works).
+        if (loop && audio.currentTime >= loop.endTime) audio.currentTime = loop.startTime;
+        clock.emit(beatFromSeconds(audio.currentTime || 0));
+      }
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
+  }
+
+  // Loop + slow-down controls, shown only in bundle mode (they act on the
+  // <audio> element; live/OSC mode has no such clock to steer).
+  function setupBundleControls(audio) {
+    if (!bundleControls) return;
+    bundleControls.hidden = false;
+    var sections = (isLD && song.display && song.display.sections) || [];
+
+    // One loop option per section (instrumentals included — loop a solo).
+    sections.forEach(function (s, i) {
+      var opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = s.name;
+      loopSelect.appendChild(opt);
+    });
+
+    function setLoop(index) {
+      loopSelect.value = String(index);
+      if (index < 0 || !curve || !sections[index]) { loop = null; return; }
+      var start = curve.toTime(sections[index].startBeat);
+      var end = index + 1 < sections.length
+        ? curve.toTime(sections[index + 1].startBeat)
+        : (isFinite(audio.duration) ? audio.duration : Infinity);
+      loop = { startTime: start, endTime: end };
+      audio.currentTime = start;
+      if (audio.paused) audio.play().catch(function () {});
+    }
+
+    loopSelect.addEventListener("change", function () { setLoop(parseInt(this.value, 10)); });
+
+    // Click a rendered section name to loop it (a discoverable alternative to
+    // the dropdown; only lyric sections get a header, so the dropdown still
+    // covers instrumentals).
+    container.addEventListener("click", function (e) {
+      var el = e.target.closest && e.target.closest(".section-name");
+      if (!el) return;
+      var idx = sections.findIndex(function (s) { return s.name === el.textContent; });
+      if (idx >= 0) setLoop(idx);
+    });
+
+    function applySpeed(v) {
+      audio.playbackRate = v;
+      audio.preservesPitch = true;
+      audio.mozPreservesPitch = true;
+      audio.webkitPreservesPitch = true;
+      speedValue.textContent = Math.round(v * 100) + "%";
+    }
+    speedSlider.addEventListener("input", function () { applySpeed(parseFloat(this.value)); });
+    applySpeed(parseFloat(speedSlider.value));
   }
 
   // ── Render: dispatch on format ──

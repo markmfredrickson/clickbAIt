@@ -167,8 +167,13 @@
     function tick() {
       if (song) {
         // Keep playback inside the loop (wrap at the end; a scrub earlier is
-        // left alone so a manual lead-in works).
-        if (loop && audio.currentTime >= loop.endTime) audio.currentTime = loop.startTime;
+        // left alone so a manual lead-in works). Skip while a seek is still in
+        // flight: currentTime reads stale (>= endTime) until the seek settles,
+        // so re-checking every frame would fire a second seek — an audible
+        // double click at the loop seam.
+        if (loop && !audio.seeking && audio.currentTime >= loop.endTime) {
+          audio.currentTime = loop.startTime;
+        }
         clock.emit(beatFromSeconds(audio.currentTime || 0));
       }
       requestAnimationFrame(tick);

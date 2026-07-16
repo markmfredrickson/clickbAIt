@@ -84,6 +84,10 @@ enum Commands {
         /// Output JSON path (default: <file>.align.json next to the audio)
         #[arg(short, long)]
         output: Option<String>,
+        /// Don't trim a silent/instrumental lead before aligning (trimming is
+        /// on by default; it keeps the first words from latching onto the intro).
+        #[arg(long)]
+        no_trim_silence: bool,
     },
     /// Generate spoken audio from text (for cue tracks)
     Speak {
@@ -146,7 +150,9 @@ fn main() -> Result<()> {
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
         Commands::Unstretch { file } => unstretch::run(&file),
         Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),
-        Commands::Align { file, text, output } => align::run(&file, &text, output.as_deref()),
+        Commands::Align { file, text, output, no_trim_silence } => {
+            align::run(&file, &text, output.as_deref(), !no_trim_silence)
+        }
         Commands::Speak { text, output, voice, length_scale } => speak::run(&text, &output, &voice, length_scale),
     }
 }

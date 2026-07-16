@@ -300,6 +300,61 @@ fn frame_to_ms(frame: usize) -> u64 {
     (frame as f64 * FRAME_MS) as u64
 }
 
+/// How many leading (near-)silent samples to trim before alignment.
+///
+/// A long silent or instrumental intro on the vocal stem gives CTC nothing to
+/// anchor the first words to, so forced alignment spreads them into the silence
+/// and the first sung word latches onto a spurious early onset. Trimming the
+/// lead removes the empty runway; the caller adds the trimmed offset back to
+/// every timestamp, so the result stays in the file's own time frame.
+///
+/// Detects the first frame of energy that STAYS up (a sustained vocal entry,
+/// not a click), then backs off a lead-in margin so the attack is never
+/// clipped. Returns 0 when the audio starts hot or is silent throughout — in
+/// both cases trimming would do no good, so it's a no-op.
+fn leading_silence_samples(samples: &[f32], sr: u32) -> usize {
+    if samples.is_empty() {
+        return 0;
+    }
+    let win = (sr as usize / 50).max(1); // ~20ms frames
+    let mut rms: Vec<f32> = Vec::new();
+    let mut i = 0;
+    while i < samples.len() {
+        let end = (i + win).min(samples.len());
+        let mut sum = 0.0f64;
+        for &s in &samples[i..end] {
+            sum += (s as f64) * (s as f64);
+        }
+        rms.push((sum / (end - i) as f64).sqrt() as f32);
+        i += win;
+    }
+    let peak = rms.iter().cloned().fold(0.0f32, f32::max);
+    if peak <= 0.0 {
+        return 0;
+    }
+    // Onset = a fraction of the loudest frame, floored so a merely-quiet intro
+    // isn't over-trimmed; sustained over several frames so a stray click in the
+    // intro doesn't count as the vocal entry.
+    let thresh = (peak * 0.08).max(1e-3);
+    let sustain = 5usize; // ~100ms
+    let mut onset_frame = None;
+    for f in 0..rms.len() {
+        if rms[f] >= thresh {
+            let hold = (f..(f + sustain).min(rms.len())).all(|k| rms[k] >= thresh);
+            if hold {
+                onset_frame = Some(f);
+                break;
+            }
+        }
+    }
+    let onset_sample = match onset_frame {
+        Some(f) => f * win,
+        None => return 0,
+    };
+    let lead_in = (sr as usize * 250) / 1000; // keep 250ms before the attack
+    onset_sample.saturating_sub(lead_in)
+}
+
 /// Log-softmax a logits row in place-returning form.
 fn log_softmax(row: &[f32]) -> Vec<f32> {
     let m = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -308,7 +363,7 @@ fn log_softmax(row: &[f32]) -> Vec<f32> {
     row.iter().map(|x| x - log_sum).collect()
 }
 
-pub fn run(file: &str, text_arg: &str, output: Option<&str>) -> Result<()> {
+pub fn run(file: &str, text_arg: &str, output: Option<&str>, trim_silence: bool) -> Result<()> {
     let (model_path, vocab_path) = ensure_model()?;
     let vocab = load_vocab(&vocab_path)?;
 
@@ -347,6 +402,25 @@ pub fn run(file: &str, text_arg: &str, output: Option<&str>) -> Result<()> {
         audio16k.len(),
         audio16k.len() as f64 / 16_000.0
     );
+
+    // Trim a silent/instrumental lead so CTC anchors the first words to real
+    // vocal, not the empty intro. The trimmed offset is added back to every
+    // timestamp below, so the emitted times stay in the file's own frame.
+    let trim_samples = if trim_silence {
+        leading_silence_samples(&audio16k, TARGET_SR)
+    } else {
+        0
+    };
+    let offset_ms = (trim_samples as f64 / TARGET_SR as f64 * 1000.0) as u64;
+    let audio16k = if trim_samples > 0 {
+        eprintln!(
+            "trimmed {:.2}s leading silence before alignment (offset added back to timestamps)",
+            offset_ms as f64 / 1000.0
+        );
+        audio16k[trim_samples..].to_vec()
+    } else {
+        audio16k
+    };
 
     // Load ONNX session.
     let mut session = Session::builder()?
@@ -467,6 +541,19 @@ pub fn run(file: &str, text_arg: &str, output: Option<&str>) -> Result<()> {
         });
     }
 
+    // Put timestamps back into the file's frame (undo the leading-silence trim).
+    // Done before line spans are built so lines inherit the corrected word times.
+    if offset_ms > 0 {
+        for w in &mut words {
+            w.start_ms += offset_ms;
+            w.end_ms += offset_ms;
+            for c in &mut w.chars {
+                c.start_ms += offset_ms;
+                c.end_ms += offset_ms;
+            }
+        }
+    }
+
     // Build line spans by matching line text (normalized) back to word order.
     let mut lines_out: Vec<AlignedLine> = Vec::new();
     let mut word_cursor = 0usize;
@@ -519,6 +606,68 @@ mod tests {
         assert_eq!(normalize_text("Hello, world!"), "HELLO WORLD");
         assert_eq!(normalize_text("  don't  stop "), "DON'T STOP");
         assert_eq!(normalize_text("A B  C"), "A B C");
+    }
+
+    // A tone frame (loud) and a silent frame at 16kHz, for building fixtures.
+    fn tone(n: usize) -> Vec<f32> {
+        (0..n).map(|i| (i as f32 * 0.3).sin() * 0.5).collect()
+    }
+    fn silence(n: usize) -> Vec<f32> {
+        vec![0.0; n]
+    }
+    const SR: u32 = 16_000;
+    const LEAD_IN: usize = SR as usize * 250 / 1000; // 250ms
+
+    #[test]
+    fn trim_silence_then_tone() {
+        // 1s silence, then a tone. Onset ~ sample 16000; trim = onset - lead-in.
+        let mut s = silence(SR as usize);
+        s.extend(tone(SR as usize));
+        let trimmed = leading_silence_samples(&s, SR);
+        // Within a couple of frames of (onset - lead_in).
+        let expected = SR as usize - LEAD_IN;
+        assert!(
+            (trimmed as isize - expected as isize).abs() < (SR as isize / 25),
+            "trimmed {trimmed}, expected ~{expected}"
+        );
+    }
+
+    #[test]
+    fn trim_hot_start_is_noop() {
+        // Tone from the first sample: onset is at 0, lead-in clamps to 0.
+        let s = tone(SR as usize);
+        assert_eq!(leading_silence_samples(&s, SR), 0);
+    }
+
+    #[test]
+    fn trim_all_silence_is_noop() {
+        let s = silence(SR as usize * 2);
+        assert_eq!(leading_silence_samples(&s, SR), 0);
+    }
+
+    #[test]
+    fn trim_ignores_a_click_in_the_intro() {
+        // Silence, a 20ms click, more silence, then the real (sustained) entry.
+        let mut s = silence(SR as usize / 2);
+        s.extend(tone(SR as usize / 50)); // ~20ms click (< sustain window)
+        s.extend(silence(SR as usize / 2));
+        let real_onset = s.len();
+        s.extend(tone(SR as usize));
+        let trimmed = leading_silence_samples(&s, SR);
+        // Should trim toward the real onset, not the click half a second earlier.
+        let expected = real_onset - LEAD_IN;
+        assert!(
+            (trimmed as isize - expected as isize).abs() < (SR as isize / 25),
+            "trimmed {trimmed}, expected ~{expected} (should skip the click)"
+        );
+    }
+
+    #[test]
+    fn trim_never_exceeds_onset_when_onset_is_early() {
+        // Onset closer than the lead-in margin -> clamps to 0, never past it.
+        let mut s = silence(SR as usize / 20); // 50ms < 250ms lead-in
+        s.extend(tone(SR as usize));
+        assert_eq!(leading_silence_samples(&s, SR), 0);
     }
 
     #[test]

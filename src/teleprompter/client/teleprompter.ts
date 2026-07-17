@@ -252,6 +252,14 @@ import { activeIndex } from "../highlight.js";
 
     if (isLD) renderLyricsDisplay();
     else renderLegacy();
+
+    // New song: jump back to the top and clear the beat position. Otherwise the
+    // page lingers at the previous song's scroll/highlight (often the very end)
+    // until the next OSC beat arrives — and if REAPER is stopped, none does.
+    rawBeat = -1;
+    currentBeat = -1;
+    scrollTarget = 0;
+    window.scrollTo(0, 0);
   }
 
   // ── LyricsDisplay renderer: words grouped into lines + sections ──

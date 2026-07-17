@@ -191,6 +191,14 @@ const Section = z
      *  Item positions are relative to the item's left edge; source positions are
      *  file-absolute (may be negative — REAPER reads pre-file as silence). */
     stretchMarkers: z.array(z.object({ item: z.number(), source: z.number() }).strict()).optional(),
+    /** Whether the click plays during this section. Omit = on. `click: false`
+     *  DROPS the click for this section — the band plays free of the metronome
+     *  (a click-recorded song whose ending was played by feel). Orthogonal to
+     *  `smStride` (stretch markers): pair with `smStride: 0` for a ring-out (no
+     *  click AND audio 1:1 to source end), or use alone for a grid-locked backing
+     *  with no click. Only the TRAILING case (click off through the end) is
+     *  implemented; mid-song click-off would need the click item split. */
+    click: z.boolean().optional(),
     /** Manual cues at beats relative to this section's start (e.g. a count-in
      *  "1,2,3,4", a "hit", or a cold-open pitch). Distinct from `cue` (which
      *  auto-announces the section name); these are extra band cues placed by

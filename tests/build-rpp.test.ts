@@ -53,6 +53,23 @@ describe("buildRpp", () => {
     expect(rpp).toMatch(/PROJOFFS 0 -\d+ 0/);
   });
 
+  it("halts the click item at clickDropBeat (click:false ring-out)", () => {
+    const s = song("Test", 120,
+      seq(
+        span("A", bars(4)),
+        span("Outro", bars(4)),   // starts at bar 5 = beat 16
+      ),
+    );
+    // First LENGTH in the RPP is the click item's timeline span.
+    const clickLen = (rpp: string) => Number(rpp.match(/LENGTH ([\d.]+)/)![1]);
+    const full = clickLen(buildRpp(s, defaultOpts).rpp);
+    const dropped = clickLen(buildRpp(s, { ...defaultOpts, clickDropBeat: 16 }).rpp);
+    expect(dropped).toBeLessThan(full);           // click stops before the song end
+    // Outro (beat 16) is 4 of the song's 8 bars in — the click loses ~that tail.
+    const barSec = 4 * (60 / 120); // 2s/bar
+    expect(full - dropped).toBeCloseTo(4 * barSec, 1); // 4 bars of click dropped
+  });
+
   it("PROJOFFS offsets by the FULL pre-downbeat padding, not just the slug", () => {
     // A cue 12 beats before the downbeat forces padding past the 2-bar slug.
     // The live teleprompter reads /beat/str, so measure 1 must be the downbeat

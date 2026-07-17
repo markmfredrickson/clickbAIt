@@ -114,6 +114,10 @@ export interface BuildOptions {
   /** Seconds the stems play PAST the song end (natural decay, 1:1, no stretch)
    *  while the click halts at the end. For songs that end on a hit/abrupt stop. */
   ringOutSec?: number;
+  /** Song-beat (pre-padding) where the click DROPS (a `click: false` trailing
+   *  section). The click item is cut here so no click ticks over the free
+   *  ending. Orthogonal to stretch markers (`smStride`). */
+  clickDropBeat?: number;
   /** Source position (seconds) for the leading stretch marker (item 0) of items
    *  that begin at the song start — the intro's single stretch segment when the
    *  first section uses `smStride: 0`. Default 0 (identity). Captures a
@@ -190,6 +194,12 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
 
   // Single resolver for every beat→seconds conversion below.
   const curve = Curve.fromTempoMap(tempoMap);
+
+  // Click-drop time (project seconds): the click item halts here so no click
+  // ticks over a `click: false` free ending.
+  const clickDropSec = opts.clickDropBeat != null
+    ? curve.toTime(opts.clickDropBeat + paddingBeats)
+    : undefined;
 
   // --- Tempo envelope points ---
   // Merge tempo and timesig changes into a single sorted list of envelope points.
@@ -420,7 +430,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   }
 
   // Click track (SOURCE CLICK — follows tempo map automatically)
-  const clickItemContent = buildClickItem(song, sections, tempoMap, curve, opts);
+  const clickItemContent = buildClickItem(song, sections, tempoMap, curve, opts, clickDropSec);
   const clickR = routeOpts(opts.rig?.generated?.click, true);
   rppLines.push(buildTrack("Click", clickR.gain, clickItemContent, {
     beat: -1, playoffs: "0 1", nchan: 2,
@@ -523,14 +533,17 @@ function buildClickItem(
   tempoMap: { beat: number; bpm: number }[],
   curve: Curve,
   opts: BuildOptions,
+  clickDropSec?: number,
 ): string {
   const masterTs = song.timeSignature;
   const masterBpm = tempoMap[0]?.bpm ?? song.bpm;
 
   const lastSection = sections[sections.length - 1];
-  const totalSeconds = lastSection
+  // Click runs to the song end — or halts at a `click: false` section's downbeat,
+  // so no click ticks over the free ending.
+  const totalSeconds = clickDropSec ?? (lastSection
     ? curve.toTime(lastSection.beat + lastSection.durationBeats)
-    : 0;
+    : 0);
 
   const accentFile = `${opts.clickDir}/accent.wav`;
   const beatFile = `${opts.clickDir}/beat.wav`;

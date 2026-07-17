@@ -45,7 +45,7 @@ manifest.sources.recording.beatMap = resolveBeatMap(manifest.sources.recording.b
 // The recording's per-beat source times come from the inline beat-map (see
 // beatMapToBeats): dense pins reproduce detected beats; gaps interpolate. Shared
 // by every stem (they play the same recording) and fed to build-rpp.
-const { beats } = beatMapToBeats(manifest.sources.recording.beatMap, manifest.bpm);
+const { beats, offset: beatsOffset } = beatMapToBeats(manifest.sources.recording.beatMap, manifest.bpm);
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..", "..");
 const audioBin = existsSync(resolve(root, "target/release/clickbait-audio"))
@@ -117,7 +117,31 @@ const strideRanges = manifest.sections
 
 // Ring-out: stems play this many seconds past the song end (1:1) while the
 // click halts at the end — for abrupt/hit endings.
-const ringOutSec = (manifest.ringOutBars ?? 0) * manifest.timeSignature[0] * (60 / manifest.bpm);
+let ringOutSec = (manifest.ringOutBars ?? 0) * manifest.timeSignature[0] * (60 / manifest.bpm);
+
+// Click drop: the click halts at the first section that turns it off (`click:
+// false`). Only the TRAILING case is supported (off through the end); warn if a
+// later section turns it back on (mid-song click-off needs the click item split).
+const noClickIdx = manifest.sections.findIndex((s) => s.click === false);
+if (noClickIdx >= 0 && !manifest.sections.slice(noClickIdx).every((s) => s.click === false)) {
+  console.error("warning: mid-song click-off not supported — click stays off from the first `click:false` section to the end");
+}
+const clickDropBeat = noClickIdx >= 0 ? starts[noClickIdx] : undefined;
+
+// A trailing `smStride: 0` section plays 1:1 (unwarped), so its natural length
+// (a slowing outro) exceeds its nominal bars. Extend the ring-out to the source
+// end so the ending isn't clipped at the constant-grid boundary. The last real
+// stretch marker sits at the section's downbeat (source time s0); playing 1:1
+// from there covers (sourceEnd - s0), plus a small tail for the final note.
+const lastSec = manifest.sections.at(-1);
+if (lastSec?.smStride === 0) {
+  const outroStartBeat = starts[manifest.sections.length - 1];
+  const s0 = beats[Math.round(outroStartBeat - beatsOffset)]?.time;
+  const sourceEnd = beats.at(-1)?.time;
+  if (s0 !== undefined && sourceEnd !== undefined && sourceEnd > s0) {
+    ringOutSec = Math.max(ringOutSec, sourceEnd - s0 + 2); // +2s tail for the final ring
+  }
+}
 
 // RPP (cue WAVs now exist for duration measurement).
 // Leading stretch-marker source position (seconds) for the intro's single
@@ -159,7 +183,7 @@ for (const e of events) {
   if (v !== undefined) cueOnsets[sl] = v;
 }
 
-const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets });
+const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, clickDropBeat, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets });
 const slug = songSlug(song);
 // Emit RELATIVE media paths so the project folder is self-contained and portable
 // (REAPER resolves paths against the .RPP's own folder). In-folder media —

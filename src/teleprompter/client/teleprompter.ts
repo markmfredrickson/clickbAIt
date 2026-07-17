@@ -295,7 +295,7 @@ import { activeIndex } from "../highlight.js";
         span.textContent = w.text;
         lineEl.appendChild(span);
         lineEl.appendChild(document.createTextNode(" "));
-        wordElements.push({ el: span, startBeat: w.startBeat, lineEl: lineEl });
+        wordElements.push({ el: span, startBeat: w.startBeat, endBeat: w.endBeat, lineEl: lineEl });
       }
 
       container.appendChild(lineEl);
@@ -387,15 +387,29 @@ import { activeIndex } from "../highlight.js";
     if (autoScroll) scrollToCurrentLine(readingBeat);
   }
 
-  // LyricsDisplay: a word is active from its start until the NEXT word's start
-  // (CTC word ends are unreliable — see TODO). The active word lights; earlier
-  // words read as sung; the active line is marked for context.
+  // LyricsDisplay word highlight. The bright ("active") word lights at its start
+  // and RELEASES when it's done, so the last word before a solo/rest doesn't
+  // stay lit through the gap. Release at min(next word start, start + clamped
+  // duration + grace): mid-phrase the next word wins (smooth karaoke, held notes
+  // stay lit); before a gap the clamped hold wins. CTC endBeats can be bogus-
+  // stretched into the following silence (that's the very lingering we're
+  // fixing), so the duration is clamped to a sane 1–3 beats. Words already
+  // started still read as "sung", and the last line stays "current" for context.
+  var HOLD_MIN = 1, HOLD_MAX = 3, HOLD_GRACE = 0.5;
   function updateWordHighlight(readingBeat) {
-    var active = activeIndex(wordElements, readingBeat, function (w) { return w.startBeat; });
-    var activeLine = active >= 0 ? wordElements[active].lineEl : null;
+    var i = activeIndex(wordElements, readingBeat, function (w) { return w.startBeat; });
+    var active = i;
+    if (i >= 0) {
+      var w = wordElements[i];
+      var nextStart = i + 1 < wordElements.length ? wordElements[i + 1].startBeat : Infinity;
+      var dur = Math.min(HOLD_MAX, Math.max(HOLD_MIN, (w.endBeat || w.startBeat) - w.startBeat));
+      var releaseAt = Math.min(nextStart, w.startBeat + dur + HOLD_GRACE);
+      if (readingBeat >= releaseAt) active = -1; // word done — drop the bright highlight
+    }
+    var activeLine = i >= 0 ? wordElements[i].lineEl : null;
     wordElements.forEach(function (item, idx) {
       item.el.classList.toggle("active", idx === active);
-      item.el.classList.toggle("sung", idx < active);
+      item.el.classList.toggle("sung", idx <= i && idx !== active);
       item.lineEl.classList.toggle("current", item.lineEl === activeLine);
     });
   }

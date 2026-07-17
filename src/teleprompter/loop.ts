@@ -23,23 +23,33 @@ export interface LoopBounds {
 }
 
 /**
- * Audio-time bounds of section `index`: from its own start-beat to the NEXT
- * section's start-beat (converted to time via `toTime`). The last section has no
- * "next", so it runs to the media `duration`.
+ * Audio-time bounds of a CONTIGUOUS run of sections [startIndex, endIndex]:
+ * from the first section's start-beat to the section AFTER the last one's
+ * start-beat (converted to time via `toTime`). A run ending at the final
+ * section has no "next", so it runs to the media `duration`. Pass the same
+ * index for both to loop a single section.
  */
 export function sectionLoopBounds(
   sections: readonly LoopSection[],
-  index: number,
+  startIndex: number,
+  endIndex: number,
   toTime: (beat: number) => number,
   duration: number,
 ): LoopBounds {
-  if (index < 0 || index >= sections.length) {
-    throw new RangeError(`section index ${index} out of range (0..${sections.length - 1})`);
+  const last = sections.length - 1;
+  if (startIndex < 0 || endIndex > last || startIndex > endIndex) {
+    throw new RangeError(
+      `section range [${startIndex}, ${endIndex}] invalid for 0..${last}`,
+    );
   }
-  const startTime = toTime(sections[index].startBeat);
+  const startTime = toTime(sections[startIndex].startBeat);
   const endTime =
-    index + 1 < sections.length ? toTime(sections[index + 1].startBeat) : duration;
-  return { name: sections[index].name, startTime, endTime };
+    endIndex + 1 < sections.length ? toTime(sections[endIndex + 1].startBeat) : duration;
+  const name =
+    startIndex === endIndex
+      ? sections[startIndex].name
+      : `${sections[startIndex].name} – ${sections[endIndex].name}`;
+  return { name, startTime, endTime };
 }
 
 /**

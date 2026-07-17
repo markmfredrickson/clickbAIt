@@ -102,7 +102,8 @@
   const darkModeBtn = document.getElementById("dark-mode-btn");
   const transportLight = document.getElementById("transport-light");
   const bundleControls = document.getElementById("bundle-controls");
-  const loopSelect = document.getElementById("loop-select");
+  const loopFrom = document.getElementById("loop-from");
+  const loopTo = document.getElementById("loop-to");
   const speedSlider = document.getElementById("speed-slider");
   const speedValue = document.getElementById("speed-value");
 
@@ -192,36 +193,58 @@
     bundleControls.hidden = false;
     var sections = (isLD && song.display && song.display.sections) || [];
 
-    // One loop option per section (instrumentals included — loop a solo).
+    // "from" gets Off + every section; "to" gets every section (instrumentals
+    // included — loop a solo, or a contiguous run like Verse → Chorus).
     sections.forEach(function (s, i) {
-      var opt = document.createElement("option");
-      opt.value = String(i);
-      opt.textContent = s.name;
-      loopSelect.appendChild(opt);
+      var a = document.createElement("option");
+      a.value = String(i); a.textContent = s.name; loopFrom.appendChild(a);
+      var b = document.createElement("option");
+      b.value = String(i); b.textContent = s.name; loopTo.appendChild(b);
     });
 
-    function setLoop(index) {
-      loopSelect.value = String(index);
-      if (index < 0 || !curve || !sections[index]) { loop = null; return; }
-      var start = curve.toTime(sections[index].startBeat);
-      var end = index + 1 < sections.length
-        ? curve.toTime(sections[index + 1].startBeat)
-        : (isFinite(audio.duration) ? audio.duration : Infinity);
-      loop = { startTime: start, endTime: end };
-      audio.currentTime = start;
+    // Apply the current from/to selection. Clamps to a valid contiguous range
+    // (to >= from), seeks to the range start, and plays.
+    function applyLoop() {
+      var from = parseInt(loopFrom.value, 10);
+      if (from < 0 || !curve || !sections.length) { loop = null; return; }
+      var to = parseInt(loopTo.value, 10);
+      if (isNaN(to) || to < from) { to = from; loopTo.value = String(to); }
+      // Mirror of loop.ts sectionLoopBounds: first section's start → after the
+      // last section (or media end if the range reaches the final section).
+      var dur = isFinite(audio.duration) ? audio.duration : Infinity;
+      var startTime = curve.toTime(sections[from].startBeat);
+      var endTime = to + 1 < sections.length
+        ? curve.toTime(sections[to + 1].startBeat)
+        : dur;
+      loop = { startTime: startTime, endTime: endTime };
+      audio.currentTime = startTime;
       if (audio.paused) audio.play().catch(function () {});
     }
 
-    loopSelect.addEventListener("change", function () { setLoop(parseInt(this.value, 10)); });
+    // Set the range explicitly (used by section-name clicks).
+    function setLoopRange(from, to) {
+      loopFrom.value = String(from);
+      loopTo.value = String(to < from ? from : to);
+      applyLoop();
+    }
 
-    // Click a rendered section name to loop it (a discoverable alternative to
-    // the dropdown; only lyric sections get a header, so the dropdown still
-    // covers instrumentals).
+    loopFrom.addEventListener("change", applyLoop);
+    loopTo.addEventListener("change", applyLoop);
+
+    // Click a rendered section name to loop just it; shift-click a second one to
+    // extend the range to there (a discoverable alternative to the dropdowns —
+    // only lyric sections get a header, so the dropdowns still cover instrumentals).
     container.addEventListener("click", function (e) {
       var el = e.target.closest && e.target.closest(".section-name");
       if (!el) return;
       var idx = sections.findIndex(function (s) { return s.name === el.textContent; });
-      if (idx >= 0) setLoop(idx);
+      if (idx < 0) return;
+      var from = parseInt(loopFrom.value, 10);
+      if (e.shiftKey && from >= 0) {
+        setLoopRange(Math.min(from, idx), Math.max(from, idx));
+      } else {
+        setLoopRange(idx, idx);
+      }
     });
 
     function applySpeed(v) {

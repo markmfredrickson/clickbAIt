@@ -13,24 +13,36 @@ const sections: LoopSection[] = [
 ];
 
 describe("sectionLoopBounds", () => {
-  it("bounds a middle section from its start to the next section's start", () => {
-    const b = sectionLoopBounds(sections, 1, toTime, 100);
+  it("bounds a single section from its start to the next section's start", () => {
+    const b = sectionLoopBounds(sections, 1, 1, toTime, 100);
     expect(b).toEqual({ name: "Verse 1", startTime: 8, endTime: 24 });
   });
 
   it("bounds an instrumental section (no lyrics) the same way", () => {
-    const b = sectionLoopBounds(sections, 2, toTime, 100);
+    const b = sectionLoopBounds(sections, 2, 2, toTime, 100);
     expect(b).toEqual({ name: "Guitar Solo", startTime: 24, endTime: 40 });
   });
 
-  it("runs the last section to the media duration (no next section)", () => {
-    const b = sectionLoopBounds(sections, 3, toTime, 100);
+  it("runs a range ending at the last section to the media duration", () => {
+    const b = sectionLoopBounds(sections, 3, 3, toTime, 100);
     expect(b).toEqual({ name: "Outro", startTime: 40, endTime: 100 });
   });
 
-  it("throws on an out-of-range index", () => {
-    expect(() => sectionLoopBounds(sections, 4, toTime, 100)).toThrow(RangeError);
-    expect(() => sectionLoopBounds(sections, -1, toTime, 100)).toThrow(RangeError);
+  it("spans a contiguous range: first section start to after the last", () => {
+    // Verse 1 (start 8) through Guitar Solo (ends where Outro starts, 40).
+    const b = sectionLoopBounds(sections, 1, 2, toTime, 100);
+    expect(b).toEqual({ name: "Verse 1 – Guitar Solo", startTime: 8, endTime: 40 });
+  });
+
+  it("spans a range that ends at the final section (to duration)", () => {
+    const b = sectionLoopBounds(sections, 2, 3, toTime, 100);
+    expect(b).toEqual({ name: "Guitar Solo – Outro", startTime: 24, endTime: 100 });
+  });
+
+  it("throws on an invalid range", () => {
+    expect(() => sectionLoopBounds(sections, 0, 4, toTime, 100)).toThrow(RangeError); // end past last
+    expect(() => sectionLoopBounds(sections, -1, 0, toTime, 100)).toThrow(RangeError); // start < 0
+    expect(() => sectionLoopBounds(sections, 2, 1, toTime, 100)).toThrow(RangeError); // start > end
   });
 });
 

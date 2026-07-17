@@ -91,7 +91,10 @@ body {
   border-color: var(--accent);
 }
 
-#bundle-controls {
+/* Only in bundle mode. `:not([hidden])` so the `hidden` attribute (live mode)
+   still wins — a bare `display:flex` would override it and leak the controls
+   into the live teleprompter. */
+#bundle-controls:not([hidden]) {
   display: flex;
   align-items: center;
   gap: 1rem;

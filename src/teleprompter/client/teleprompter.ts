@@ -14,6 +14,7 @@
 
 import { Curve } from "../../core/curve.js";
 import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
+import { activeIndex } from "../highlight.js";
 
 (function () {
   "use strict";
@@ -382,10 +383,7 @@ import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
   // (CTC word ends are unreliable — see TODO). The active word lights; earlier
   // words read as sung; the active line is marked for context.
   function updateWordHighlight(readingBeat) {
-    var active = -1;
-    for (var i = wordElements.length - 1; i >= 0; i--) {
-      if (readingBeat >= wordElements[i].startBeat) { active = i; break; }
-    }
+    var active = activeIndex(wordElements, readingBeat, function (w) { return w.startBeat; });
     var activeLine = active >= 0 ? wordElements[active].lineEl : null;
     wordElements.forEach(function (item, idx) {
       item.el.classList.toggle("active", idx === active);
@@ -396,10 +394,9 @@ import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
 
   // Legacy line-level highlight.
   function updateHighlightLegacy(nowBeat, readingBeat) {
-    var nowIdx = -1;
-    for (var i = lyricElements.length - 1; i >= 0; i--) { if (nowBeat >= lyricElements[i].beat) { nowIdx = i; break; } }
-    var readIdx = -1;
-    for (var j = lyricElements.length - 1; j >= 0; j--) { if (readingBeat >= lyricElements[j].beat) { readIdx = j; break; } }
+    var beatOf = function (l) { return l.beat; };
+    var nowIdx = activeIndex(lyricElements, nowBeat, beatOf);
+    var readIdx = activeIndex(lyricElements, readingBeat, beatOf);
     lyricElements.forEach(function (item, idx) {
       item.el.classList.remove("reading", "now", "past");
       if (idx === readIdx) item.el.classList.add("reading");
@@ -422,18 +419,15 @@ import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
   function scrollToCurrentLine(beat) {
     var target = null;
     if (isLD) {
-      for (var i = wordElements.length - 1; i >= 0; i--) {
-        if (beat >= wordElements[i].startBeat) { target = wordElements[i].lineEl; break; }
-      }
+      var wi = activeIndex(wordElements, beat, function (w) { return w.startBeat; });
+      if (wi >= 0) target = wordElements[wi].lineEl;
     } else {
-      for (var k = lyricElements.length - 1; k >= 0; k--) {
-        if (beat >= lyricElements[k].beat) { target = lyricElements[k].el; break; }
-      }
+      var li = activeIndex(lyricElements, beat, function (l) { return l.beat; });
+      if (li >= 0) target = lyricElements[li].el;
     }
     if (!target) {
-      for (var j = sectionElements.length - 1; j >= 0; j--) {
-        if (beat >= sectionElements[j].beat) { target = sectionElements[j].el; break; }
-      }
+      var si = activeIndex(sectionElements, beat, function (s) { return s.beat; });
+      if (si >= 0) target = sectionElements[si].el;
     }
     if (target) {
       var rect = target.getBoundingClientRect();

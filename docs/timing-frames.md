@@ -87,7 +87,8 @@ negative beats are the *correct* representation for pickups and pre-roll.
 - `tests/timing-frame.test.ts` pins the two encodings together, so a change to
   one formula can't silently desync live from bundle again.
 
-Remaining sharp edge: a fractional-bar pickup (`wholeBars: false`) leaves the
-downbeat off REAPER's bar grid, so live `/beat/str` is off by a fraction of a
-bar. Fixing that needs `PROJOFFS`'s time-offset field (or snapping padding to
-whole bars) — not yet done; `downbeatFrame` warns when it happens.
+The downbeat always lands on a bar line: `linearize` snaps the total pre-downbeat
+padding UP to a whole number of bars (2 bars + 2 beats → 3 bars), so REAPER's
+`/beat/str` reports the downbeat as Bar 1 beat 1 exactly. `downbeatFrame`'s
+`wholeBars` stays as a defensive assertion for any caller that bypasses that
+snap.

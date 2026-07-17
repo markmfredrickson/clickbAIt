@@ -272,6 +272,36 @@ describe("linearize", () => {
     expect(audios[0].beat).toBe(8); // shifted by padding
   });
 
+  it("snaps padding UP to a whole number of bars (downbeat lands on a bar line)", () => {
+    // A fractional minPaddingBeats (10 in 4/4 = 2.5 bars) must round up to 3
+    // bars (12 beats), so the downbeat sits on a bar line for live /beat/str.
+    const s = song("Test", 120,
+      seq(span("A", bars(2), [marker("downbeat", 0)])),
+    );
+    const { events, paddingBeats } = linearize(s, { withPadding: true, minPaddingBeats: 10 });
+    expect(paddingBeats).toBe(12); // 2.5 bars -> 3 bars
+    // Everything shifts by the SNAPPED padding, so the downbeat is at 12.
+    const downbeat = ofType(events, "marker").find((e) => e.value === "downbeat");
+    expect(downbeat?.beat).toBe(12);
+  });
+
+  it("leaves already-whole-bar padding unchanged (no float over-rounding)", () => {
+    const s = song("Test", 120,
+      seq(span("Intro", bars(2), [cue("Intro", -8)])),
+    );
+    const { paddingBeats } = linearize(s, { withPadding: true });
+    expect(paddingBeats).toBe(8); // exactly 2 bars, not bumped to 12
+  });
+
+  it("snaps in the song's meter, not a hardcoded 4", () => {
+    // 3/4: minPadding 7 beats = 2.33 bars -> 3 bars = 9 beats.
+    const s = song("Test", 120, { timeSignature: [3, 4] },
+      seq(span("A", bars(2), [marker("d", 0)])),
+    );
+    const { paddingBeats } = linearize(s, { withPadding: true, minPaddingBeats: 7 });
+    expect(paddingBeats).toBe(9);
+  });
+
   it("seconds calculation with BPM changes", () => {
     const s = song("Test", 60, // 1 beat per second
       seq(

@@ -215,9 +215,18 @@ export function linearize(root: Song, opts?: LinearizeOptions): LinearEvent[] | 
   const events: LinearEvent[] = [];
   walk(root, { beatOffset: 0, bpm: root.bpm, timeSignature: root.timeSignature }, events);
 
-  // Pad for negative offsets, plus any caller-requested minimum
+  // Pad for negative offsets, plus any caller-requested minimum, then snap the
+  // total UP to a whole number of bars. The downbeat sits at the padding, and it
+  // must land on a bar line: REAPER's live /beat/str reports it as Bar 1 beat 1
+  // only if it's on a bar line, so a fractional pickup (say 2 bars + 2 beats)
+  // would leave live tracking a constant fraction of a bar off. Rounding up
+  // (2 bars + 2 beats -> 3 bars) costs a little extra count-in and removes that.
+  // computePadding already rounds its own contribution; this makes the whole-bar
+  // guarantee hold for the combined shift regardless of minPaddingBeats.
   const computed = computePadding(events, root.timeSignature);
-  const shift = Math.max(computed, opts?.minPaddingBeats ?? 0);
+  const beatsPerBar = root.timeSignature[0];
+  const requested = Math.max(computed, opts?.minPaddingBeats ?? 0);
+  const shift = Math.ceil(requested / beatsPerBar - 1e-9) * beatsPerBar;
   if (shift > 0) {
     for (const e of events) {
       e.beat += shift;

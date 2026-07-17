@@ -60,6 +60,27 @@ describe("smoothBeatCurve", () => {
     expect(points.slice(1, -1).some((p, i) => Math.abs(p.b - pts[i + 1].b) > 1e-6)).toBe(true);
   });
 
+  it("preserves a monotonic tempo step (ritardando onset), even a big one", () => {
+    // The Wicked Game shape: flat, then a sudden sustained slow-down (a big
+    // one-way kink at the onset). It must NOT be smoothed backward into the flat
+    // bars — a monotonic run is a real tempo change, not a warble.
+    const pts = fromSlopes([1.0, 1.0, 1.0, 1.13, 1.13, 1.15]); // +13% step, then sustained
+    const { points, maxKinkAfter } = smoothBeatCurve(pts, { bpm: BPM, maxKink: 0.04 });
+    expect(points).toEqual(pts); // untouched
+    expect(maxKinkAfter).toBeGreaterThan(0.1); // the real step is left as-is
+  });
+
+  it("removes a spike sitting on a ramp but keeps the ramp", () => {
+    // Monotonic ramp with one segment spiking up then back (a warble on a ramp).
+    const pts = fromSlopes([1.0, 1.05, 1.30, 1.12, 1.16]); // 1.30 spikes above the ramp
+    const worstBefore = worstKink(pts);
+    const { points } = smoothBeatCurve(pts, { bpm: BPM, maxKink: 0.04 });
+    expect(worstKink(points)).toBeLessThan(worstBefore); // spike knocked down
+    expect(times(points)).toEqual(times(pts)); // times fixed
+    // the overall upward ramp is still there (last point later than first span)
+    expect(points.at(-1)!.b).toBeCloseTo(pts.at(-1)!.b); // endpoints fixed
+  });
+
   it("keeps slopes positive on a hard spike (minSlope floor)", () => {
     const pts = fromSlopes([1.0, 0.2, 1.8, 1.0]); // violent warble
     const { points } = smoothBeatCurve(pts, { bpm: BPM, maxKink: 0.05, minSlope: 0.25 });

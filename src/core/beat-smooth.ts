@@ -13,6 +13,11 @@
  * segments, so the knob is the max adjacent-segment slope change — the "kink",
  * i.e. the local tempo *change* between markers — not absolute tempo. That's
  * exactly the warble; a sustained tempo offset isn't a kink and is left alone.
+ *
+ * Only REVERSALS are damped. A kink that's part of a monotonic run of slopes is
+ * a genuine sustained tempo change (a ritardando/accel step, e.g. a click-
+ * dropped outro) — damping it would smear the change backward into the clean
+ * bars before it, so it's left intact. Only bulges that come back (warbles) move.
  */
 
 import { expandBeatMap } from "./beat-map.js";
@@ -65,11 +70,29 @@ export function smoothBeatCurve(points: readonly BeatPoint[], opts: SmoothOption
 
   const before = n >= 3 ? worstKink() : 0;
 
+  // A kink is only worth damping if it's a REVERSAL (a warble — the curve bulges
+  // then comes back). A kink that's part of a MONOTONIC run of slopes is a real
+  // sustained tempo change (a ritardando/accel step) — damping it would smear the
+  // change backward into the clean bars before it. So skip vertex i when the
+  // slopes around it (i-1..i+2) only go one direction.
+  const monotonicAround = (i: number): boolean => {
+    const ss: number[] = [];
+    for (let k = i - 1; k <= i + 2; k++) if (k >= 1 && k <= n - 1) ss.push(slope(k));
+    if (ss.length < 3) return false; // too little context near an end — smooth it
+    let inc = true, dec = true;
+    for (let j = 1; j < ss.length; j++) {
+      if (ss[j] < ss[j - 1] - 1e-9) inc = false;
+      if (ss[j] > ss[j - 1] + 1e-9) dec = false;
+    }
+    return inc || dec;
+  };
+
   for (let pass = 0; pass < maxPasses && n >= 3; pass++) {
     let moved = false;
     for (let i = 1; i < n - 1; i++) {
       const kink = slope(i + 1) - slope(i);
       if (Math.abs(kink) <= maxKink) continue;
+      if (monotonicAround(i)) continue; // real tempo change, not a warble — leave it
 
       const bPrev = b[i - 1], bNext = b[i + 1];
       const dtL = t[i] - t[i - 1], dtR = t[i + 1] - t[i];

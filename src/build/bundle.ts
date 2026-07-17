@@ -21,6 +21,7 @@
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { resolve, join } from "path";
+import { buildClient } from "../teleprompter/build-client.js";
 
 function fail(msg: string): never {
   console.error("error: " + msg);
@@ -84,6 +85,9 @@ const bundleMix = `${slug}.${mixFile.split(".").pop()}`;
 
 const clientDir = resolve(repoRoot, "src", "teleprompter", "client");
 if (!existsSync(clientDir)) fail(`teleprompter client dir missing: ${clientDir}`);
+
+// Build the client from TS so the bundle carries a freshly compiled copy.
+await buildClient(clientDir);
 
 // Assemble.
 mkdirSync(outDir, { recursive: true });

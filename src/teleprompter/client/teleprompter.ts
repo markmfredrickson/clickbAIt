@@ -12,6 +12,9 @@
  *     whole-line highlight. Kept so songs not yet rebuilt still display.
  */
 
+import { Curve } from "../../core/curve.js";
+import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
+
 (function () {
   "use strict";
 
@@ -38,34 +41,8 @@
     };
   })();
 
-  // ── Curve (port of src/curve.ts:toBeat) ──
-  // anchors: sorted [{t, b}], strictly increasing in both. Linear interp,
-  // end-slope extrapolation. Constant-tempo songs have two anchors.
-  function makeCurve(anchors) {
-    const a = anchors;
-    const last = a.length - 1;
-    const leadBps = (a[1].b - a[0].b) / (a[1].t - a[0].t);
-    const tailBps = (a[last].b - a[last - 1].b) / (a[last].t - a[last - 1].t);
-    return {
-      toBeat: function (t) {
-        if (t <= a[0].t) return a[0].b + (t - a[0].t) * leadBps;
-        if (t >= a[last].t) return a[last].b + (t - a[last].t) * tailBps;
-        let lo = 0, hi = last;
-        while (lo < hi - 1) { const m = (lo + hi) >> 1; if (a[m].t <= t) lo = m; else hi = m; }
-        const slope = (a[lo + 1].b - a[lo].b) / (a[lo + 1].t - a[lo].t);
-        return a[lo].b + (t - a[lo].t) * slope;
-      },
-      // Inverse (beat -> time), for section-loop bounds. Mirror of toBeat.
-      toTime: function (b) {
-        if (b <= a[0].b) return a[0].t + (b - a[0].b) / leadBps;
-        if (b >= a[last].b) return a[last].t + (b - a[last].b) / tailBps;
-        let lo = 0, hi = last;
-        while (lo < hi - 1) { const m = (lo + hi) >> 1; if (a[m].b <= b) lo = m; else hi = m; }
-        const slope = (a[lo + 1].b - a[lo].b) / (a[lo + 1].t - a[lo].t);
-        return a[lo].t + (b - a[lo].b) / slope;
-      },
-    };
-  }
+  // Curve (time <-> beat) is the real src/core/curve.ts, imported and bundled —
+  // no more hand-ported copy to keep in sync. `curve` below is a Curve instance.
 
   // Legacy: piecewise-linear accumulation along the tempo map.
   function secondsToBeats(seconds, s) {
@@ -175,8 +152,9 @@
         // Keep playback inside the loop: wrap at the end (a scrub earlier is
         // left alone so a manual lead-in works). Setting currentTime starts the
         // seek, so we skip the emit this frame and resume once it settles.
-        if (loop && audio.currentTime >= loop.endTime) {
-          audio.currentTime = loop.startTime;
+        var wrapTo = loop ? loopWrapTarget(audio.currentTime, loop.startTime, loop.endTime) : null;
+        if (wrapTo !== null) {
+          audio.currentTime = wrapTo;
         } else {
           clock.emit(beatFromSeconds(audio.currentTime || 0));
         }
@@ -209,15 +187,10 @@
       if (from < 0 || !curve || !sections.length) { loop = null; return; }
       var to = parseInt(loopTo.value, 10);
       if (isNaN(to) || to < from) { to = from; loopTo.value = String(to); }
-      // Mirror of loop.ts sectionLoopBounds: first section's start → after the
-      // last section (or media end if the range reaches the final section).
       var dur = isFinite(audio.duration) ? audio.duration : Infinity;
-      var startTime = curve.toTime(sections[from].startBeat);
-      var endTime = to + 1 < sections.length
-        ? curve.toTime(sections[to + 1].startBeat)
-        : dur;
-      loop = { startTime: startTime, endTime: endTime };
-      audio.currentTime = startTime;
+      var b = sectionLoopBounds(sections, from, to, function (beat) { return curve.toTime(beat); }, dur);
+      loop = { startTime: b.startTime, endTime: b.endTime };
+      audio.currentTime = b.startTime;
       if (audio.paused) audio.play().catch(function () {});
     }
 
@@ -261,7 +234,7 @@
   // ── Render: dispatch on format ──
   function renderSong() {
     isLD = song.schema === "clickbait/lyrics-display@1";
-    curve = isLD && song.curve ? makeCurve(song.curve) : null;
+    curve = isLD && song.curve ? new Curve(song.curve) : null;
 
     titleEl.textContent = song.title;
     const parts = [];

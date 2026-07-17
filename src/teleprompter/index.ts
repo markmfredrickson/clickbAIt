@@ -8,6 +8,7 @@
 import { networkInterfaces } from "node:os";
 import { readdirSync } from "node:fs";
 import { startRelay } from "./relay.js";
+import { buildClient } from "./build-client.js";
 import { exportSongPayload } from "./export.js";
 import type { Song } from "../core/dsongl/index.js";
 import QRCode from "qrcode";
@@ -36,6 +37,10 @@ function getLocalIP(): string {
 export async function startTeleprompter(opts: TeleprompterOptions) {
   const httpPort = opts.httpPort ?? 3000;
   const oscPort = opts.oscPort ?? 9000;
+
+  // Build the browser client from TS before serving it, so the relay always
+  // hands out a client freshly compiled from source (no stale/hand-ported copy).
+  await buildClient();
 
   // Default to 16 beats (4-bar) slug padding so the teleprompter's beat frame
   // matches REAPER's project timeline (which includes the auto-slug region).

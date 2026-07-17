@@ -50,4 +50,18 @@ await esbuild.build({
 });
 console.log("  bin/lookup.mjs");
 
+// Browser teleprompter client — a self-contained IIFE (runs over file:// in
+// bundles) that imports the real Curve/loop modules. Keep this config in sync
+// with src/teleprompter/build-client.ts (the runtime builder used by the relay
+// and the bundle builder).
+await esbuild.build({
+  entryPoints: ["src/teleprompter/client/teleprompter.ts"],
+  outfile: "src/teleprompter/client/teleprompter.js",
+  bundle: true,
+  platform: "browser",
+  format: "iife",
+  target: "es2018",
+});
+console.log("  src/teleprompter/client/teleprompter.js");
+
 console.log("Build done.");

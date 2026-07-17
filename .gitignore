@@ -98,3 +98,6 @@ songs/example-songs/stems/
 
 # Personal stuff (notes, band scene, practice launchers, sync tools) lives in
 # local/ (ignored above) — nothing personal is tracked in the repo.
+
+# Built browser client (from teleprompter.ts via esbuild)
+src/teleprompter/client/teleprompter.js

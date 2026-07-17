@@ -37,7 +37,8 @@
     "demo": "./demo/render.sh --all",
     "demo:browser": "./demo/render.sh --browser-only",
     "demo:cli": "./demo/render.sh --cli-only",
-    "demo:reaper": "./demo/render.sh --reaper-only"
+    "demo:reaper": "./demo/render.sh --reaper-only",
+    "beats:smooth": "npx tsx src/authoring/smooth-beats-cli.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

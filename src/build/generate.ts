@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve, dirname, join, relative, basename } from "node:path";
-import { SongManifestSchema, sectionStarts } from "../manifest.js";
+import { SongManifestSchema, sectionStarts, resolveBeatMap } from "../manifest.js";
 import { beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
 import { chordWav } from "./tone.js";
@@ -38,6 +38,10 @@ const dir = dirname(resolve(manifestPath));
 const outDir = process.argv[3] ? resolve(process.argv[3]) : dir;
 
 const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
+// Resolve the beat-map: if it points at an external <source>.beatmap.json, load
+// it and normalize to the inline form here, so every downstream consumer
+// (beatMapToBeats, expandBeatMap, buildLyricsDisplay) sees a plain BeatMap.
+manifest.sources.recording.beatMap = resolveBeatMap(manifest.sources.recording.beatMap, dir);
 // The recording's per-beat source times come from the inline beat-map (see
 // beatMapToBeats): dense pins reproduce detected beats; gaps interpolate. Shared
 // by every stem (they play the same recording) and fed to build-rpp.
@@ -191,12 +195,12 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1) {
     wireit: {
       build: {
         command: `npx tsx ${rel}/src/build/generate.ts ${manifestBase}`,
-        files: [manifestBase, "*.beats.json", "stems/*.align.json", `${rel}/default.json`],
+        files: [manifestBase, "*.beats.json", "*.beatmap.json", "stems/*.align.json", `${rel}/default.json`],
         output: ["*.RPP", "*.lyrics-display.json", "cues/**"],
       },
       bundle: {
         command: `npx tsx ${rel}/scripts/render-bundle.ts .`,
-        files: [manifestBase, "*.beats.json", "stems/**", "source.*", `${rel}/default.json`],
+        files: [manifestBase, "*.beats.json", "*.beatmap.json", "stems/**", "source.*", `${rel}/default.json`],
         output: ["*.opus", `${rel}/bundles/${slug}/**`, `${rel}/bundles/${slug}.zip`],
       },
     },

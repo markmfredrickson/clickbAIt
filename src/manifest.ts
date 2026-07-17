@@ -16,6 +16,8 @@
  */
 
 import { z } from "zod";
+import { readFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 
 /** A reference to a file produced by some tool, with provenance. */
 const ArtifactRef = z
@@ -79,9 +81,12 @@ const RecordingSource = z
     kind: z.literal("audio"),
     file: z.string().min(1),
     analysis: ArtifactRef.optional(),
-    /** Where each song beat lands in this recording (see BeatMap). Replaces the
-     *  old detected-`beats` reference + single `anchor`. */
-    beatMap: BeatMap,
+    /** Where each song beat lands in this recording (see BeatMap). Either the
+     *  inline map, or a ref to an external `<source>.beatmap.json` holding that
+     *  same map (produced by `beats:smooth`) — the generated timing data lives
+     *  in a sidecar so it's out of the hand-authored manifest and gets its own
+     *  build dep. Resolve with `resolveBeatMap`. */
+    beatMap: z.union([BeatMap, ArtifactRef]),
   })
   .strict();
 
@@ -284,7 +289,23 @@ export const SongManifestSchema = z
 
 export type SongManifest = z.infer<typeof SongManifestSchema>;
 export type BeatMap = z.infer<typeof BeatMap>;
+/** The zod schema for a BeatMap (value), for validating an external sidecar. */
+export const BeatMapSchema = BeatMap;
 export type Clip = z.infer<typeof Clip>;
+
+/**
+ * Resolve a manifest `beatMap` field to an inline BeatMap: return it as-is when
+ * inline, or read+validate the referenced `<source>.beatmap.json` (path relative
+ * to the song `dir`). The sidecar holds a bare BeatMap array.
+ */
+export function resolveBeatMap(
+  beatMap: BeatMap | { file: string },
+  dir: string,
+): BeatMap {
+  if (Array.isArray(beatMap)) return beatMap;
+  const raw = JSON.parse(readFileSync(resolvePath(dir, beatMap.file), "utf8"));
+  return BeatMapSchema.parse(raw);
+}
 
 /** A section as far as placement is concerned: length in bars, optional meter. */
 type PlaceableSection = { bars: number; timeSignature?: readonly [number, number] };

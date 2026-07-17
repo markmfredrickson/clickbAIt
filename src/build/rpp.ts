@@ -17,6 +17,7 @@ import { extractSections, type Section } from "./sections.js";
 import { songSlug } from "../core/dsongl/index.js";
 import { beatsToStretchMarkers, formatStretchMarkers, type Beat } from "./stretch-markers.js";
 import { Curve } from "../core/curve.js";
+import { downbeatFrame } from "../core/timing-frame.js";
 import { hwoutField, recordTrackSpecs, type Rig, type Route } from "../rig.js";
 
 import { accessSync, constants } from "fs";
@@ -358,15 +359,15 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // is off by a constant. The downbeat sits at `paddingBeats`, which exceeds the
   // slug when a count-in, pickup, or prep-tone needs extra room — so offset by
   // the real padding, not just the slug. See docs/timing-frames.md.
-  const paddingBars = Math.round(paddingBeats / beatsPerBar);
-  if (Math.abs(paddingBeats - paddingBars * beatsPerBar) > 1e-3) {
+  const frame = downbeatFrame(paddingBeats, masterBpm, beatsPerBar);
+  if (!frame.wholeBars) {
     console.error(
       `warning: pre-downbeat padding (${paddingBeats} beats) isn't a whole ` +
       `number of ${beatsPerBar}/x bars — the downbeat won't land on a bar line, ` +
       `so live /beat/str tracking may be off by a fraction of a bar.`,
     );
   }
-  rppLines.push(`  PROJOFFS 0 ${-paddingBars} 0`);
+  rppLines.push(`  PROJOFFS 0 ${frame.measureOffset} 0`);
   rppLines.push(`  TEMPO ${fmt(masterBpm)} ${masterTs[0]} ${masterTs[1]} 0`);
   rppLines.push(`  PLAYRATE 1 0 0.25 4`);
   rppLines.push(`  TIMELOCKMODE 1`);

@@ -15,6 +15,7 @@
 import { sectionStarts, type SongManifest, type Clip } from "../manifest.js";
 import { Curve } from "../core/curve.js";
 import { beatMapCurve, beatMapToBeats } from "../core/beat-map.js";
+import { downbeatFrame } from "../core/timing-frame.js";
 import { bridgeTokens, type AlignInput } from "./lyrics-timing.js";
 import type {
   LyricsDisplay,
@@ -121,7 +122,9 @@ export function buildLyricsDisplay(
   // to preRollBars. See docs/timing-frames.md.
   const recordingCurve = beatMapCurve(manifest.sources.recording.beatMap, manifest.bpm);
   const offsetBeats = opts.renderOffsetBeats ?? manifest.preRollBars * manifest.timeSignature[0];
-  const downbeatSeconds = (offsetBeats * 60) / manifest.bpm;
+  // Same downbeat-origin conversion the RPP uses for PROJOFFS, so the bundle
+  // curve and the live bar grid can't disagree on where beat 0 is.
+  const { downbeatSeconds } = downbeatFrame(offsetBeats, manifest.bpm, manifest.timeSignature[0]);
   const songCurve = Curve.constantBpm(manifest.bpm, { t0: downbeatSeconds });
 
   // Resolve each aligned word to its musical beat; keep beats, drop seconds.

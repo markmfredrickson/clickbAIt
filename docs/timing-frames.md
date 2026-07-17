@@ -32,31 +32,43 @@ anything that converts between time and beats (the curve, the builder,
 So at time 0 the beat is negative (start of the count-in); at time
 `preRollSeconds` the beat is 0 (the downbeat); pickups sit just below 0.
 
-## How the pre-roll is encoded (two equivalent forms)
+## How the pre-roll is encoded (two equivalent forms — from ONE helper)
 
-One value — the pre-roll — written two ways that mean the same thing:
+One value — `paddingBeats`, the space before the downbeat (count-in + spoken
+slug + any pickup room) — written two ways that mean the same thing. Both come
+from **`src/core/timing-frame.ts` `downbeatFrame(paddingBeats, bpm, beatsPerBar)`**,
+so the two encodings cannot drift apart:
 
-- **The curve:** `Curve.constantBpm(bpm, { t0: preRollSeconds })`. Time 0 maps
-  to a negative beat; the downbeat lands at `t0`. This is what the
-  `LyricsDisplay` carries, so a client converting playback seconds → beats gets
+- **The curve:** `Curve.constantBpm(bpm, { t0: downbeatFrame(...).downbeatSeconds })`.
+  Time 0 maps to a negative beat; the downbeat lands at `t0`. This is what the
+  `LyricsDisplay` carries, so the bundle player (playback seconds → beats) gets
   negative beats during the count-in and beat 0 at the downbeat.
-- **REAPER:** `PROJOFFS <startTimeSeconds> <measureOffset> <flag>`. We use
-  `PROJOFFS 0 -<preRollBars> 0` — start time stays 0 (positive timeline), and
-  the measure offset pushes the downbeat to Bar 1 with the pre-roll on negative
-  bars. Verified: with `PROJOFFS 0 -4 0`, the count-in items sit at positive
-  POSITION (0, 0.5, 1, …) while their bars read negative.
+- **REAPER:** `PROJOFFS 0 <downbeatFrame(...).measureOffset> 0` — start time
+  stays 0 (positive timeline), and the measure offset pushes the downbeat to Bar
+  1 with the pre-roll on negative bars. With `PROJOFFS 0 -4 0`, the count-in
+  items sit at positive POSITION (0, 0.5, 1, …) while their bars read negative.
+
+The measure offset uses the FULL padding, not just the slug — a count-in,
+pickup, or prep-tone can push the downbeat past the slug bars. (The bug that
+motivated this: PROJOFFS used the slug while the curve used the padding, so live
+was a constant offset off while bundles were fine.) `downbeatFrame` also flags
+`wholeBars: false` when the padding isn't a whole number of bars — then the
+downbeat can't land on a bar line and `/beat/str` tracking is fractionally off.
 
 ## Why this makes everything line up
 
 Because REAPER and the `LyricsDisplay` share the downbeat origin:
 
-- REAPER plays from time 0 and sends OSC `/time` as positive seconds.
-- The relay runs those seconds through the song curve → negative beats during
-  the count-in, beat 0 at the downbeat, positive after — which is exactly the
-  frame the `LyricsDisplay` word beats are in.
+- **Live:** REAPER sends OSC `/beat/str` (measure.beat, PROJOFFS-aware), and the
+  relay's `beatStrToBeats` treats Bar 1 as beat 0 — so the count-in reads as
+  negative beats and the downbeat as 0. This path is tempo/playrate-proof
+  (bar-based), which is why it replaced the older `/time`→curve approach for
+  `LyricsDisplay` songs. (Legacy `SongPayload` songs still use `/time`→curve.)
+- **Bundle:** the client runs `<audio>.currentTime` through the same curve `t0`
+  → the same frame the `LyricsDisplay` word beats are in.
 
-No offset to reconcile, no per-song fudge. The pre-roll is the curve's `t0`,
-the same number REAPER stores as its `PROJOFFS` measure offset.
+No offset to reconcile, no per-song fudge — as long as `PROJOFFS` and the curve
+`t0` come from the same `downbeatFrame` call, which they now do.
 
 ## Superseded guidance
 
@@ -65,9 +77,17 @@ a limitation of the old DSongL emitter, **not** of REAPER (which supports a
 negative project start measure) or of this model. Under this convention,
 negative beats are the *correct* representation for pickups and pre-roll.
 
-## To do (threading it through)
+## How it's threaded now (implemented)
 
-- `preRoll` as a manifest field (bars or seconds — one source of truth).
-- `build-lyrics-cli`: build the song curve with `t0 = preRollSeconds`.
-- The RPP build: emit `PROJOFFS 0 -preRollBars 0` and place count-in/cue items
-  at positive time; the song's downbeat content starts at `preRollSeconds`.
+- `generate.ts` computes `paddingBeats` once (from `buildRpp`) and passes it to
+  `buildLyricsDisplay` as `renderOffsetBeats` — one number, both consumers.
+- Both consumers convert it through the shared `downbeatFrame` (see above):
+  `rpp.ts` uses `.measureOffset` for `PROJOFFS`; `lyrics-display.ts` uses
+  `.downbeatSeconds` for the curve `t0`.
+- `tests/timing-frame.test.ts` pins the two encodings together, so a change to
+  one formula can't silently desync live from bundle again.
+
+Remaining sharp edge: a fractional-bar pickup (`wholeBars: false`) leaves the
+downbeat off REAPER's bar grid, so live `/beat/str` is off by a fraction of a
+bar. Fixing that needs `PROJOFFS`'s time-offset field (or snapping padding to
+whole bars) — not yet done; `downbeatFrame` warns when it happens.

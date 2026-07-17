@@ -53,6 +53,22 @@ describe("buildRpp", () => {
     expect(rpp).toMatch(/PROJOFFS 0 -\d+ 0/);
   });
 
+  it("PROJOFFS offsets by the FULL pre-downbeat padding, not just the slug", () => {
+    // A cue 12 beats before the downbeat forces padding past the 2-bar slug.
+    // The live teleprompter reads /beat/str, so measure 1 must be the downbeat
+    // (at paddingBeats) — offsetting by the slug alone leaves it a constant off.
+    const s = song("Test", 120,
+      seq(
+        span("Intro", bars(4), [cue("Title", -12), marker("start", 0)]),
+        span("Verse", bars(4)),
+      ),
+    );
+    const { rpp, paddingBeats } = buildRpp(s, defaultOpts);
+    const paddingBars = Math.round(paddingBeats / 4); // 120 BPM, 4/4
+    expect(paddingBars).toBeGreaterThan(2); // padding really does exceed the slug
+    expect(rpp).toContain(`PROJOFFS 0 ${-paddingBars} 0`);
+  });
+
   it("includes region markers for sections", () => {
     const s = song("Test", 120,
       seq(

@@ -353,9 +353,20 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   }
   // Project measure offset: relabel the bar grid so the song's downbeat reads
   // as Bar 1 and the slug/count-in falls on negative bars (timeline still
-  // starts at 0:00). Cosmetic — REAPER bar numbers only; the teleprompter
-  // aligns via OSC time through the curve, not bars. See docs/timing-frames.md.
-  rppLines.push(`  PROJOFFS 0 ${-slugBars} 0`);
+  // starts at 0:00). NOT cosmetic: the live teleprompter reads REAPER's
+  // /beat/str (measure.beat), so measure 1 MUST be the downbeat or every lyric
+  // is off by a constant. The downbeat sits at `paddingBeats`, which exceeds the
+  // slug when a count-in, pickup, or prep-tone needs extra room — so offset by
+  // the real padding, not just the slug. See docs/timing-frames.md.
+  const paddingBars = Math.round(paddingBeats / beatsPerBar);
+  if (Math.abs(paddingBeats - paddingBars * beatsPerBar) > 1e-3) {
+    console.error(
+      `warning: pre-downbeat padding (${paddingBeats} beats) isn't a whole ` +
+      `number of ${beatsPerBar}/x bars — the downbeat won't land on a bar line, ` +
+      `so live /beat/str tracking may be off by a fraction of a bar.`,
+    );
+  }
+  rppLines.push(`  PROJOFFS 0 ${-paddingBars} 0`);
   rppLines.push(`  TEMPO ${fmt(masterBpm)} ${masterTs[0]} ${masterTs[1]} 0`);
   rppLines.push(`  PLAYRATE 1 0 0.25 4`);
   rppLines.push(`  TIMELOCKMODE 1`);

@@ -329,3 +329,50 @@ if (qcFlags.length === 0) {
   for (const f of big) console.error(`  ⚠ bar ${f.bar} (${f.time.toFixed(1)}s)  ${pct(f.relChange)}`);
   if (minor) console.error(`  (${minor} minor 5–10% segment(s) not shown)`);
 }
+
+// Phase-ambiguity QC (guiding principle: raise a red flag when the DBN and the raw
+// onsets disagree on phase — a human ear settles it). The DBN beat-tracker locks
+// phase by onset STRENGTH, so a soft true downbeat next to a louder offbeat can
+// flip the grid a half-beat (see you-cant-hurry-love). Compare the grid to the RAW
+// onsets (`analyze`): if onset energy a half-beat OFF the grid rivals the on-grid
+// energy, the phase is ambiguous — flag it. Can't catch every phase error, but we
+// surface the ambiguous ones for confirmation.
+try {
+  const recPath = join(dir, manifest.sources.recording.file);
+  const analysisPath = `${recPath}.analysis.json`;
+  const onsets: { time: number; strength: number }[] = existsSync(analysisPath)
+    ? (JSON.parse(readFileSync(analysisPath, "utf8")).onsets ?? [])
+    : (JSON.parse(execSync(`"${audioBin}" analyze "${recPath}"`, { stdio: ["pipe", "pipe", "ignore"] }).toString()).onsets ?? []);
+  const gridTimes = beats.map((b) => b.time).filter((t) => t >= 0);
+  if (onsets.length >= 8 && gridTimes.length >= 3) {
+    const ibi = (gridTimes[gridTimes.length - 1] - gridTimes[0]) / (gridTimes.length - 1);
+    let onE = 0;
+    let offE = 0;
+    for (const o of onsets) {
+      let nearest = Infinity;
+      for (const g of gridTimes) {
+        const dd = Math.abs(o.time - g);
+        if (dd < nearest) nearest = dd;
+        else if (g > o.time + nearest) break; // gridTimes ascending → no closer beat ahead
+      }
+      const frac = nearest / ibi; // 0 = on a beat, ~0.5 = on the half-beat
+      if (frac < 0.25) onE += o.strength;
+      else if (frac >= 0.35) offE += o.strength;
+    }
+    // Flag only when off-beat energy RIVALS/exceeds on-beat (~0.85+): that's real
+    // downbeat ambiguity (the offbeat is as loud as the beat, so the DBN can flip
+    // phase). A strong backbeat with the downbeat still dominant (ratio well under
+    // 1) is fine — don't cry wolf on every four-on-the-floor.
+    const ratio = onE > 0 ? offE / onE : 0;
+    if (ratio > 0.85) {
+      console.error(
+        `⚠ phase QC: off-beat onset energy is ${Math.round(ratio * 100)}% of on-beat — ` +
+          `DOWNBEAT/PHASE AMBIGUOUS, confirm by ear (a soft downbeat beside a loud offbeat can flip the grid a half-beat)`,
+      );
+    } else {
+      console.error(`phase QC: grid sits on the onsets (off/on ${Math.round(ratio * 100)}%)`);
+    }
+  }
+} catch {
+  /* analyze unavailable (e.g., a distributed install without the binary) — skip phase QC */
+}

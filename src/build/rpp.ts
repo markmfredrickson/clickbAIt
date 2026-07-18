@@ -264,11 +264,25 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     regionId++;
   }
 
+  // Auto-number repeated section TYPES for the markers so the chart scans fast
+  // ("Verse 1", "Verse 2"); a one-off name stays bare. The spoken CUE always uses
+  // the bare name (sec.name) → same-type sections share one cue WAV. A distinct
+  // name like "Final Chorus" is NOT merged with "Chorus" — it's called out for a
+  // reason (e.g. twice as long), so it keeps its own name and cue.
+  const nameTotals = new Map<string, number>();
+  for (const s of sections) nameTotals.set(s.name, (nameTotals.get(s.name) ?? 0) + 1);
+  const nameSeen = new Map<string, number>();
+  const markerLabel = (name: string): string => {
+    if ((nameTotals.get(name) ?? 0) <= 1) return name;
+    const k = (nameSeen.get(name) ?? 0) + 1;
+    nameSeen.set(name, k);
+    return `${name} ${k}`;
+  };
   for (const sec of sections) {
     const startSec = curve.toTime(sec.beat);
     const endSec = curve.toTime(sec.beat + sec.durationBeats);
     regionLines.push(
-      `MARKER ${regionId} ${fmt(startSec)} ${rppStr(sec.name)} 1 0 1 B ${newGuid()} 0 1`
+      `MARKER ${regionId} ${fmt(startSec)} ${rppStr(markerLabel(sec.name))} 1 0 1 B ${newGuid()} 0 1`
     );
     regionLines.push(
       `MARKER ${regionId} ${fmt(endSec)} "" 1`
@@ -322,7 +336,9 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     const barStartBeat = sec.beat - beatsPerBar;
     if (barStartBeat < 0) continue;
 
-    // Beat 1: section name, last syllable resolving onto the beat.
+    // Beat 1: section name (bare — section numbers live on the MARKERS, not in the
+    // authored name), so same-type sections share one cue WAV. The name plays as a
+    // pickup and its last syllable resolves ON the "1".
     const nameSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
     const nameFile = `${opts.cueDir}/${nameSlug}.wav`;
     const nameDur = audioDuration(nameFile);
@@ -630,6 +646,10 @@ function buildWaveItems(items: AudioItem[]): string {
     lines.push(`    <ITEM`);
     lines.push(`      POSITION ${fmtPos(item.position)}`);
     lines.push(`      LENGTH ${fmtPos(item.length)}`);
+    // LOOP 0: a spoken cue plays ONCE. Without this REAPER defaults to LOOP 1, so
+    // any item whose length exceeds its WAV (e.g. a re-spoken/stale cue that got
+    // shorter) repeats — the "cues loop around" bug. Cues must never loop.
+    lines.push(`      LOOP 0`);
     lines.push(`      MUTE 0 0`);
     lines.push(`      FADEIN 1 0 0 1 0 0 0`);
     lines.push(`      FADEOUT 1 0 0 1 0 0 0`);

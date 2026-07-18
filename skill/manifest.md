@@ -47,7 +47,8 @@ truth; the generated JSON Schema at the bottom of this doc mirrors it.
 
 - **`bpm`** — full decimal precision (e.g. `107.1429`). **`timeSignature`** — `[numerator, denominator]`, the song default.
 - **`preRollBars`** — whole bars of count-in before the downbeat (a musical lead-in, NOT a silence trim). **`ringOutBars`** — bars the stems keep playing past the last section (natural decay for songs that end on a hit).
-- **`sources.recording.beatMap`** — where each song beat lands in the source, as `source-second ↔ song-beat` control points. A `{ "startBeat": n, "times": [...] }` run pins consecutive beats (`stride` > 1 pins every Nth and lets the rest float); a `{ "beat": n, "t": s }` pin fixes one point. Pin every beat to follow the recording's micro-timing; leave a gap and those beats interpolate linearly (a deliberate stretch, e.g. a rubato intro compressed into fewer bars). `startBeat` is negative for a pickup.
+- **`sources.recording.beatMap`** — where each song beat lands in the source, as `source-second ↔ song-beat` control points. A `{ "startBeat": n, "times": [...] }` run pins consecutive beats (`stride` > 1 pins every Nth and lets the rest float); a `{ "beat": n, "t": s }` pin fixes one point. Pin every beat to follow the recording's micro-timing; leave a gap and those beats interpolate linearly (a deliberate stretch, e.g. a rubato intro compressed into fewer bars). `startBeat` is negative for a pickup. Usually a ref to the `<source>.beatmap.json` sidecar, which `beats:smooth` produces from the raw beats + the anchor below.
+- **`sources.recording.startBeat`** — the anchor for the raw detected beats: which song beat the FIRST detected beat lands on (negative for a pickup — e.g. `-2` for a 2-beat count-in before the downbeat at 0). `beats:smooth` reads it to turn `<source>.beats.json` into the `beatMap` sidecar; it's the one authored value detection can't infer. Defaults to 0.
 - **`sources.stems`** — `curveRef: "recording"` (share the recording's curve), `dir`, `files` (role → filename). `soffs` trims silence off every stem start; `sourceEnd` caps the end; `clips` assemble a track from source regions (repeat/rearrange). Paths are relative to the manifest.
 - **`lyrics.alignment`** — the only lyric file ref (measured per-word timing). The line *text* lives in the sections.
 - **`cues`** — points at the folder of generated spoken-cue audio.
@@ -210,54 +211,82 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
               ],
               "additionalProperties": false
             },
+            "startBeat": {
+              "type": "number"
+            },
             "beatMap": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "beat": {
-                        "type": "number"
+              "anyOf": [
+                {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "beat": {
+                            "type": "number"
+                          },
+                          "t": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "beat",
+                          "t"
+                        ],
+                        "additionalProperties": false
                       },
-                      "t": {
-                        "type": "number"
+                      {
+                        "type": "object",
+                        "properties": {
+                          "startBeat": {
+                            "type": "number"
+                          },
+                          "stride": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "times": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        "required": [
+                          "startBeat",
+                          "times"
+                        ],
+                        "additionalProperties": false
                       }
-                    },
-                    "required": [
-                      "beat",
-                      "t"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "startBeat": {
-                        "type": "number"
-                      },
-                      "stride": {
-                        "type": "integer",
-                        "exclusiveMinimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "times": {
-                        "minItems": 1,
-                        "type": "array",
-                        "items": {
-                          "type": "number"
-                        }
-                      }
-                    },
-                    "required": [
-                      "startBeat",
-                      "times"
-                    ],
-                    "additionalProperties": false
+                    ]
                   }
-                ]
-              }
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "file": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "produced-by": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "edited": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "file",
+                    "produced-by"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
             }
           },
           "required": [
@@ -422,6 +451,9 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
               ],
               "additionalProperties": false
             }
+          },
+          "click": {
+            "type": "boolean"
           },
           "cues": {
             "type": "array",

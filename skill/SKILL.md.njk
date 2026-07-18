@@ -115,18 +115,25 @@ Generates spoken cue WAVs (P-center-aligned to the beat), builds the RPP (tempo 
 
 **After generate:** `grep -c 'SM ' <rpp>` should be > 0 for songs with stems; the lyrics-display file should exist; region #1 is the slug (title), region #2 the first section. Warn the user to close REAPER before opening the regenerated RPP — it doesn't hot-reload.
 
-## Rebuilding after edits (incremental)
+## The per-song build: an authored wireit recipe
 
-`generate` also makes the song an **incremental build unit** — it writes a `package.json` with [wireit](https://github.com/google/wireit) build steps into the song folder. After the first generate, don't re-run `generate` by hand; rebuild from the repo root:
+The **first** `generate` scaffolds a `package.json` [wireit](https://github.com/google/wireit) recipe into the song folder — then it's **yours to author** and `generate` never overwrites it (tune detection flags right here). Its tasks:
+
+- **`beats`** — detect from the drum stem:
+  `clickbait-audio beats stems/<drums> --min-bpm <lo> --max-bpm <hi> [--start <s>] [--until <s>] > <source>.beats.json`.
+  `--start`/`--until` (source seconds) crop a loose/rubato intro or a free/slowing outro so the tracker doesn't chase them off-tempo. Defaults are manifest bpm ±10%. **Standalone — not a build dep**, so a tuned detection is never re-run by accident. (For songs with drum-*silent* passages, detect two-pass + `beats:unify` as in Step 1 instead.)
+- **`smooth`** — reads the raw `<source>.beats.json` + the manifest's `sources.recording.startBeat` anchor, de-warbles at `--max-warble` (default `0.04`), writes `<source>.beatmap.json`. Normalizes against the *detected* bpm.
+- **`build`** — assembles the RPP (this is `generate`); depends on `smooth`.
+- **`bundle`** — renders the mix + bundle (REAPER; opt-in).
+
+Rebuild from the repo root:
 
 ```bash
-npm run build:songs             # regenerate every song whose manifest/align/beats/rig changed
-npm run build:songs -- bundle   # also render the mix + rebuild the bundle (REAPER; on demand)
+npm run build:songs             # build every song whose manifest/beatmap/align/rig changed
+npm run build:songs -- bundle   # also render the mix + rebuild the bundle (on demand)
 ```
 
-Edit a `.song.json` and run `build:songs`: only that song re-runs, the rest are skipped (wireit content-hashes the inputs). Fiddling with count-ins/bars rebuilds the RPP fast; **bundling renders and is opt-in** (`-- bundle`). The rig (`default.json`) is a tracked input, so a routing change re-triggers the affected songs automatically.
-
-After updating **clickbait itself** (the tool code — not tracked as an input), force a full rebuild: `rm -rf songs/*/*/.wireit` then `npm run build:songs`.
+Or per song from its folder: `npm run beats` (once, or after changing detection flags), then `npm run build`. Editing a `.song.json` re-runs only the affected song (wireit content-hashes inputs); **bundling is opt-in** (`-- bundle`). The rig (`default.json`) is a tracked input, so a routing change re-triggers the affected songs. After changing **clickbait itself** (tool code — not a tracked input), force a rebuild: `rm -rf songs/*/*/.wireit` then `npm run build:songs`.
 
 ## Using the show track
 

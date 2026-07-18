@@ -48,6 +48,29 @@ manifest.sources.recording.beatMap = resolveBeatMap(manifest.sources.recording.b
 const { beats, offset: beatsOffset } = beatMapToBeats(manifest.sources.recording.beatMap, manifest.bpm);
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), "..", "..");
+// Canonical version = package.json `version` — it ships inside any distribution,
+// so it's always readable (a git `describe` would be "unknown" once installed
+// without a .git). Release flow: `npm version <bump>` bumps package.json AND tags
+// the commit, keeping the tag and the shipped version in sync. In the dev repo we
+// append `git describe` as build metadata (+<tag>-<n>-g<sha>[-dirty]) for build
+// precision; it's simply absent when distributed.
+const clickbaitVersion = (() => {
+  let v = "unknown";
+  try {
+    v = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).version ?? "unknown";
+  } catch {
+    /* no package.json — leave unknown */
+  }
+  try {
+    const g = execSync("git describe --tags --always --dirty", { cwd: root, stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+    if (g) v = `${v}+${g}`;
+  } catch {
+    /* no git (e.g. distributed) — package.json version stands alone */
+  }
+  return v;
+})();
 const audioBin = existsSync(resolve(root, "target/release/clickbait-audio"))
   ? resolve(root, "target/release/clickbait-audio")
   : resolve(root, "target/debug/clickbait-audio");
@@ -189,6 +212,15 @@ const rppRel = rpp
   .split(outDir + "/").join("")
   .split(clickDir + "/").join(relative(outDir, clickDir) + "/");
 writeFileSync(join(outDir, `${slug}.RPP`), rppRel);
+
+// Build stamp — which clickbait produced this output. A gitignored sidecar (a
+// build OUTPUT, not a manifest field: `build` must never write its own input, or
+// it self-invalidates the wireit cache like the old smooth-rewrites-manifest bug).
+// No tracked churn; travels with the song folder / bundle for reproducibility.
+writeFileSync(
+  join(outDir, `${slug}.build.json`),
+  JSON.stringify({ clickbait: clickbaitVersion, generatedAt: new Date().toISOString(), node: process.version }, null, 2) + "\n",
+);
 
 // LyricsDisplay, when an alignment is referenced.
 let lyricsMsg = "(no alignment — skipped LyricsDisplay)";

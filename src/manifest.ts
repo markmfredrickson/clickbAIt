@@ -25,8 +25,6 @@ const ArtifactRef = z
     file: z.string().min(1),
     /** What produced this artifact, e.g. "clickbait-audio align" or "human". */
     "produced-by": z.string().min(1),
-    /** Set when a human hand-edited the artifact (e.g. corrected beats). */
-    edited: z.boolean().optional(),
   })
   .strict();
 

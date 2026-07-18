@@ -199,33 +199,52 @@ if (manifest.lyrics.alignment) {
   lyricsMsg = `${display.words.length} words, ${display.display.lines.length} lines`;
 }
 
-// Emit the per-song build unit: a package.json with wireit `build`/`bundle`
-// steps so the song is an incremental target — `npm run build` regenerates it
-// only when its manifest / align / beats / rig change; `npm run bundle` renders
-// + bundles on demand. Skip flat multi-manifest dirs (a flat folder holding several manifests): one
-// package.json can't describe several songs. Tool code changes aren't tracked —
-// after those, force a full rebuild (see the skill).
-if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1) {
+// Scaffold the per-song build unit — a package.json wireit recipe — but ONLY if
+// it doesn't already exist. The recipe is AUTHORED (you tune --min-bpm/--max-bpm,
+// --start/--until, --max-warble, the stem model), so `generate` must never clobber
+// it. It runs the binary steps as tasks: `beats` detects, `smooth` builds the
+// beatmap, `build` (this script) assembles the RPP, `bundle` renders. `beats` is
+// standalone, not a build dep, so a tuned detection is never re-run by accident;
+// run it explicitly (once, or when you change its flags), then `npm run build`.
+// Skip flat multi-manifest dirs — one package.json can't describe several songs.
+const pkgPath = join(outDir, "package.json");
+if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !existsSync(pkgPath)) {
   const rel = relative(outDir, root) || ".";
   const manifestBase = basename(manifestPath);
+  const recFile = manifest.sources.recording.file;
+  const bin = `${rel}/.claude/skills/clickbait/bin/clickbait-audio`;
+  const minBpm = Math.round(manifest.bpm * 0.9);
+  const maxBpm = Math.round(manifest.bpm * 1.1);
   const unit = {
     name: `clickbait-song-${slug}`,
     private: true,
-    scripts: { build: "wireit", bundle: "wireit" },
+    scripts: { beats: "wireit", smooth: "wireit", build: "wireit", bundle: "wireit" },
     wireit: {
+      beats: {
+        command: `${bin} beats stems/source_drums.wav --min-bpm ${minBpm} --max-bpm ${maxBpm} > ${recFile}.beats.json`,
+        files: ["stems/source_drums.wav"],
+        output: [`${recFile}.beats.json`],
+      },
+      smooth: {
+        command: `npx tsx ${rel}/src/authoring/smooth-beats-cli.ts ${manifestBase} --max-warble 0.04`,
+        files: [`${recFile}.beats.json`, manifestBase],
+        output: [`${recFile}.beatmap.json`],
+      },
       build: {
         command: `npx tsx ${rel}/src/build/generate.ts ${manifestBase}`,
-        files: [manifestBase, "*.beats.json", "*.beatmap.json", "stems/*.align.json", `${rel}/default.json`],
+        files: [manifestBase, `${recFile}.beatmap.json`, "stems/*.align.json", `${rel}/default.json`],
         output: ["*.RPP", "*.lyrics-display.json", "cues/**"],
+        dependencies: ["smooth"],
       },
       bundle: {
         command: `npx tsx ${rel}/scripts/render-bundle.ts .`,
-        files: [manifestBase, "*.beats.json", "*.beatmap.json", "stems/**", "source.*", `${rel}/default.json`],
+        files: [manifestBase, `${recFile}.beatmap.json`, "stems/**", "source.*", `${rel}/default.json`],
         output: ["*.opus", `${rel}/bundles/${slug}/**`, `${rel}/bundles/${slug}.zip`],
+        dependencies: ["smooth"],
       },
     },
   };
-  writeFileSync(join(outDir, "package.json"), JSON.stringify(unit, null, 2) + "\n");
+  writeFileSync(pkgPath, JSON.stringify(unit, null, 2) + "\n");
 }
 
 console.error(`wrote ${slug}.RPP + ${slug}.lyrics-display.json (${lyricsMsg}) + cues/ in ${outDir}`);

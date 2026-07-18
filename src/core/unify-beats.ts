@@ -8,14 +8,14 @@
  * hallucinates a pulse where they don't. This merges them into the single grid
  * the manifest's `beatMap` is built from.
  *
- * v1 heuristic (deliberately simple; the parked drum-beat-model work will
+ * v2 heuristic (deliberately simple; the parked drum-beat-model work will
  * refine it): the drum stem is authoritative across the span where it has
- * CONFIDENT beats — from the first strong drum beat to the last — and the full
- * mix fills everything outside that span (the drum-silent intro/outro). At the
- * seam we drop whichever side's beat would double up, keeping the drum-side
- * beat. This models the common case (a drum-silent intro, then drums in for the
- * rest); a mid-song drum breakout is treated as still "inside" the span and is
- * future work.
+ * CONFIDENT beats — from the first strong drum beat to the last — EXCEPT inside
+ * "holes": gaps between consecutive strong drum beats too large to be normal (a
+ * mid-song drum breakdown, where the tracker hallucinates a fast pulse through
+ * the silence and would cram in extra beats → a within-bar phase slip). The full
+ * mix fills outside the span AND inside holes. At every seam we drop whichever
+ * side's beat would double up, keeping the drum-side beat.
  */
 
 export interface DetectedBeat {
@@ -30,6 +30,10 @@ export interface UnifyOptions {
   /** Two beats closer than `seamFactor × median-IBI` are a collision at the
    *  seam; the drum-side one is kept. Default 0.5. */
   seamFactor?: number;
+  /** A gap between consecutive STRONG drum beats larger than `holeFactor ×
+   *  median-strong-IBI` is a drum-silent hole (a breakdown) filled from the full
+   *  mix instead of the tracker's hallucinated pulse. Default 1.75. */
+  holeFactor?: number;
 }
 
 const byTime = (a: DetectedBeat, b: DetectedBeat) => a.time - b.time;
@@ -54,6 +58,7 @@ export function unifyBeats(
 
   const strongThreshold = opts.strongThreshold ?? 0.5;
   const seamFactor = opts.seamFactor ?? 0.5;
+  const holeFactor = opts.holeFactor ?? 1.75;
 
   const maxStrength = Math.max(...drums.map((b) => b.strength));
   const thr = strongThreshold * maxStrength;
@@ -64,24 +69,38 @@ export function unifyBeats(
   const spanEnd = strong[strong.length - 1].time;
   const inSpan = (t: number) => t >= spanStart && t <= spanEnd;
 
-  // Drum beats define the grid inside the span; full-mix beats fill outside it.
-  const inside = drums.filter((b) => inSpan(b.time));
-  const outside = full.filter((b) => !inSpan(b.time));
-  const merged = [...inside, ...outside].sort(byTime);
+  // Holes: gaps between consecutive STRONG drum beats too large to be normal — a
+  // mid-song drum breakdown, where the drum tracker hallucinates a pulse through
+  // the silence. Fill these from the full mix, not the drum stem.
+  const strongIbi = medianIbi(strong) ?? Infinity;
+  const holes: Array<[number, number]> = [];
+  for (let i = 1; i < strong.length; i++) {
+    if (strong[i].time - strong[i - 1].time > holeFactor * strongIbi) {
+      holes.push([strong[i - 1].time, strong[i].time]);
+    }
+  }
+  const inHole = (t: number) => holes.some(([a, b]) => t > a && t < b);
+  const drumCovered = (t: number) => inSpan(t) && !inHole(t);
+
+  // Drum beats where they're covering; full mix outside the span AND in holes.
+  type Tagged = DetectedBeat & { _drum: boolean };
+  const inside: Tagged[] = drums.filter((b) => drumCovered(b.time)).map((b) => ({ ...b, _drum: true }));
+  const filler: Tagged[] = full.filter((b) => !drumCovered(b.time)).map((b) => ({ ...b, _drum: false }));
+  const merged = [...inside, ...filler].sort(byTime);
 
   const ibi = medianIbi(drums) ?? medianIbi(full) ?? Infinity;
   const minGap = seamFactor * ibi;
 
-  // Drop seam collisions, preferring the drum-side (in-span) beat.
-  const out: DetectedBeat[] = [];
+  // Drop seam collisions, preferring the drum-side beat.
+  const out: Tagged[] = [];
   for (const b of merged) {
     const last = out[out.length - 1];
     if (last && b.time - last.time < minGap) {
-      if (inSpan(b.time) && !inSpan(last.time)) out[out.length - 1] = b; // drum wins
+      if (b._drum && !last._drum) out[out.length - 1] = b; // drum wins
       // otherwise keep `last`, drop `b`
     } else {
       out.push(b);
     }
   }
-  return out;
+  return out.map(({ time, strength }) => ({ time, strength }));
 }

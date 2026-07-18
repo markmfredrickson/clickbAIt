@@ -40,6 +40,22 @@ describe("unifyBeats", () => {
     expect(out.slice(4).every((b) => b.strength === 0.7)).toBe(true);
   });
 
+  it("fills a mid-song drum breakdown from the full mix (no crammed beats)", () => {
+    // Drums play 0..3 and 7..10; between them a breakdown where the tracker
+    // hallucinates a faster, WEAK pulse (0.4s, strength 0.2). Full mix is steady
+    // 0.5s throughout. Unify must use the full mix in the hole, not the crammed
+    // spurious drum beats (which would slip the grid within the bar).
+    const full = grid([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10], 0.7);
+    const drumStrong = grid([0, 0.5, 1, 1.5, 2, 2.5, 3, 7, 7.5, 8, 8.5, 9, 9.5, 10], 0.9);
+    const drumWeak = grid([3.4, 3.8, 4.2, 4.6, 5.0, 5.4, 5.8, 6.2, 6.6], 0.2);
+    const out = unifyBeats(full, [...drumStrong, ...drumWeak]);
+    expect(out.map((b) => b.time)).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10]);
+    expect(minGap(out)).toBeGreaterThan(0.3); // no crammed 0.4s beats survived
+    // The hole (3.5..6.5) came from the full mix; the flanks from the drum stem.
+    expect(out.filter((b) => b.time > 3 && b.time < 7).every((b) => b.strength === 0.7)).toBe(true);
+    expect(out.filter((b) => b.time <= 3 || b.time >= 7).every((b) => b.strength === 0.9)).toBe(true);
+  });
+
   it("reconciles a small phase offset at the seam without doubling", () => {
     const full = grid([0, 0.5, 1.0, 1.5, 2.0]);
     const drum = grid([1.05, 1.55, 2.05]); // ~50ms late relative to the full grid

@@ -271,7 +271,10 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !ex
       bundle: {
         command: `npx tsx ${rel}/scripts/render-bundle.ts .`,
         files: [manifestBase, `${recFile}.beatmap.json`, "stems/**", "source.*", `${rel}/default.json`],
-        output: ["*.opus", `${rel}/bundles/${slug}/**`, `${rel}/bundles/${slug}.zip`],
+        // Only the in-package opus is a declared wireit output; render-bundle also
+        // writes bundles/<slug>/ + .zip at the repo root, but wireit forbids
+        // outputs outside the package, so those stay undeclared side effects.
+        output: ["*.opus"],
         dependencies: ["smooth"],
       },
     },

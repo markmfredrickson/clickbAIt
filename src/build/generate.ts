@@ -247,10 +247,32 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !ex
   const bin = `${rel}/.claude/skills/clickbait/bin/clickbait-audio`;
   const minBpm = Math.round(manifest.bpm * 0.9);
   const maxBpm = Math.round(manifest.bpm * 1.1);
+  // Forced alignment is a build output: derive the vocal stem from the manifest's
+  // alignment.file (`<stem>.align.json` → `<stem>.wav`) and align the authored
+  // `<slug>.lyrics.txt` against it. Only emit the task when the manifest declares
+  // an alignment AND the standard inputs exist; a KV multitrack or a missing
+  // lyrics text falls back to a tracked align.json (author wires it by hand).
+  const alignFile = manifest.lyrics?.alignment?.file;
+  const alignStem = alignFile?.replace(/\.align\.json$/, ".wav");
+  const lyricsTxt = `${slug}.lyrics.txt`;
+  const canAlign =
+    !!alignFile && !!alignStem && existsSync(join(dir, alignStem)) && existsSync(join(dir, lyricsTxt));
+  const alignTask = canAlign
+    ? {
+        align: {
+          command: `${bin} align "${alignStem}" --text "${lyricsTxt}" -o "${alignFile}"`,
+          files: [alignStem, lyricsTxt],
+          output: [alignFile],
+        },
+      }
+    : {};
+  const buildDeps = canAlign ? ["smooth", "align"] : ["smooth"];
+  const scripts: Record<string, string> = { beats: "wireit", smooth: "wireit", build: "wireit", bundle: "wireit" };
+  if (canAlign) scripts.align = "wireit";
   const unit = {
     name: `clickbait-song-${slug}`,
     private: true,
-    scripts: { beats: "wireit", smooth: "wireit", build: "wireit", bundle: "wireit" },
+    scripts,
     wireit: {
       beats: {
         command: `${bin} beats stems/source_drums.wav --min-bpm ${minBpm} --max-bpm ${maxBpm} > ${recFile}.beats.json`,
@@ -262,11 +284,12 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !ex
         files: [`${recFile}.beats.json`, manifestBase],
         output: [`${recFile}.beatmap.json`],
       },
+      ...alignTask,
       build: {
         command: `npx tsx ${rel}/src/build/generate.ts ${manifestBase}`,
         files: [manifestBase, `${recFile}.beatmap.json`, "stems/*.align.json", `${rel}/default.json`],
         output: ["*.RPP", "*.lyrics-display.json", "cues/**"],
-        dependencies: ["smooth"],
+        dependencies: buildDeps,
       },
       bundle: {
         command: `npx tsx ${rel}/scripts/render-bundle.ts .`,

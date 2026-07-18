@@ -111,7 +111,12 @@ const strideRanges = manifest.sections
     // beats, they must still fall inside the intro's no-marker range or they
     // leak as spurious pre-roll markers.
     startBeat: idx === 0 ? -1e6 : starts[idx],
-    endBeat: starts[idx + 1],
+    // The last section extends its range forward past the song end: a ring-out
+    // (smStride:0) whose recording rings longer than its nominal grid bars would
+    // otherwise leak the source beats past the section boundary as a spurious
+    // end-anchor marker, stretching the whole outro to reach source-end. Symmetric
+    // with the intro's -1e6 pre-roll extension.
+    endBeat: idx === manifest.sections.length - 1 ? 1e6 : starts[idx + 1],
     stride: s.smStride!,
   }));
 
@@ -128,20 +133,11 @@ if (noClickIdx >= 0 && !manifest.sections.slice(noClickIdx).every((s) => s.click
 }
 const clickDropBeat = noClickIdx >= 0 ? starts[noClickIdx] : undefined;
 
-// A trailing `smStride: 0` section plays 1:1 (unwarped), so its natural length
-// (a slowing outro) exceeds its nominal bars. Extend the ring-out to the source
-// end so the ending isn't clipped at the constant-grid boundary. The last real
-// stretch marker sits at the section's downbeat (source time s0); playing 1:1
-// from there covers (sourceEnd - s0), plus a small tail for the final note.
-const lastSec = manifest.sections.at(-1);
-if (lastSec?.smStride === 0) {
-  const outroStartBeat = starts[manifest.sections.length - 1];
-  const s0 = beats[Math.round(outroStartBeat - beatsOffset)]?.time;
-  const sourceEnd = beats.at(-1)?.time;
-  if (s0 !== undefined && sourceEnd !== undefined && sourceEnd > s0) {
-    ringOutSec = Math.max(ringOutSec, sourceEnd - s0 + 2); // +2s tail for the final ring
-  }
-}
+// A trailing `smStride: 0` section (a ring-out) plays 1:1 from the last clicked
+// beat. The SECTION LENGTH bounds the ending — the stems play the outro's bars
+// then stop at the song end. (An earlier version extended to the source end; that
+// overran the outro and, when the item outgrew the source, looped it. If more
+// decay is wanted, add outro bars or `ringOutBars`, not a source-end reach.)
 
 // RPP (cue WAVs now exist for duration measurement).
 // Leading stretch-marker source position (seconds) for the intro's single

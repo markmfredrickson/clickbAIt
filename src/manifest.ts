@@ -81,6 +81,12 @@ const RecordingSource = z
     kind: z.literal("audio"),
     file: z.string().min(1),
     analysis: ArtifactRef.optional(),
+    /** Anchor for the RAW detected beat grid (`<source>.beats.json`): the song
+     *  beat the FIRST detected beat lands on — negative for a pickup (beats before
+     *  the downbeat at 0). `beats:smooth` reads this to convert raw beats → the
+     *  beatMap sidecar; it's the one authored value detection can't infer.
+     *  Defaults to 0. */
+    startBeat: z.number().optional(),
     /** Where each song beat lands in this recording (see BeatMap). Either the
      *  inline map, or a ref to an external `<source>.beatmap.json` holding that
      *  same map (produced by `beats:smooth`) — the generated timing data lives

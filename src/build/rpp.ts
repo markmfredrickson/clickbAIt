@@ -784,6 +784,17 @@ function buildAudioFileItems(
         const lastMarker = markers[markers.length - 1];
         const trailing = e.sourceEnd !== undefined ? Math.max(0, e.sourceEnd - lastMarker.sourcePosition) : 0;
         length = lastMarker.itemPosition + trailing + ringOutSec;
+        // Last event: a trailing `smStride: 0` ring-out has no markers in its own
+        // span, so the last marker sits at the end of the prior (clicked) section
+        // and the outro plays 1:1 after it. Extend the item to the song end so
+        // that 1:1 region actually plays — but never past the source end, or the
+        // item outgrows its file and REAPER loops it (the outro would repeat).
+        // Normal endings (markers reach the song end) are unaffected.
+        if (!next && projectEndSec !== undefined) {
+          const want = projectEndSec + ringOutSec - position;
+          const srcLimit = lastMarker.itemPosition + (totalDur - lastMarker.sourcePosition);
+          length = Math.min(Math.max(length, want), srcLimit);
+        }
       }
     }
 

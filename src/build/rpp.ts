@@ -801,9 +801,12 @@ function buildAudioFileItems(
         // final hit), plus any global ring-out tail. NOT capped by sourceCap
         // (source-seconds axis) — when stretched, that min would clip the final
         // beat short. projectEndSec (below) bounds it to song end.
+        // Ring-out is a tail on the WHOLE song, so only the last item gets it;
+        // adding it to an earlier clip would overrun the next clip's start (a
+        // clipped arrangement would overlap by ringOutSec at every seam).
         const lastMarker = markers[markers.length - 1];
         const trailing = e.sourceEnd !== undefined ? Math.max(0, e.sourceEnd - lastMarker.sourcePosition) : 0;
-        length = lastMarker.itemPosition + trailing + ringOutSec;
+        length = lastMarker.itemPosition + trailing + (next ? 0 : ringOutSec);
         // Last event: a trailing `smStride: 0` ring-out has no markers in its own
         // span, so the last marker sits at the end of the prior (clicked) section
         // and the outro plays 1:1 after it. Extend the item to the song end so

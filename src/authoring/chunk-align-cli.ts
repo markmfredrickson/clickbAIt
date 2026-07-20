@@ -45,8 +45,15 @@ function run(args: string[]): void {
   const outPath = resolve(args[outIdx + 1]);
   const work = mkdtempSync(join(tmpdir(), "chunkalign-"));
 
-  // 1. Chunk the stem.
-  execFileSync(BIN, ["chunk", stem, "--out-dir", work], { stdio: ["ignore", "ignore", "inherit"] });
+  // 1. Chunk the stem. Chunk params pass through for per-song tuning — dense,
+  // continuous-vocal songs (e.g. Timber) need a higher --threshold / smaller
+  // --min-silence-ms to split at soft inter-line dips instead of one huge chunk.
+  const passThrough: string[] = [];
+  for (const flag of ["--min-silence-ms", "--min-chunk-ms", "--pad-ms", "--threshold"]) {
+    const idx = args.indexOf(flag);
+    if (idx >= 0) passThrough.push(flag, args[idx + 1]);
+  }
+  execFileSync(BIN, ["chunk", stem, "--out-dir", work, ...passThrough], { stdio: ["ignore", "ignore", "inherit"] });
   const index: ChunkIndex = JSON.parse(readFileSync(join(work, "index.json"), "utf8"));
   console.error(`chunked into ${index.chunks.length} chunk(s)`);
 

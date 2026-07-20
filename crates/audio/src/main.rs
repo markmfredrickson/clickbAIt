@@ -4,6 +4,7 @@ use anyhow::Result;
 mod activation;
 mod align;
 mod analyze;
+mod chunk;
 mod dbn;
 mod setup;
 mod split;
@@ -97,6 +98,28 @@ enum Commands {
         #[arg(long)]
         no_trim_silence: bool,
     },
+    /// Split a vocal stem into voiced chunks separated by silence (step 1 of
+    /// chunked alignment). Writes <out-dir>/NNN.wav + index.json mapping each
+    /// chunk to its offset in the source.
+    Chunk {
+        /// Path to audio file (vocals stem)
+        file: String,
+        /// Output directory (default: <file>.chunks/)
+        #[arg(short, long)]
+        out_dir: Option<String>,
+        /// A silence gap at least this long (ms) splits two chunks.
+        #[arg(long, default_value_t = 400)]
+        min_silence_ms: u64,
+        /// Drop voiced runs shorter than this (ms).
+        #[arg(long, default_value_t = 300)]
+        min_chunk_ms: u64,
+        /// Padding kept on each side of a chunk (ms).
+        #[arg(long, default_value_t = 200)]
+        pad_ms: u64,
+        /// Voiced threshold as a fraction of the loudest frame's RMS.
+        #[arg(long, default_value_t = 0.08)]
+        threshold: f32,
+    },
     /// Generate spoken audio from text (for cue tracks)
     Speak {
         /// Text to speak
@@ -175,6 +198,9 @@ fn main() -> Result<()> {
         Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),
         Commands::Align { file, text, output, no_trim_silence } => {
             align::run(&file, &text, output.as_deref(), !no_trim_silence)
+        }
+        Commands::Chunk { file, out_dir, min_silence_ms, min_chunk_ms, pad_ms, threshold } => {
+            chunk::run(&file, chunk::ChunkOpts { out_dir, min_silence_ms, min_chunk_ms, pad_ms, threshold })
         }
         Commands::Speak { text, output, voice, length_scale } => speak::run(&text, &output, &voice, length_scale),
     }

@@ -85,35 +85,89 @@ export function alignSequences(published: string[], heard: string[]): number[] {
   return res;
 }
 
+/** A chunk's index and its audio duration (ms) — the capacity proxy: a longer
+ *  chunk can hold more words, so unanchored words spread by duration weight. */
+export interface ChunkDur {
+  index: number;
+  durationMs: number;
+}
+
 /**
- * Assign each published word to a chunk. Exact matches take their heard word's
- * chunk; unmatched words inherit the nearest anchored neighbor (previous first,
- * then next), so Whisper substitutions/deletions don't strand a word. Returns a
+ * Assign each published word to a chunk. Exact Whisper matches ANCHOR a word to
+ * the chunk it was heard in. Runs of unanchored words (a misheard line) are then
+ * DISTRIBUTED across the chunks between their bracketing anchors, weighted by
+ * chunk duration — so a whole misheard line lands in the chunks that actually
+ * span it in time, instead of being dumped on the previous anchor's chunk (which,
+ * if short, then overflows: "target too long for audio" in wav2vec2). Returns a
  * chunk index per published word, or null only if NOTHING anchored at all.
  */
-export function assignChunks(published: string[], heard: HeardWord[]): (number | null)[] {
+export function assignChunks(published: string[], heard: HeardWord[], chunks: ChunkDur[]): (number | null)[] {
   const p = published.map(normWord);
   const h = heard.map((w) => normWord(w.text));
   const aligned = alignSequences(p, h);
-  const chunk: (number | null)[] = aligned.map((hi) => (hi >= 0 ? heard[hi].chunk : null));
+  const anchor: (number | null)[] = aligned.map((hi) => (hi >= 0 ? heard[hi].chunk : null));
+  const result: (number | null)[] = anchor.slice();
+  const n = anchor.length;
+  if (chunks.length === 0) return result;
 
-  const n = chunk.length;
-  const prev: (number | null)[] = new Array(n).fill(null);
-  let last: number | null = null;
-  for (let i = 0; i < n; i++) {
-    if (chunk[i] !== null) last = chunk[i];
-    prev[i] = last;
+  // Chunks in time order, with a chunk-index -> ordinal lookup and durations.
+  const order = [...chunks].sort((a, b) => a.index - b.index);
+  const ordOf = new Map(order.map((c, i) => [c.index, i]));
+  const dur = order.map((c) => Math.max(1, c.durationMs));
+
+  // Spread published words [lo, hi) across chunk ordinals [oLo, oHi] by duration.
+  const distribute = (lo: number, hi: number, oLo: number, oHi: number) => {
+    const weights = dur.slice(oLo, oHi + 1);
+    const total = weights.reduce((a, b) => a + b, 0);
+    const bounds: number[] = [];
+    let acc = 0;
+    for (const w of weights) {
+      acc += w;
+      bounds.push(acc / total);
+    }
+    const count = hi - lo;
+    for (let k = 0; k < count; k++) {
+      const frac = (k + 0.5) / count;
+      let oi = 0;
+      while (oi < bounds.length - 1 && frac > bounds[oi]) oi++;
+      result[lo + k] = order[oLo + oi].index;
+    }
+  };
+
+  // Walk null runs; bracket each by the anchors (or file edges) around it.
+  let i = 0;
+  while (i < n) {
+    if (result[i] !== null) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < n && result[j] === null) j++;
+    // [i, j) is a null run. Words before the FIRST anchor go to the first
+    // anchored chunk (not to leading unanchored chunks, which are usually
+    // instrumental/bleed); words after the LAST anchor go to the last anchored
+    // chunk. Only a run BETWEEN two anchors spreads across the chunks between.
+    const leftChunk = i > 0 ? result[i - 1] : null;
+    const rightChunk = j < n ? result[j] : null;
+    const leftOrd = leftChunk !== null ? ordOf.get(leftChunk)! : null;
+    const rightOrd = rightChunk !== null ? ordOf.get(rightChunk)! : null;
+    let oLo: number;
+    let oHi: number;
+    if (leftOrd !== null && rightOrd !== null) {
+      oLo = Math.min(leftOrd, rightOrd);
+      oHi = Math.max(leftOrd, rightOrd);
+    } else if (rightOrd !== null) {
+      oLo = oHi = rightOrd; // before first anchor -> first anchored chunk
+    } else if (leftOrd !== null) {
+      oLo = oHi = leftOrd; // after last anchor -> last anchored chunk
+    } else {
+      oLo = 0; // no anchors at all -> spread across everything (fallback)
+      oHi = order.length - 1;
+    }
+    distribute(i, j, oLo, oHi);
+    i = j;
   }
-  const next: (number | null)[] = new Array(n).fill(null);
-  last = null;
-  for (let i = n - 1; i >= 0; i--) {
-    if (chunk[i] !== null) last = chunk[i];
-    next[i] = last;
-  }
-  for (let i = 0; i < n; i++) {
-    if (chunk[i] === null) chunk[i] = prev[i] !== null ? prev[i] : next[i];
-  }
-  return chunk;
+  return result;
 }
 
 /** Group a chunk-per-word assignment into contiguous {chunk, wordRange} spans,

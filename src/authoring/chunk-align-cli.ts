@@ -14,7 +14,12 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdtempSync, readdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { assignChunks, groupByChunk, type HeardWord } from "./chunk-align.js";
+import { assignChunks, groupByChunk, normWord, type HeardWord } from "./chunk-align.js";
+
+/** Whisper marks non-speech as "(whistling)" / "[Music]" and the like. A chunk
+ *  whose only "words" are such annotations (or empty) is instrumental/bleed, not
+ *  vocals — drop it so it can't receive lyric words. */
+const isAnnotation = (t: string): boolean => /^[([]/.test(t.trim()) || normWord(t) === "";
 
 const BIN = resolve(import.meta.dirname, "../../.claude/skills/clickbait/bin/clickbait-audio");
 
@@ -45,15 +50,20 @@ function run(args: string[]): void {
   const index: ChunkIndex = JSON.parse(readFileSync(join(work, "index.json"), "utf8"));
   console.error(`chunked into ${index.chunks.length} chunk(s)`);
 
-  // 2. Whisper each chunk -> heard words tagged with their chunk index.
+  // 2. Whisper each chunk -> heard words. Drop chunks that transcribed to only
+  // annotations/empty (instrumental or bleed) so they never receive lyric words.
   const heard: HeardWord[] = [];
+  const lyricChunks: typeof index.chunks = [];
   for (const c of index.chunks) {
     const wav = join(work, c.file);
     execFileSync(BIN, ["transcribe", wav, "--model", model], { stdio: ["ignore", "ignore", "inherit"] });
     const words: { text: string }[] = JSON.parse(readFileSync(wav.replace(/\.wav$/, ".words.json"), "utf8")).words;
-    for (const w of words) heard.push({ text: w.text, chunk: c.index });
+    const real = words.filter((w) => !isAnnotation(w.text));
+    if (real.length === 0) continue; // non-lyric chunk — dropped
+    for (const w of real) heard.push({ text: w.text, chunk: c.index });
+    lyricChunks.push(c);
   }
-  console.error(`heard ${heard.length} rough words`);
+  console.error(`heard ${heard.length} rough words in ${lyricChunks.length}/${index.chunks.length} lyric chunk(s)`);
 
   // 3. Published lyrics -> flat words carrying their line index + text.
   const rawLines = readFileSync(lyricsPath, "utf8").split("\n").map((l) => l.trim());
@@ -65,22 +75,38 @@ function run(args: string[]): void {
     for (const tok of line.split(/\s+/)) pubWords.push({ text: tok, line: li });
   });
 
-  // 4. Match: which chunk each published word belongs to.
-  const chunkOf = assignChunks(pubWords.map((w) => w.text), heard);
+  // 4. Match: which chunk each published word belongs to (duration-aware, so a
+  // misheard line spreads across chunks by capacity instead of overflowing one).
+  const chunkOf = assignChunks(
+    pubWords.map((w) => w.text),
+    heard,
+    lyricChunks.map((c) => ({ index: c.index, durationMs: c.endMs - c.startMs })),
+  );
   const spans = groupByChunk(chunkOf);
   console.error(`assigned ${spans.length} chunk span(s) of lyrics`);
 
   // 5. wav2vec2-align each chunk's span within its own audio; offset to source.
   const timed: (AlignedWord | null)[] = new Array(pubWords.length).fill(null);
+  let failed = 0;
   for (const span of spans) {
     const chunk = index.chunks.find((c) => c.index === span.chunk)!;
     const wav = join(work, chunk.file);
     const spanText = pubWords.slice(span.from, span.to + 1).map((w) => w.text).join(" ");
     const outFile = join(work, `${chunk.index}.align.json`);
-    execFileSync(BIN, ["align", wav, "--text", spanText, "-o", outFile, "--no-trim-silence"], {
-      stdio: ["ignore", "ignore", "inherit"],
-    });
-    const res: { words: AlignedWord[] } = JSON.parse(readFileSync(outFile, "utf8"));
+    let res: { words: AlignedWord[] };
+    try {
+      execFileSync(BIN, ["align", wav, "--text", spanText, "-o", outFile, "--no-trim-silence"], {
+        stdio: ["ignore", "ignore", "inherit"],
+      });
+      res = JSON.parse(readFileSync(outFile, "utf8"));
+    } catch {
+      // A chunk that can't align (e.g. still too much text for its audio) is
+      // skipped, not fatal — its words stay unaligned and get dropped in the
+      // stitch. Logged so over-assignment is visible rather than silent.
+      failed++;
+      console.error(`  ! chunk ${chunk.index} failed to align (${span.to - span.from + 1} words) — skipped`);
+      continue;
+    }
     // Forced alignment returns one word per span token, in order -> map positionally.
     res.words.forEach((w, k) => {
       const pubIdx = span.from + k;
@@ -89,6 +115,7 @@ function run(args: string[]): void {
       timed[pubIdx] = { ...shift(w), chars: w.chars.map(shift) };
     });
   }
+  if (failed) console.error(`WARNING: ${failed} chunk(s) failed to align — those lines are missing from the output`);
 
   // 6. Stitch: flat words in published order + lines rebuilt from line membership.
   const words: AlignedWord[] = [];

@@ -13,6 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ChunkEntry {
     index: usize,
     file: String,
@@ -22,6 +23,7 @@ struct ChunkEntry {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ChunkIndex {
     source: String,
     sample_rate: u32,

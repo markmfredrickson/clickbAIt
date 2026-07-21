@@ -64,16 +64,29 @@ describe("assignChunks", () => {
 
   it("words before the first anchor go to the first ANCHORED chunk, not a leading (bleed) chunk", () => {
     // chunk 0 is a leading instrumental/bleed chunk with no lyric match; the
-    // first anchor is in chunk 2. "with"/"your" must land in chunk 2, not 0.
+    // first (trusted, 2-word) anchor is in chunk 2. "with" must land in chunk 2.
     const published = ["with", "your", "feet"];
-    const h = heard([["feet", 2]]); // only "feet" matched, in chunk 2
+    const h = heard([["your", 2], ["feet", 2]]); // a trusted run in chunk 2
     expect(assignChunks(published, h, evenChunks(3))).toEqual([2, 2, 2]);
   });
 
   it("words after the last anchor go to the last anchored chunk", () => {
-    const published = ["hey", "oh", "oh"];
-    const h = heard([["hey", 1]]);
-    expect(assignChunks(published, h, evenChunks(4))).toEqual([1, 1, 1]);
+    const published = ["hold", "on", "oh", "oh"];
+    const h = heard([["hold", 1], ["on", 1]]); // trusted run in chunk 1
+    expect(assignChunks(published, h, evenChunks(4))).toEqual([1, 1, 1, 1]);
+  });
+
+  it("drops a lone false anchor (hallucinated word on a bleed chunk) and distributes instead", () => {
+    // "with" was hallucinated on bleed chunk 0; the real line matches in a run
+    // in chunk 2. The lone chunk-0 match must NOT latch "with" to chunk 0.
+    const published = ["with", "your", "feet", "in", "the", "air"];
+    const h = heard([
+      ["with", 0], // lone false anchor on intro bleed
+      ["your", 2], ["feet", 2], ["in", 2], ["the", 2], ["air", 2], // real run
+    ]);
+    const chunkOf = assignChunks(published, h, evenChunks(3));
+    expect(chunkOf[0]).toBe(2); // "with" clamps to the first REAL anchored chunk, not chunk 0
+    expect(chunkOf).toEqual([2, 2, 2, 2, 2, 2]);
   });
 
   it("duration weighting keeps words off a tiny chunk", () => {

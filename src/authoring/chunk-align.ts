@@ -106,8 +106,18 @@ export function assignChunks(published: string[], heard: HeardWord[], chunks: Ch
   const h = heard.map((w) => normWord(w.text));
   const aligned = alignSequences(p, h);
   const anchor: (number | null)[] = aligned.map((hi) => (hi >= 0 ? heard[hi].chunk : null));
-  const result: (number | null)[] = anchor.slice();
-  const n = anchor.length;
+
+  // Anchor-trust: a real sung line matches Whisper on SEVERAL words in a chunk.
+  // A chunk with a single lone match — one common word hallucinated on
+  // instrumental/bleed at high confidence — is a false anchor (it latches the
+  // first/nearby lyric onto the wrong chunk). Trust a chunk's matches only if it
+  // has >= 2 of them; otherwise drop them so those words are distributed instead.
+  const perChunk = new Map<number, number>();
+  for (const a of anchor) if (a !== null) perChunk.set(a, (perChunk.get(a) ?? 0) + 1);
+  const trusted = anchor.map((a) => (a !== null && perChunk.get(a)! >= 2 ? a : null));
+
+  const result: (number | null)[] = trusted.slice();
+  const n = trusted.length;
   if (chunks.length === 0) return result;
 
   // Chunks in time order, with a chunk-index -> ordinal lookup and durations.

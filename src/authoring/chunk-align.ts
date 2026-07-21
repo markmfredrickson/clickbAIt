@@ -125,7 +125,17 @@ export function assignChunks(published: string[], heard: HeardWord[], chunks: Ch
   const ordOf = new Map(order.map((c, i) => [c.index, i]));
   const dur = order.map((c) => Math.max(1, c.durationMs));
 
-  // Spread published words [lo, hi) across chunk ordinals [oLo, oHi] by duration.
+  // Per-chunk capacity in WORDS (a chunk-second aligns at most ~this many words;
+  // beyond it wav2vec2 errors "target too long"). Seed load with the anchored
+  // words already placed so distribution + anchors together stay within capacity.
+  const WORDS_PER_SEC = 5;
+  const cap = (ord: number) => Math.max(1, Math.floor((dur[ord] / 1000) * WORDS_PER_SEC));
+  const load = new Array(order.length).fill(0);
+  for (const c of result) if (c !== null) load[ordOf.get(c)!]++;
+
+  // Spread published words [lo, hi) across chunk ordinals [oLo, oHi] by duration,
+  // but never past a chunk's capacity: an over-full chunk spills forward to the
+  // next chunk with slack (extending past oHi to the last chunk if needed).
   const distribute = (lo: number, hi: number, oLo: number, oHi: number) => {
     const weights = dur.slice(oLo, oHi + 1);
     const total = weights.reduce((a, b) => a + b, 0);
@@ -140,7 +150,10 @@ export function assignChunks(published: string[], heard: HeardWord[], chunks: Ch
       const frac = (k + 0.5) / count;
       let oi = 0;
       while (oi < bounds.length - 1 && frac > bounds[oi]) oi++;
-      result[lo + k] = order[oLo + oi].index;
+      let ord = oLo + oi;
+      while (load[ord] >= cap(ord) && ord < order.length - 1) ord++; // spill forward
+      result[lo + k] = order[ord].index;
+      load[ord]++;
     }
   };
 
@@ -169,7 +182,8 @@ export function assignChunks(published: string[], heard: HeardWord[], chunks: Ch
     } else if (rightOrd !== null) {
       oLo = oHi = rightOrd; // before first anchor -> first anchored chunk
     } else if (leftOrd !== null) {
-      oLo = oHi = leftOrd; // after last anchor -> last anchored chunk
+      oLo = leftOrd; // after last anchor -> spread across the remaining (later) chunks
+      oHi = order.length - 1;
     } else {
       oLo = 0; // no anchors at all -> spread across everything (fallback)
       oHi = order.length - 1;

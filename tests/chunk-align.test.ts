@@ -70,10 +70,15 @@ describe("assignChunks", () => {
     expect(assignChunks(published, h, evenChunks(3))).toEqual([2, 2, 2]);
   });
 
-  it("words after the last anchor go to the last anchored chunk", () => {
+  it("words after the last anchor spread across the later chunks (not piled on one)", () => {
+    // trailing outro words should use the chunks that follow the last anchor, so
+    // a long tail doesn't overflow the last anchored chunk.
     const published = ["hold", "on", "oh", "oh"];
     const h = heard([["hold", 1], ["on", 1]]); // trusted run in chunk 1
-    expect(assignChunks(published, h, evenChunks(4))).toEqual([1, 1, 1, 1]);
+    const chunkOf = assignChunks(published, h, evenChunks(4));
+    expect(chunkOf.slice(0, 2)).toEqual([1, 1]); // anchored run stays
+    for (let i = 1; i < chunkOf.length; i++) expect(chunkOf[i]! >= chunkOf[i - 1]!).toBe(true); // monotonic, moves forward
+    expect(Math.max(...chunkOf.map((c) => c!))).toBeGreaterThan(1); // used a later chunk
   });
 
   it("drops a lone false anchor (hallucinated word on a bleed chunk) and distributes instead", () => {

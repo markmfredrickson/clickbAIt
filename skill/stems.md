@@ -80,7 +80,6 @@ Once confirmed:
   "stems": {
     "kind": "audio-group",
     "curveRef": "recording",
-    "produced-by": "clickbait-audio split --model 4stem",
     "dir": "stems/",
     "files": { "vocals": "source_vocals.wav", "drums": "source_drums.wav", "bass": "source_bass.wav", "other": "source_other.wav" },
     "soffs": 0.164

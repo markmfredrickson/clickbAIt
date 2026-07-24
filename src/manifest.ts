@@ -19,12 +19,11 @@ import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
-/** A reference to a file produced by some tool, with provenance. */
+/** A reference to a build-produced file. How it's made lives in the song's
+ *  package.json recipe, not here — a manifest never restates its provenance. */
 const ArtifactRef = z
   .object({
     file: z.string().min(1),
-    /** What produced this artifact, e.g. "clickbait-audio align" or "human". */
-    "produced-by": z.string().min(1),
   })
   .strict();
 
@@ -113,7 +112,6 @@ const StemsSource = z
     kind: z.literal("audio-group"),
     /** Name of the source whose curve these stems share (e.g. "recording"). */
     curveRef: z.string().min(1),
-    "produced-by": z.string().min(1),
     dir: z.string().min(1),
     files: z.record(z.string(), z.string().min(1)),
     /** Seconds to trim from the start of each source file (skip an intro). */
@@ -279,7 +277,7 @@ export const SongManifestSchema = z
       .strict(),
 
     cues: z
-      .object({ dir: z.string().min(1), "produced-by": z.string().min(1) })
+      .object({ dir: z.string().min(1) })
       .strict()
       .optional(),
   })

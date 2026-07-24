@@ -10,18 +10,17 @@ function validManifest(): unknown {
     key: "Em",
     bpm: 122.449,
     timeSignature: [4, 4],
-    metadata: { file: "seven-nation-army.lookup.json", "produced-by": "clickbait-audio lookup" },
+    metadata: { file: "seven-nation-army.lookup.json" },
     sources: {
       recording: {
         kind: "audio",
         file: "source.m4a",
-        analysis: { file: "source.analysis.json", "produced-by": "clickbait-audio analyze" },
+        analysis: { file: "source.analysis.json" },
         beatMap: [{ startBeat: 0, times: [0, 0.49, 0.98] }],
       },
       stems: {
         kind: "audio-group",
         curveRef: "recording",
-        "produced-by": "clickbait-audio split --model htdemucs",
         dir: "stems/",
         files: { vocals: "source_vocals.wav", drums: "source_drums.wav", bass: "source_bass.wav", other: "source_other.wav" },
       },
@@ -35,9 +34,9 @@ function validManifest(): unknown {
       ] },
     ],
     lyrics: {
-      alignment: { file: "source_vocals.align.json", "produced-by": "clickbait-audio align" },
+      alignment: { file: "source_vocals.align.json" },
     },
-    cues: { dir: "cues/", "produced-by": "clickbait-audio speak" },
+    cues: { dir: "cues/" },
   };
 }
 
@@ -157,10 +156,11 @@ describe("SongManifestSchema", () => {
     expect(() => SongManifestSchema.parse(m)).toThrow();
   });
 
-  // -- #6 Artifact provenance ------------------------------------------------
-  it("requires produced-by on referenced artifacts", () => {
+  // -- #6 Artifact refs are file-only -----------------------------------------
+  // Provenance lives in the song's package.json recipe, never restated here.
+  it("rejects a stray produced-by on an artifact ref", () => {
     const m = validManifest() as any;
-    delete m.sources.recording.analysis["produced-by"];
+    m.sources.recording.analysis["produced-by"] = "clickbait-audio analyze";
     expect(() => SongManifestSchema.parse(m)).toThrow();
   });
 

@@ -31,7 +31,7 @@ describe("manifestToSong", () => {
       // detected beat 2 — the old anchor t=1.0 case), so the stem offset is -2.
       recording: { kind: "audio", file: "source.m4a", beatMap: [{ startBeat: -2, times: mkTimes(20) }] },
       stems: {
-        kind: "audio-group", curveRef: "recording", "produced-by": "y", dir: "stems/",
+        kind: "audio-group", curveRef: "recording", dir: "stems/",
         files: { vocals: "v.wav", drums: "d.wav" }, soffs: 0.5,
       },
     },
@@ -86,7 +86,7 @@ describe("manifestToSong clips", () => {
       ...base,
       sources: {
         recording,
-        stems: { kind: "audio-group", curveRef: "recording", "produced-by": "y", dir: "stems/",
+        stems: { kind: "audio-group", curveRef: "recording", dir: "stems/",
           files: { vocals: "v.wav", drums: "d.wav" },
           // clip 1: 8s of source (=16 beats) from 0; clip 2: repeat first 4s (=8 beats) from 0.
           clips: [{ from: 0, seconds: 8 }, { from: 0, seconds: 4 }] },
@@ -109,7 +109,7 @@ describe("manifestToSong clips", () => {
       ...base,
       sources: {
         recording,
-        stems: { kind: "audio-group", curveRef: "recording", "produced-by": "y", dir: "stems/",
+        stems: { kind: "audio-group", curveRef: "recording", dir: "stems/",
           files: { vocals: "v.wav" },
           clips: [{ from: 0, seconds: 8 }, { silence: 2 }, { from: 0, seconds: 4 }] },
       },
@@ -127,7 +127,7 @@ describe("manifestToSong clips", () => {
       ...base,
       sources: {
         recording,
-        stems: { kind: "audio-group", curveRef: "recording", "produced-by": "y", dir: "stems/",
+        stems: { kind: "audio-group", curveRef: "recording", dir: "stems/",
           files: { vocals: "v.wav" }, clips: [{ from: 0, seconds: 8 }, { from: 0, seconds: 4 }] },
       },
       sections: [{ name: "A", bars: 4 }], // 16 beats, but clips span 24

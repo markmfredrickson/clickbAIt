@@ -155,7 +155,6 @@ export function buildScaffold(inp: ScaffoldInputs): SongManifest {
             stems: {
               kind: "audio-group",
               curveRef: "recording",
-              "produced-by": "clickbait-audio split --model 4stem",
               dir: inp.stems.dir,
               files: inp.stems.files,
             },
@@ -165,7 +164,7 @@ export function buildScaffold(inp: ScaffoldInputs): SongManifest {
     songCurve: "constantBpm",
     sections,
     lyrics: inp.alignFile
-      ? { alignment: { file: inp.alignFile, "produced-by": "clickbait-audio align" } }
+      ? { alignment: { file: inp.alignFile } }
       : {},
   };
 

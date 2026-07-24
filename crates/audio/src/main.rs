@@ -119,6 +119,11 @@ enum Commands {
         /// Voiced threshold as a fraction of the loudest frame's RMS.
         #[arg(long, default_value_t = 0.08)]
         threshold: f32,
+        /// Force silence over a source-time range "from:to" (seconds), repeatable.
+        /// Samples are zeroed BEFORE detection, so no chunk forms there and the
+        /// region can't inflate the peak/threshold. For instrumental bleed.
+        #[arg(long)]
+        skip: Vec<String>,
     },
     /// Generate spoken audio from text (for cue tracks)
     Speak {
@@ -199,8 +204,17 @@ fn main() -> Result<()> {
         Commands::Align { file, text, output, no_trim_silence } => {
             align::run(&file, &text, output.as_deref(), !no_trim_silence)
         }
-        Commands::Chunk { file, out_dir, min_silence_ms, min_chunk_ms, pad_ms, threshold } => {
-            chunk::run(&file, chunk::ChunkOpts { out_dir, min_silence_ms, min_chunk_ms, pad_ms, threshold })
+        Commands::Chunk { file, out_dir, min_silence_ms, min_chunk_ms, pad_ms, threshold, skip } => {
+            let skip_secs: Vec<(f64, f64)> = skip
+                .iter()
+                .filter_map(|s| {
+                    let mut p = s.split(':');
+                    let f: f64 = p.next()?.trim().parse().ok()?;
+                    let t: f64 = p.next()?.trim().parse().ok()?;
+                    if t > f { Some((f, t)) } else { None }
+                })
+                .collect();
+            chunk::run(&file, chunk::ChunkOpts { out_dir, min_silence_ms, min_chunk_ms, pad_ms, threshold, skip_secs })
         }
         Commands::Speak { text, output, voice, length_scale } => speak::run(&text, &output, &voice, length_scale),
     }

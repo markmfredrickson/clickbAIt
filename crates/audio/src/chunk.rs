@@ -40,11 +40,15 @@ pub struct ChunkOpts {
     /// A frame is "voiced" when its RMS is at least this fraction of the loudest
     /// frame. Above stem bleed but below real singing.
     pub threshold: f32,
+    /// Source-time ranges (seconds) to force to silence BEFORE detection, so no
+    /// chunk forms there and they don't inflate the peak. For instrumental bleed
+    /// the amplitude gate can't reject.
+    pub skip_secs: Vec<(f64, f64)>,
 }
 
 impl Default for ChunkOpts {
     fn default() -> Self {
-        ChunkOpts { out_dir: None, min_silence_ms: 400, min_chunk_ms: 300, pad_ms: 200, threshold: 0.08 }
+        ChunkOpts { out_dir: None, min_silence_ms: 400, min_chunk_ms: 300, pad_ms: 200, threshold: 0.08, skip_secs: Vec::new() }
     }
 }
 
@@ -106,9 +110,25 @@ fn write_mono_wav(path: &Path, samples: &[f32], sample_rate: u32) -> Result<()> 
 }
 
 pub fn run(file: &str, opts: ChunkOpts) -> Result<()> {
-    let (samples, sr) = decode_audio(file)?;
+    let (mut samples, sr) = decode_audio(file)?;
     if samples.is_empty() {
         bail!("audio is empty");
+    }
+    // Pre-step: force silence over the --skip ranges before any detection, so
+    // the region can't form a chunk OR raise the peak that sets the threshold.
+    let mut skipped_s = 0.0f64;
+    for &(from, to) in &opts.skip_secs {
+        let a = ((from * sr as f64) as usize).min(samples.len());
+        let b = ((to * sr as f64) as usize).min(samples.len());
+        if b > a {
+            for s in &mut samples[a..b] {
+                *s = 0.0;
+            }
+            skipped_s += (b - a) as f64 / sr as f64;
+        }
+    }
+    if skipped_s > 0.0 {
+        eprintln!("forced {:.1}s of silence from {} --skip range(s)", skipped_s, opts.skip_secs.len());
     }
     let win = (sr as usize / 50).max(1); // ~20ms
     let rms = rms_frames(&samples, win);

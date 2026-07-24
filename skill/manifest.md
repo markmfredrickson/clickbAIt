@@ -26,7 +26,6 @@ truth; the generated JSON Schema at the bottom of this doc mirrors it.
     "stems": {
       "kind": "audio-group",
       "curveRef": "recording",
-      "produced-by": "clickbait-audio split --model 4stem",
       "dir": "stems/",
       "files": { "vocals": "source_vocals.wav", "drums": "source_drums.wav", "bass": "source_bass.wav", "other": "source_other.wav" }
     }
@@ -39,7 +38,7 @@ truth; the generated JSON Schema at the bottom of this doc mirrors it.
       "lines": [{ "text": "First line of the verse", "tag": "Lead Vocal" }]
     }
   ],
-  "lyrics": { "alignment": { "file": "stems/source_vocals.align.json", "produced-by": "clickbait-audio align" } }
+  "lyrics": { "alignment": { "file": "stems/source_vocals.align.json" } }
 }
 ```
 
@@ -161,15 +160,10 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
         "file": {
           "type": "string",
           "minLength": 1
-        },
-        "produced-by": {
-          "type": "string",
-          "minLength": 1
         }
       },
       "required": [
-        "file",
-        "produced-by"
+        "file"
       ],
       "additionalProperties": false
     },
@@ -193,15 +187,10 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
                 "file": {
                   "type": "string",
                   "minLength": 1
-                },
-                "produced-by": {
-                  "type": "string",
-                  "minLength": 1
                 }
               },
               "required": [
-                "file",
-                "produced-by"
+                "file"
               ],
               "additionalProperties": false
             },
@@ -265,15 +254,10 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
                     "file": {
                       "type": "string",
                       "minLength": 1
-                    },
-                    "produced-by": {
-                      "type": "string",
-                      "minLength": 1
                     }
                   },
                   "required": [
-                    "file",
-                    "produced-by"
+                    "file"
                   ],
                   "additionalProperties": false
                 }
@@ -295,10 +279,6 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
               "const": "audio-group"
             },
             "curveRef": {
-              "type": "string",
-              "minLength": 1
-            },
-            "produced-by": {
               "type": "string",
               "minLength": 1
             },
@@ -367,7 +347,6 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
           "required": [
             "kind",
             "curveRef",
-            "produced-by",
             "dir",
             "files"
           ],
@@ -518,15 +497,10 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
             "file": {
               "type": "string",
               "minLength": 1
-            },
-            "produced-by": {
-              "type": "string",
-              "minLength": 1
             }
           },
           "required": [
-            "file",
-            "produced-by"
+            "file"
           ],
           "additionalProperties": false
         }
@@ -539,15 +513,10 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
         "dir": {
           "type": "string",
           "minLength": 1
-        },
-        "produced-by": {
-          "type": "string",
-          "minLength": 1
         }
       },
       "required": [
-        "dir",
-        "produced-by"
+        "dir"
       ],
       "additionalProperties": false
     }

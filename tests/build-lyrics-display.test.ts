@@ -172,7 +172,6 @@ describe("buildLyricsDisplay", () => {
         stems: {
           kind: "audio-group",
           curveRef: "recording",
-          "produced-by": "test",
           dir: "stems",
           files: { drums: "drums.wav" },
           clips: [

@@ -33,6 +33,7 @@
     "bundle": "npx tsx src/build/bundle.ts",
     "bundle:render": "npx tsx scripts/render-bundle.ts",
     "teleprompter": "npx tsx scripts/teleprompter.ts",
+    "desilence-inspect": "npx tsx scripts/desilence-inspect.ts",
     "build:skill": "npx tsx scripts/render-skill.ts",
     "sandbox": "scripts/sandbox.sh",
     "demo": "./demo/render.sh --all",

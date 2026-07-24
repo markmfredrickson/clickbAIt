@@ -1,63 +1,102 @@
 /**
  * realign-all — re-run desilence-concatenate alignment across the catalog.
  *
- *   npm run realign-all              # every dir with a vocal stem + lyrics.txt
+ *   npm run realign-all              # every alignable song
  *   npm run realign-all -- <filter>  # only paths matching <filter>
  *
- * Discovers by STEM (the vocal stem (stems/…_vocals.wav)), so it covers both manifested songs
- * and the pre-manifest catalog. For each: finds the dir's `*.lyrics.txt`, picks
- * the output path (the manifest's `lyrics.alignment.file` if a manifest exists,
- * else co-located `<stem>.align.json`), and regenerates it with desilence-align
- * (+ a `.desilence.json` map). Skips dirs with no `*.lyrics.txt`. KV multitrack
- * (`lead-vocal.wav`, no `*_vocals.wav`) is not matched, so it's left alone.
+ * Two discovery passes:
+ *   1. MANIFEST-driven — every `*.song.json`. The vocal audio is the declared
+ *      stem, or (KV multitrack, no demucs split) the lead-vocal track next to the
+ *      manifest's `lyrics.alignment.file`. Lyrics come from `<slug>.lyrics.txt`
+ *      or, failing that, the arranged manifest lines. Output = alignment.file.
+ *   2. STEM-driven — dirs with a vocal stem but NO manifest (the pre-manifest
+ *      catalog): align the stem against the dir's `*.lyrics.txt`, co-located out.
+ *
+ * Regenerates each align.json with desilence-align (+ a `.desilence.json` map).
+ * Skips anything with no vocal audio or no lyrics. Prints a coverage summary.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join, basename } from "node:path";
+import { tmpdir } from "node:os";
 
 const filter = process.argv[2];
 const root = process.cwd();
-const stemPaths = execFileSync("find", ["songs", "-path", "*/stems/*_vocals.wav"], { encoding: "utf8" })
-  .trim()
-  .split("\n")
-  .filter(Boolean)
-  .filter((s) => !s.includes("/.wireit/"))
-  .filter((s) => !filter || s.includes(filter))
-  .sort();
+const find = (args: string[]) =>
+  execFileSync("find", args, { encoding: "utf8" }).trim().split("\n").filter(Boolean).filter((p) => !p.includes("/.wireit/"));
 
+type Job = { song: string; audio: string; lyrics: string; out: string; note: string };
 type Row = { song: string; status: "ok" | "skip" | "FAIL"; detail: string };
+const jobs: Job[] = [];
 const rows: Row[] = [];
+const dirsWithManifest = new Set<string>();
 
-for (const stem of stemPaths) {
-  const dir = dirname(dirname(stem)); // .../<song>/stems/x.wav -> .../<song>
-  const song = dir.replace(/^songs\//, "");
-  // lyrics.txt in the dir
-  const lyricsName = readdirSync(dir).find((f) => f.endsWith(".lyrics.txt"));
-  if (!lyricsName) { rows.push({ song, status: "skip", detail: "no *.lyrics.txt" }); continue; }
-  const lyrics = join(dir, lyricsName);
-  // output: manifest's alignment.file if a manifest exists, else co-located
-  const manName = readdirSync(dir).find((f) => f.endsWith(".song.json"));
-  let alignOut = stem.replace(/\.wav$/, ".align.json");
-  if (manName) {
-    try {
-      const m = JSON.parse(readFileSync(join(dir, manName), "utf8"));
-      if (m.lyrics?.alignment?.file) alignOut = join(dir, m.lyrics.alignment.file);
-    } catch { /* fall back to co-located */ }
+/** Lyrics text for a manifest: its <slug>.lyrics.txt, else the arranged lines
+ *  flattened to a temp file. Returns the path, or null if there are no lyrics. */
+function lyricsFor(dir: string, slug: string, manifest: any): string | null {
+  const onDisk = join(dir, `${slug}.lyrics.txt`);
+  if (existsSync(onDisk)) return onDisk;
+  const text = (manifest.sections ?? []).flatMap((s: any) => (s.lines ?? []).map((l: any) => l.text)).join("\n");
+  if (text.trim().split("\n").filter(Boolean).length < 3) return null;
+  const tmp = join(tmpdir(), `${slug}.realign.lyrics.txt`);
+  writeFileSync(tmp, text);
+  return tmp;
+}
+
+// ── 1. manifest-driven ─────────────────────────────────────────────────────
+for (const mPath of find(["songs", "-name", "*.song.json"]).filter((m) => !filter || m.includes(filter)).sort()) {
+  const dir = dirname(mPath);
+  const slug = basename(mPath, ".song.json");
+  const song = mPath.replace(/^songs\//, "").replace(/\.song\.json$/, "");
+  dirsWithManifest.add(dir);
+  let m: any;
+  try { m = JSON.parse(readFileSync(mPath, "utf8")); } catch { rows.push({ song, status: "skip", detail: "unreadable manifest" }); continue; }
+  const alignRel = m.lyrics?.alignment?.file;
+  if (!alignRel) { rows.push({ song, status: "skip", detail: "no lyrics.alignment.file" }); continue; }
+  const out = join(dir, alignRel);
+  // vocal audio: declared stem, else the lead-vocal track beside the align file (KV)
+  const vocals = m.sources?.stems?.files?.vocals;
+  const stemPath = vocals ? join(dir, m.sources.stems.dir ?? "stems/", vocals) : null;
+  let audio: string | undefined;
+  let note = "";
+  if (stemPath && existsSync(stemPath)) {
+    audio = stemPath;
+  } else {
+    const base = join(dir, alignRel.replace(/\.align\.json$/, ""));
+    audio = [".mp3", ".wav", ".m4a"].map((e) => base + e).find(existsSync);
+    note = audio ? "KV" : "";
   }
-  const map = alignOut.replace(/\.align\.json$/, ".desilence.json");
-  process.stderr.write(`\n─── ${song}${manName ? "" : " (pre-manifest)"} ───\n`);
+  if (!audio) { rows.push({ song, status: "skip", detail: "no vocal audio" }); continue; }
+  const lyrics = lyricsFor(dir, slug, m);
+  if (!lyrics) { rows.push({ song, status: "skip", detail: "no lyrics" }); continue; }
+  jobs.push({ song, audio, lyrics, out, note });
+}
+
+// ── 2. stem-driven fallback (pre-manifest dirs) ────────────────────────────
+for (const stem of find(["songs", "-path", "*/stems/*_vocals.wav"]).filter((s) => !filter || s.includes(filter)).sort()) {
+  const dir = dirname(dirname(stem));
+  if (dirsWithManifest.has(dir)) continue; // already handled by its manifest
+  const song = dir.replace(/^songs\//, "");
+  const lyricsName = readdirSync(dir).find((f) => f.endsWith(".lyrics.txt"));
+  if (!lyricsName) { rows.push({ song, status: "skip", detail: "no lyrics.txt (pre-manifest)" }); continue; }
+  jobs.push({ song, audio: stem, lyrics: join(dir, lyricsName), out: stem.replace(/\.wav$/, ".align.json"), note: "pre-manifest" });
+}
+
+// ── run ────────────────────────────────────────────────────────────────────
+for (const j of jobs) {
+  process.stderr.write(`\n─── ${j.song}${j.note ? ` (${j.note})` : ""} ───\n`);
   try {
     execFileSync(
       "npx",
-      ["tsx", "src/authoring/desilence-align-cli.ts", stem, "--text", lyrics, "-o", alignOut, "--debug", map],
+      ["tsx", "src/authoring/desilence-align-cli.ts", j.audio, "--text", j.lyrics, "-o", j.out, "--debug", j.out.replace(/\.align\.json$/, ".desilence.json")],
       { stdio: ["ignore", "ignore", "inherit"], cwd: root },
     );
-    const a = JSON.parse(readFileSync(alignOut, "utf8"));
+    const a = JSON.parse(readFileSync(j.out, "utf8"));
     const first = a.words[0]?.startMs ?? 0;
     const last = a.words[a.words.length - 1]?.endMs ?? 0;
-    rows.push({ song, status: "ok", detail: `${a.lines.length} lines, ${a.words.length} words, ${(first / 1000).toFixed(0)}–${(last / 1000).toFixed(0)}s${manName ? "" : " [pre-manifest]"}` });
+    rows.push({ song: j.song, status: "ok", detail: `${a.lines.length} lines, ${a.words.length} words, ${(first / 1000).toFixed(0)}–${(last / 1000).toFixed(0)}s${j.note ? ` [${j.note}]` : ""}` });
   } catch (e) {
-    rows.push({ song, status: "FAIL", detail: String((e as Error).message).split("\n")[0].slice(0, 70) });
+    rows.push({ song: j.song, status: "FAIL", detail: String((e as Error).message).split("\n")[0].slice(0, 70) });
   }
 }
 

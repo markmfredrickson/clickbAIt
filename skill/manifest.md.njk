@@ -66,7 +66,7 @@ Sections are an ordered list starting at bar 1, running back-to-back. **Only `ba
 
 ### Authoring rules
 
-- **Favor even bar counts, and multiples of 8** (8, 16, 24, 32). Most popular songs are built from 8- and 16-bar phrases, so an even/×8 guess is usually right and leaves only a few genuinely-odd sections to fix. Keep a real 6- or 10-bar phrase or an odd pickup bar where the song has one — but even/×8 is the default. (The scaffolder emits a placeholder `bars: 8`; set the real value.)
+- **Favor even bar counts, and multiples of 8** (8, 16, 24, 32). Most popular songs are built from 8- and 16-bar phrases, so an even/×8 guess is usually right and leaves only a few genuinely-odd sections to fix. Keep a real 6- or 10-bar phrase or an odd pickup bar where the song has one — but even/×8 is the default. (`init-manifest` emits a placeholder `bars: 8`; set the real value.)
 - **Author the song as it actually starts** — first section can be `Intro`, `Verse 1`, `Chorus`, anything. No reserved bars.
 
 **Slug vs. Intro — don't confuse these:**
@@ -75,7 +75,7 @@ Sections are an ordered list starting at bar 1, running back-to-back. **Only `ba
 
 ## Instrumental sections Genius doesn't label
 
-Genius only marks sections with sung lyrics, so anything purely instrumental is invisible and the scaffolder won't emit it. When there's a gap of `≥ 2 bars` between two lyric sections (or before the first / after the last), suggest an instrumental section and ask the user:
+Genius only marks sections with sung lyrics, so anything purely instrumental is invisible and `init-manifest` won't emit it. When there's a gap of `≥ 2 bars` between two lyric sections (or before the first / after the last), suggest an instrumental section and ask the user:
 
 | Where | Typical name | Typical length | Notes |
 | --- | --- | --- | --- |

@@ -5,9 +5,9 @@
  *   npm run build:songs             # build (generate) every changed song
  *   npm run build:songs -- bundle   # render + bundle every changed song (REAPER)
  *
- * A song is a build unit once `generate` has emitted its package.json. A
- * flat folder holding several manifests has no unit and is skipped — build those
- * with `npm run generate` directly.
+ * A song is a build unit once `init-song` has written its package.json (older
+ * songs got theirs from the first `generate`). A flat folder holding several
+ * manifests has no unit and is skipped — build those with `npm run generate`.
  */
 
 import { execSync } from "node:child_process";
@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /** A song folder is a build unit if its package.json is a wireit unit (the one
- *  `generate` emits) — not just any package.json (e.g. the example-songs one). */
+ *  `init-song` writes) — not just any package.json (e.g. the example-songs one). */
 function isBuildUnit(dir: string): boolean {
   const pj = join(dir, "package.json");
   if (!existsSync(pj)) return false;

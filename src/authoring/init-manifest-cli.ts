@@ -4,7 +4,7 @@
  * sections, meter changes, and count-in cues are left for review.
  *
  * Usage:
- *   npx tsx src/authoring/scaffold-cli.ts --title "Song" --source source.m4a \
+ *   npx tsx src/authoring/init-manifest-cli.ts --title "Song" --source source.m4a \
  *     --beats unified.beats.json [--artist "Artist"] [--key Bb] \
  *     [--lookup song.lookup.json] [--align stems/vocals.align.json] \
  *     [--stems-dir stems/] [--start-beat N] [--out song.song.json]
@@ -14,7 +14,7 @@
  *   CLICKBAIT_BPM_PHASE=1            with fold=half, keep the odd-indexed beats
  */
 
-import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { resolve, relative, dirname } from "node:path";
 import {
   buildScaffold,
@@ -34,7 +34,7 @@ const source = flag("source");
 const beatsPath = flag("beats");
 if (!title || !source || !beatsPath) {
   console.error(
-    "usage: npx tsx src/authoring/scaffold-cli.ts --title <t> --source <file> --beats <unified.beats.json> [--artist a] [--key k] [--lookup f] [--align f] [--stems-dir d] [--start-beat n] [--out f]",
+    "usage: npx tsx src/authoring/init-manifest-cli.ts --title <t> --source <file> --beats <unified.beats.json> [--artist a] [--key k] [--lookup f] [--align f] [--stems-dir d] [--start-beat n] [--out f]",
   );
   process.exit(1);
 }
@@ -93,6 +93,15 @@ const manifest = buildScaffold({
 
 const json = JSON.stringify(manifest, null, 2) + "\n";
 if (outPath) {
+  // Refuse to clobber an authored manifest — scaffold is a one-shot first cut.
+  // Set CLICKBAIT_SCAFFOLD_FORCE=1 to overwrite a throwaway draft on purpose.
+  if (existsSync(outPath) && process.env.CLICKBAIT_SCAFFOLD_FORCE !== "1") {
+    console.error(
+      `refusing to overwrite ${relative(process.cwd(), resolve(outPath))} (already authored). ` +
+        `Set CLICKBAIT_SCAFFOLD_FORCE=1 to replace it.`,
+    );
+    process.exit(1);
+  }
   writeFileSync(outPath, json);
   const rel = relative(process.cwd(), resolve(outPath));
   console.error(

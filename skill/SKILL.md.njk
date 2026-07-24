@@ -29,13 +29,13 @@ The user provides a song title and optionally an artist: `$ARGUMENTS`
 
 ## How a song is built
 
-A song is authored as a **manifest** — `<song-slug>.song.json`, inert JSON that references the audio artifacts and carries the structure. Everything downstream (REAPER project, teleprompter) is generated from it. The flow:
+A song is authored as a **manifest** — `<song-slug>.song.json`, inert JSON that references the audio artifacts and carries the structure. Everything downstream (REAPER project, teleprompter) is generated from it. The whole pipeline is a per-song **wireit recipe** written up front, so every step from raw audio to finished RPP is a content-hashed, re-runnable task. The flow:
 
-1. **Stems + audio analysis** — split the mix, detect beats (two passes + unify), align the vocals.
-2. **Look up song data** — BPM, key, lyrics with section markers.
+1. **init-song** — create the song folder and its build recipe (before any analysis).
+2. **analyze** — split stems, look up song data, detect beats, align vocals (all wireit tasks).
 3. **Present findings, confirm** — cross-check BPM, agree on structure.
-4. **Scaffold + author the manifest** — a tool writes the mechanical first cut; you shape the sections.
-5. **Generate the REAPER project** — manifest → RPP + spoken cues + lyrics-display.
+4. **init-manifest + author** — a tool writes the mechanical first cut; you shape the sections.
+5. **build** — manifest → RPP + spoken cues + lyrics-display.
 
 For the manifest format, authoring rules, section patterns, and cue/meter details, read **`skill/manifest.md`** when you reach Step 4.
 
@@ -43,87 +43,91 @@ For the manifest format, authoring rules, section patterns, and cue/meter detail
 
 Every song gets its own folder: **`songs/<artist-slug>/<song-slug>/`**. All of a song's files — manifest, stems, cues, sidecars, RPP, lyrics-display — live inside it. Never put a song's files flat in the artist folder. The source audio lives in the song folder as **`source.m4a`** (rename it off any download filename); the manifest's `sources.recording.file` is just `"source.m4a"`. `songs/dls/` is only a staging area — move and rename the file into the song folder; don't reference `dls/` from a manifest.
 
-## Step 1: Stems and audio analysis
+## Step 1: Initialize the song
 
-**Check for stems or audio first, before any web lookups.** If the user has audio:
-
-1. **Split** a full mix into the song folder (WAV/MP3/M4A accepted directly; default `4stem`, use `6stem` for piano/guitar separation):
-   ```bash
-   .claude/skills/clickbait/bin/clickbait-audio split "<source>" --output-dir "songs/<artist-slug>/<song-slug>/stems" --model 4stem
-   ```
-2. **Detect beats — two passes, then unify** (the grid drives every stem's stretch markers, so it must be right through drum-silent passages too). Always constrain `--min-bpm`/`--max-bpm` near the expected tempo:
-   ```bash
-   .claude/skills/clickbait/bin/clickbait-audio beats "<source>" --activation spectral-flux --min-bpm <low> --max-bpm <high> > "<song>.fullmix.beats.json"
-   .claude/skills/clickbait/bin/clickbait-audio beats "<drums-stem>" --activation energy > "<song>.drums.beats.json"
-   npm run beats:unify -- "<song>.fullmix.beats.json" "<song>.drums.beats.json" "<song>.beats.json"
-   ```
-3. **Align the vocals** (when Genius lyrics exist — the normal case). Extract the flat lyric text first (file-to-file, so lyrics don't pass through you):
-   ```bash
-   npm run lyrics:txt -- "songs/<artist-slug>/<song-slug>/<song-slug>.lookup.json" "<song>.lyrics.txt"
-   .claude/skills/clickbait/bin/clickbait-audio align "<vocals-stem>" --text "<song>.lyrics.txt"
-   ```
-   `align` (wav2vec2 CTC) maps the supplied text onto the audio and can't hallucinate. Use `transcribe` (Whisper) only when no lyrics can be fetched.
-
-Sidecars are human-editable — fix a wrong lyric or beat in the JSON and the next step uses your correction. See `skill/stems.md` for detail (pre-existing/warped stems, grid fitting, unstretch). **If no audio is provided**, skip to Step 2.
-
-## Step 2: Look up song data
+Create the song folder and its wireit build recipe **up front, before any analysis**. This writes `songs/<artist-slug>/<song-slug>/package.json` with the whole pipeline (split, lookup, beats, align, init-manifest, smooth, build, bundle) as tasks:
 
 ```bash
-npx clickbait-lookup "<title>" -a "<artist>" > "songs/<artist-slug>/<song-slug>/<song-slug>.lookup.json"
+npm run init-song -- --title "<title>" --artist "<artist>" [--key <key>] [--bpm <hint>] --source "songs/dls/<download>.m4a"
 ```
 
-Fetches Deezer (BPM), Genius (lyrics with section markers), MusicBrainz (metadata). Despite the `.json` name it's line-oriented text with lyrics between `---lyrics-raw---` sentinels. When audio exists, online data is a cross-check, not truth: if Deezer BPM diverges from the detected value, flag it and trust the detected one. When no audio exists, online sources are primary.
+- `--source` **moves and renames** the download to `<songdir>/source.m4a`. If the audio is already in place, put it at `<songdir>/source.m4a` yourself and omit `--source`.
+- `--bpm` is an optional tempo hint that sets the beats-detection window (±10%). Pass it if you roughly know the tempo — otherwise the window is a wide default you narrow after lookup.
+- `--model 6stem` for piano/guitar separation (default `4stem`).
+
+**If no audio is available**, the wireit analysis doesn't apply (no stems, no grid). Look up data directly (`npx clickbait-lookup`) and author the manifest from online sources — see `skill/stems.md`.
+
+## Step 2: Analyze
+
+From the song folder, run the analysis half — every task fans out through wireit and caches on its inputs:
+
+```bash
+cd songs/<artist-slug>/<song-slug>
+npm run analyze
+```
+
+- **split** — the mix → 4 (or 6) role stems.
+- **lookup** — Deezer (BPM), Genius (lyrics with section markers), MusicBrainz → `<slug>.lookup.json` (line-oriented text despite the name, lyrics between `---lyrics-raw---` sentinels).
+- **lyrics-txt** — flat lyric text for the aligner (file-to-file, so lyrics don't pass through you).
+- **beats** — single drum-stem detection (energy) → `source.m4a.beats.json`.
+- **align** — chunked forced alignment of the lyrics onto the vocal stem (can't hallucinate; maps the supplied text). `transcribe` (Whisper) is the fallback when no lyrics can be fetched.
+
+Sidecars are human-editable — fix a wrong lyric or beat in the JSON and the next step uses your correction.
+
+**Tuning `beats`.** The detection window came from `--bpm` (or a wide default). After lookup reports the tempo, if the window was off, narrow `--min-bpm`/`--max-bpm` in the recipe's `beats` task (add `--start`/`--until`, source seconds, to crop a loose intro or slowing outro) and re-run `npm run beats` — it's standalone, so a `build` never re-runs it. For songs with drum-**silent** passages the single-stem pass leaves gaps in the grid; detect two passes + `beats:unify` by hand and write `source.m4a.beats.json` yourself (see `skill/stems.md`).
 
 ## Step 3: Present findings and confirm
 
-Show BPM (detected primary, Deezer cross-check), key, structure (Genius markers), duration. Flag any estimate; never default to round-number BPMs without evidence.
+Read the sidecars and show BPM (detected primary, Deezer cross-check), key, structure (Genius markers), duration. Flag any estimate; never default to round-number BPMs without evidence. When audio exists, online data is a cross-check, not truth: if Deezer BPM diverges from the detected value, flag it and trust the detected one.
 
 **BPM: keep full decimal precision.** Pass full decimals to the manifest (e.g. `107.1429`) — rounding drifts the click off the music over a song.
 
-**Watch for half/double detection.** Trackers often lock onto twice or half the felt tempo. If the BPM feels off by 2×, fold it at scaffold time with `CLICKBAIT_BPM_FOLD=half` (or `double`) — it folds the BPM and the beat grid together. Ground check: a 4-bar intro should last about the time you'd count "1,2,3,4" ×4; twice as many beats → `half`, half as many → `double`.
+**Watch for half/double detection.** Trackers often lock onto twice or half the felt tempo. If the BPM feels off by 2×, fold it at init-manifest time with `CLICKBAIT_BPM_FOLD=half` (or `double`) — it folds the BPM and the beat grid together. Ground check: a 4-bar intro should last about the time you'd count "1,2,3,4" ×4; twice as many beats → `half`, half as many → `double`.
 
 Ask the user to confirm before proceeding.
 
-## Step 4: Scaffold and author the manifest
+## Step 4: First-cut manifest and author it
 
 **Read `skill/manifest.md`** for the format, authoring rules, section patterns, and cue/meter details.
 
-**Scaffold the mechanical first cut** — BPM, `beatMap` (from the unified beats), stems, alignment ref, and the Genius lyric block parsed into labeled sections with lines nested:
+**Write the mechanical first cut** — BPM, `beatMap` (from the detected beats), stems, alignment ref, and the Genius lyric block parsed into labeled sections with lines nested:
 
 ```bash
-npm run scaffold -- \
-  --title "<title>" --artist "<artist>" [--key <key>] \
-  --source source.m4a \
-  --beats "songs/<artist-slug>/<song-slug>/<song>.beats.json" \
-  --lookup "songs/<artist-slug>/<song-slug>/<song-slug>.lookup.json" \
-  --align "songs/<artist-slug>/<song-slug>/stems/<vocals-stem>.align.json" \
-  --stems-dir "songs/<artist-slug>/<song-slug>/stems" \
-  --out "songs/<artist-slug>/<song-slug>/<song-slug>.song.json"
+npm run init-manifest
 ```
 
-(BPM-fold env overrides: `CLICKBAIT_BPM_FOLD=half|double`, `CLICKBAIT_BPM_PHASE=1`.)
+Args are baked into the recipe (it reads the analysis sidecars). BPM-fold env overrides: `CLICKBAIT_BPM_FOLD=half|double`, `CLICKBAIT_BPM_PHASE=1`. It **refuses to overwrite an authored manifest** — set `CLICKBAIT_SCAFFOLD_FORCE=1` only to replace a throwaway draft.
 
-The scaffolder does the mechanical parts only. **Your job on review** (see `skill/manifest.md`): set the real **bar counts** (placeholders come out at 8; favor even/×8), add the **instrumental sections** Genius doesn't label, mark `cue: true` where you want announcements, and add manual `cues` for meter changes and in-song hits.
+The tool does the mechanical parts only. **Your job on review** (see `skill/manifest.md`): set the real **bar counts** (placeholders come out at 8; favor even/×8), add the **instrumental sections** Genius doesn't label (intros, solos, outros), mark `cue: true` where you want announcements, and add manual `cues` for meter changes and in-song hits.
 
-## Step 5: Generate the REAPER project
+## Step 5: Build the REAPER project
 
 ```bash
-npm run generate -- "songs/<artist-slug>/<song-slug>/<song-slug>.song.json"
+npm run build
 ```
 
-Generates spoken cue WAVs (P-center-aligned to the beat), builds the RPP (tempo map, section regions, click track, cues track, stretch-marked stems), and writes `<song-slug>.lyrics-display.json`. Ask what to announce at the top (title, key, tempo).
+Runs **smooth** (de-warble the beats → beatmap) then **build/generate**: spoken cue WAVs (P-center-aligned to the beat), the RPP (tempo map, section regions, click track, cues track, stretch-marked stems), and `<song-slug>.lyrics-display.json`. Ask what to announce at the top (title, key, tempo).
 
-**After generate:** `grep -c 'SM ' <rpp>` should be > 0 for songs with stems; the lyrics-display file should exist; region #1 is the slug (title), region #2 the first section. Warn the user to close REAPER before opening the regenerated RPP — it doesn't hot-reload.
+**After build:** `grep -c 'SM ' <rpp>` should be > 0 for songs with stems; the lyrics-display file should exist; region #1 is the slug (title), region #2 the first section. Warn the user to close REAPER before opening the regenerated RPP — it doesn't hot-reload.
 
 ## The per-song build: an authored wireit recipe
 
-The **first** `generate` scaffolds a `package.json` [wireit](https://github.com/google/wireit) recipe into the song folder — then it's **yours to author** and `generate` never overwrites it (tune detection flags right here). Its tasks:
+`init-song` writes the `package.json` [wireit](https://github.com/google/wireit) recipe up front — then it's **yours to author** (tune detection flags right here) and neither `init-song` nor `build` overwrites an existing one. Two halves, with the manifest-authoring seam between them.
 
-- **`beats`** — detect from the drum stem:
-  `clickbait-audio beats stems/<drums> --min-bpm <lo> --max-bpm <hi> [--start <s>] [--until <s>] > <source>.beats.json`.
-  `--start`/`--until` (source seconds) crop a loose/rubato intro or a free/slowing outro so the tracker doesn't chase them off-tempo. Defaults are manifest bpm ±10%. **Standalone — not a build dep**, so a tuned detection is never re-run by accident. (For songs with drum-*silent* passages, detect two-pass + `beats:unify` as in Step 1 instead.)
-- **`smooth`** — reads the raw `<source>.beats.json` + the manifest's `sources.recording.startBeat` anchor, de-warbles at `--max-warble` (default `0.04`), writes `<source>.beatmap.json`. Normalizes against the *detected* bpm.
-- **`build`** — assembles the RPP (this is `generate`); depends on `smooth`.
+**Analysis** (input: `source.m4a`) — run once with `npm run analyze`:
+
+- **`split`** — the mix → role stems.
+- **`lookup`** — Deezer/Genius/MusicBrainz → `<slug>.lookup.json`. Network task with no file inputs, so it re-runs when invoked; kept **out of the build chain** so a rebuild never re-hits the network.
+- **`lyrics-txt`** — `<slug>.lookup.json` → `<slug>.lyrics.txt`.
+- **`beats`** — detect from the drum stem: `clickbait-audio beats stems/source_drums.wav --min-bpm <lo> --max-bpm <hi> [--start <s>] [--until <s>] > source.m4a.beats.json`. `--start`/`--until` (source seconds) crop a loose/rubato intro or a slowing outro. Window is `--bpm` ±10% (or a wide default). **Standalone — not a build dep**, so a tuned detection is never re-run by accident. (For drum-*silent* passages, detect two-pass + `beats:unify` by hand instead.)
+- **`align`** — chunked forced alignment → `stems/source_vocals.align.json`.
+
+**`init-manifest`** — the one-shot first-cut manifest from the analysis sidecars. **Standalone, never a build dep**, and guarded against clobbering your authored sections.
+
+**Build** (input: the manifest):
+
+- **`smooth`** — reads `source.m4a.beats.json` + the manifest's `sources.recording.startBeat` anchor, de-warbles at `--max-warble` (default `0.04`), writes `source.m4a.beatmap.json`. Normalizes against the *detected* bpm.
+- **`build`** — assembles the RPP (this is `generate`); depends **only on `smooth`** and consumes the align sidecar + beatmap as file inputs, so a rebuild never re-runs the network `lookup` or the slow `align`.
 - **`bundle`** — renders the mix + bundle (REAPER; opt-in).
 
 Rebuild from the repo root:
@@ -133,7 +137,7 @@ npm run build:songs             # build every song whose manifest/beatmap/align/
 npm run build:songs -- bundle   # also render the mix + rebuild the bundle (on demand)
 ```
 
-Or per song from its folder: `npm run beats` (once, or after changing detection flags), then `npm run build`. Editing a `.song.json` re-runs only the affected song (wireit content-hashes inputs); **bundling is opt-in** (`-- bundle`). The rig (`default.json`) is a tracked input, so a routing change re-triggers the affected songs. After changing **clickbait itself** (tool code — not a tracked input), force a rebuild: `rm -rf songs/*/*/.wireit` then `npm run build:songs`.
+Or per song from its folder: `npm run analyze` (once), `npm run init-manifest`, author the sections, then `npm run build`. Re-run `npm run beats` after changing detection flags. Editing a `.song.json` re-runs only the affected song (wireit content-hashes inputs); **bundling is opt-in** (`-- bundle`). The rig (`default.json`) is a tracked input, so a routing change re-triggers the affected songs. After changing **clickbait itself** (tool code — not a tracked input), force a rebuild: `rm -rf songs/*/*/.wireit` then `npm run build:songs`.
 
 ## Using the show track
 

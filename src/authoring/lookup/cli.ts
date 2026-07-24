@@ -10,9 +10,24 @@
  */
 
 import { config } from "dotenv";
+import { existsSync } from "node:fs";
+import { dirname, join, parse } from "node:path";
 import { runLookup, formatReport } from "./index.js";
 
-config({ quiet: true }); // load .env if present (GENIUS_API_TOKEN); suppress banner
+// Load .env for GENIUS_API_TOKEN. Walk up from the CWD so a per-song wireit task
+// (which runs in songs/<artist>/<slug>/) still finds the repo-root .env, not
+// just one in the immediate directory.
+function findEnvUpward(): string | undefined {
+  let dir = process.cwd();
+  const root = parse(dir).root;
+  for (;;) {
+    const candidate = join(dir, ".env");
+    if (existsSync(candidate)) return candidate;
+    if (dir === root) return undefined;
+    dir = dirname(dir);
+  }
+}
+config({ path: findEnvUpward(), quiet: true }); // suppress banner
 
 function parseArgs(argv: string[]): { title: string; artist?: string } {
   const args = argv.slice(2);

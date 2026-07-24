@@ -16,7 +16,7 @@ Output is JSON with stem file paths. Runs on GPU (Metal) by default, takes a few
 
 ## After splitting: beats + alignment
 
-The main skill's Step 1 covers this; the short version:
+The main skill's Step 2 (analyze) covers this; the short version:
 
 1. **Beats — two passes, then unify.** Full mix with `--activation spectral-flux` (carries a pulse through drum-silent passages) and the drum stem with `--activation energy` (tight where drums play), merged with `npm run beats:unify`. The unified `<song>.beats.json` becomes the manifest's `beatMap` (source-second per beat), which drives every stem's stretch markers.
 
@@ -73,7 +73,7 @@ Present the grid and any tempo warping analysis to the user for confirmation.
 ### Step S4: Incorporate into the manifest
 
 Once confirmed:
-- Fold the confirmed beat grid into the manifest's `beatMap` (via the scaffolder, or by hand).
+- Fold the confirmed beat grid into the manifest's `beatMap` (via `init-manifest`, or by hand).
 - If tempo warping detected, note the recording BPM — the user may want to unstretch.
 - Wire the stems into `sources.stems`:
   ```json

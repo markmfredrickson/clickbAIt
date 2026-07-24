@@ -12,7 +12,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { resolve, dirname, join, relative, basename } from "node:path";
+import { resolve, dirname, join, relative } from "node:path";
 import { SongManifestSchema, sectionStarts, resolveBeatMap } from "../manifest.js";
 import { beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
@@ -20,6 +20,7 @@ import { chordWav } from "./tone.js";
 import { RigSchema } from "../rig.js";
 import { buildRpp } from "./rpp.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
+import { songRecipe } from "./song-recipe.js";
 import { extractSections } from "./sections.js";
 import { cueOnset } from "./cue-onset.js";
 import { pCenterSeconds, type AlignChar } from "./pcenter.js";
@@ -242,66 +243,38 @@ if (manifest.lyrics.alignment) {
 const pkgPath = join(outDir, "package.json");
 if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !existsSync(pkgPath)) {
   const rel = relative(outDir, root) || ".";
-  const manifestBase = basename(manifestPath);
   const recFile = manifest.sources.recording.file;
-  const bin = `${rel}/.claude/skills/clickbait/bin/clickbait-audio`;
   const minBpm = Math.round(manifest.bpm * 0.9);
   const maxBpm = Math.round(manifest.bpm * 1.1);
   // Forced alignment is a build output: derive the vocal stem from the manifest's
   // alignment.file (`<stem>.align.json` → `<stem>.wav`) and align the authored
-  // `<slug>.lyrics.txt` against it. Only emit the task when the manifest declares
-  // an alignment AND the standard inputs exist; a KV multitrack or a missing
-  // lyrics text falls back to a tracked align.json (author wires it by hand).
+  // `<slug>.lyrics.txt` against it. Default is the CHUNKED aligner (chunk on
+  // silence → Whisper-match → wav2vec2 per chunk → stitch), which handles repeated
+  // choruses far better than the single-shot binary `align`. Only emit the task
+  // when the manifest declares an alignment AND the standard inputs exist; a KV
+  // multitrack or a missing lyrics text falls back to a tracked align.json (author
+  // wires it by hand). Dense-vocal songs may need chunk-param tuning appended here.
   const alignFile = manifest.lyrics?.alignment?.file;
   const alignStem = alignFile?.replace(/\.align\.json$/, ".wav");
   const lyricsTxt = `${slug}.lyrics.txt`;
   const canAlign =
     !!alignFile && !!alignStem && existsSync(join(dir, alignStem)) && existsSync(join(dir, lyricsTxt));
-  const alignTask = canAlign
-    ? {
-        align: {
-          command: `${bin} align "${alignStem}" --text "${lyricsTxt}" -o "${alignFile}"`,
-          files: [alignStem, lyricsTxt],
-          output: [alignFile],
-        },
-      }
-    : {};
-  const buildDeps = canAlign ? ["smooth", "align"] : ["smooth"];
-  const scripts: Record<string, string> = { beats: "wireit", smooth: "wireit", build: "wireit", bundle: "wireit" };
-  if (canAlign) scripts.align = "wireit";
-  const unit = {
-    name: `clickbait-song-${slug}`,
-    private: true,
-    scripts,
-    wireit: {
-      beats: {
-        command: `${bin} beats stems/source_drums.wav --min-bpm ${minBpm} --max-bpm ${maxBpm} > ${recFile}.beats.json`,
-        files: ["stems/source_drums.wav"],
-        output: [`${recFile}.beats.json`],
-      },
-      smooth: {
-        command: `npx tsx ${rel}/src/authoring/smooth-beats-cli.ts ${manifestBase} --max-warble 0.04`,
-        files: [`${recFile}.beats.json`, manifestBase],
-        output: [`${recFile}.beatmap.json`],
-      },
-      ...alignTask,
-      build: {
-        command: `npx tsx ${rel}/src/build/generate.ts ${manifestBase}`,
-        files: [manifestBase, `${recFile}.beatmap.json`, "stems/*.align.json", `${rel}/default.json`],
-        output: ["*.RPP", "*.lyrics-display.json", "cues/**"],
-        dependencies: buildDeps,
-      },
-      bundle: {
-        command: `npx tsx ${rel}/scripts/render-bundle.ts .`,
-        files: [manifestBase, `${recFile}.beatmap.json`, "stems/**", "source.*", `${rel}/default.json`],
-        // Only the in-package opus is a declared wireit output; render-bundle also
-        // writes bundles/<slug>/ + .zip at the repo root, but wireit forbids
-        // outputs outside the package, so those stay undeclared side effects.
-        output: ["*.opus"],
-        dependencies: ["smooth"],
-      },
-    },
-  };
+  // Recipe shape lives in song-recipe.ts, shared with `init-song` (which writes
+  // it up front). Here it's the legacy fallback: only fires for a song that
+  // never went through init and still lacks a package.json.
+  const unit = songRecipe({
+    slug,
+    title: manifest.title,
+    artist: manifest.artist,
+    key: manifest.key,
+    rel,
+    minBpm,
+    maxBpm,
+    recFile,
+    canAlign,
+    alignStem,
+    alignFile,
+  });
   writeFileSync(pkgPath, JSON.stringify(unit, null, 2) + "\n");
 }
 

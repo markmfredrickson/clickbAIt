@@ -30,6 +30,7 @@
     "init-manifest": "npx tsx src/authoring/init-manifest-cli.ts",
     "generate": "npx tsx src/build/generate.ts",
     "build:songs": "npx tsx scripts/build-songs.ts",
+    "realign-all": "npx tsx scripts/realign-all.ts",
     "bundle": "npx tsx src/build/bundle.ts",
     "bundle:render": "npx tsx scripts/render-bundle.ts",
     "teleprompter": "npx tsx scripts/teleprompter.ts",

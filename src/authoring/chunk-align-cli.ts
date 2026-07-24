@@ -37,12 +37,17 @@ function run(args: string[]): void {
   const outIdx = args.indexOf("-o") >= 0 ? args.indexOf("-o") : args.indexOf("--output");
   const model = args.includes("--model") ? args[args.indexOf("--model") + 1] : "base.en";
   if (!stemArg || textIdx < 0 || outIdx < 0) {
-    console.error("usage: chunk-align-cli <stem.wav> --text <lyrics.txt> -o <out.align.json> [--model base.en]");
+    console.error("usage: chunk-align-cli <stem.wav> --text <lyrics.txt> -o <out.align.json> [--model base.en] [--debug <chunks.json>]");
     process.exit(1);
   }
   const stem = resolve(stemArg);
   const lyricsPath = resolve(args[textIdx + 1]);
   const outPath = resolve(args[outIdx + 1]);
+  // Optional debug artifact for the chunk inspector: every chunk's time range,
+  // whether it was kept or dropped, its raw Whisper transcript, and the lyric
+  // span the matcher assigned to it. Byproduct of the normal run — no re-work.
+  const debugIdx = args.indexOf("--debug");
+  const debugPath = debugIdx >= 0 ? resolve(args[debugIdx + 1]) : null;
   const work = mkdtempSync(join(tmpdir(), "chunkalign-"));
 
   // 1. Chunk the stem. Chunk params pass through for per-song tuning — dense,
@@ -61,12 +66,18 @@ function run(args: string[]): void {
   // annotations/empty (instrumental or bleed) so they never receive lyric words.
   const heard: HeardWord[] = [];
   const lyricChunks: typeof index.chunks = [];
+  const whisperByChunk = new Map<number, string>(); // raw transcript per chunk (for debug)
+  const dropped = new Set<number>(); // chunks transcribed to annotations/empty
   for (const c of index.chunks) {
     const wav = join(work, c.file);
     execFileSync(BIN, ["transcribe", wav, "--model", model], { stdio: ["ignore", "ignore", "inherit"] });
     const words: { text: string }[] = JSON.parse(readFileSync(wav.replace(/\.wav$/, ".words.json"), "utf8")).words;
+    whisperByChunk.set(c.index, words.map((w) => w.text).join(" "));
     const real = words.filter((w) => !isAnnotation(w.text));
-    if (real.length === 0) continue; // non-lyric chunk — dropped
+    if (real.length === 0) {
+      dropped.add(c.index); // non-lyric chunk — dropped
+      continue;
+    }
     for (const w of real) heard.push({ text: w.text, chunk: c.index });
     lyricChunks.push(c);
   }
@@ -94,14 +105,21 @@ function run(args: string[]): void {
 
   // 5. wav2vec2-align each chunk's span within its own audio; offset to source.
   const timed: (AlignedWord | null)[] = new Array(pubWords.length).fill(null);
+  const assignedByChunk = new Map<number, string>(); // lyric span assigned per chunk (for debug)
+  const alignFailed = new Set<number>();
   let failed = 0;
   for (const span of spans) {
     const chunk = index.chunks.find((c) => c.index === span.chunk)!;
     const wav = join(work, chunk.file);
     const spanText = pubWords.slice(span.from, span.to + 1).map((w) => w.text).join(" ");
+    assignedByChunk.set(chunk.index, spanText);
     const outFile = join(work, `${chunk.index}.align.json`);
     let res: { words: AlignedWord[] };
     try {
+      // Chunks are already tightly bounded (voiced segment + small pad), so the
+      // align silence-trim is a no-op here (pad < trim margin) and would only add
+      // risk — keep it off. The real boundary-word errors are chunk ASSIGNMENT
+      // (see the matcher), not within-chunk silence.
       execFileSync(BIN, ["align", wav, "--text", spanText, "-o", outFile, "--no-trim-silence"], {
         stdio: ["ignore", "ignore", "inherit"],
       });
@@ -111,6 +129,7 @@ function run(args: string[]): void {
       // skipped, not fatal — its words stay unaligned and get dropped in the
       // stitch. Logged so over-assignment is visible rather than silent.
       failed++;
+      alignFailed.add(chunk.index);
       console.error(`  ! chunk ${chunk.index} failed to align (${span.to - span.from + 1} words) — skipped`);
       continue;
     }
@@ -149,6 +168,28 @@ function run(args: string[]): void {
 
   writeFileSync(outPath, JSON.stringify({ words, lines }, null, 2));
   console.error(`wrote ${outPath}: ${words.length}/${pubWords.length} words, ${lines.length} lines`);
+
+  // Debug artifact: every chunk in source-time order with its Whisper transcript
+  // and the lyric span assigned to it (null for dropped/silence chunks). The
+  // chunk inspector renders this over the audio; silence gaps are the spaces
+  // between consecutive chunks.
+  if (debugPath) {
+    const debug = {
+      stem: stem.split("/").pop(),
+      sampleRate: index.sampleRate,
+      chunks: index.chunks.map((c) => ({
+        index: c.index,
+        startMs: c.startMs,
+        endMs: c.endMs,
+        kind: dropped.has(c.index) ? "dropped" : "lyric",
+        whisper: whisperByChunk.get(c.index) ?? "",
+        assigned: assignedByChunk.get(c.index) ?? null,
+        alignFailed: alignFailed.has(c.index),
+      })),
+    };
+    writeFileSync(debugPath, JSON.stringify(debug, null, 2));
+    console.error(`wrote ${debugPath}: ${debug.chunks.length} chunk(s) of debug`);
+  }
 }
 
 run(process.argv.slice(2));

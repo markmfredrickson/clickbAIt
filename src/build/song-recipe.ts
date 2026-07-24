@@ -130,12 +130,14 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
 
   // align: chunked forced alignment (chunk on silence → Whisper-match →
   // wav2vec2 per chunk → stitch), which handles repeated choruses far better
-  // than the single-shot binary `align`.
+  // than the single-shot binary `align`. Also emits a `.chunks.json` debug
+  // artifact (per-chunk Whisper + assigned lyrics) for the chunk inspector.
+  const chunksDebug = alignFile.replace(/\.align\.json$/, ".chunks.json");
   const align = canAlign
     ? {
-        command: `npx tsx ${rel}/src/authoring/chunk-align-cli.ts ${alignStem} --text ${lyricsTxt} -o ${alignFile}`,
+        command: `npx tsx ${rel}/src/authoring/chunk-align-cli.ts ${alignStem} --text ${lyricsTxt} -o ${alignFile} --debug ${chunksDebug}`,
         files: [alignStem, lyricsTxt],
-        output: [alignFile],
+        output: [alignFile, chunksDebug],
         dependencies: ["split", "lyrics-txt"],
       }
     : undefined;

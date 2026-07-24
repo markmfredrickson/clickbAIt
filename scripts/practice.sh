@@ -7,28 +7,68 @@
 #
 # Usage:
 #   scripts/practice.sh <song-dir> [<song-dir> ...]
+#   scripts/practice.sh -f <setlist-file> [<song-dir> ...]
 #
 # Example:
 #   scripts/practice.sh songs/aimee-mann songs/the-white-stripes
+#   scripts/practice.sh -f local/setlist.txt
+#
+# A setlist file is one song dir per line, in playing order. Blank lines and
+# text from '#' to end-of-line are ignored, so trailing "# Song Title" comments
+# are fine. Relative paths in the file resolve against the repo root.
 
 set -euo pipefail
-
-if [ $# -eq 0 ]; then
-  echo "Usage: $0 <song-dir> [<song-dir> ...]" >&2
-  echo "" >&2
-  echo "Opens the latest .rpp in each directory in REAPER and starts the" >&2
-  echo "teleprompter serving those same directories." >&2
-  exit 1
-fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Collect dirs, validate, and build teleprompter args in one pass
+usage() {
+  echo "Usage: $0 [-f <setlist-file>] [<song-dir> ...]" >&2
+  echo "" >&2
+  echo "Opens the latest .rpp in each directory in REAPER and starts the" >&2
+  echo "teleprompter serving those same directories." >&2
+  echo "-f reads song dirs from a setlist file (one per line, # comments ok)." >&2
+}
+
+# Collect raw dir arguments from -f files and positional args, in order.
+raw_dirs=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -f)
+      [ $# -ge 2 ] || { echo "Error: -f needs a file argument." >&2; usage; exit 1; }
+      file="$2"; shift 2
+      [ -f "$file" ] || { echo "Error: no such setlist file: $file" >&2; exit 1; }
+      # Strip '#' comments, then read non-blank lines as dirs.
+      while IFS= read -r line; do
+        line="${line%%#*}"
+        line="$(printf '%s' "$line" | xargs)"  # trim surrounding whitespace
+        [ -n "$line" ] && raw_dirs+=("$line")
+      done < "$file"
+      ;;
+    -h|--help)
+      usage; exit 0
+      ;;
+    *)
+      raw_dirs+=("$1"); shift
+      ;;
+  esac
+done
+
+if [ ${#raw_dirs[@]} -eq 0 ]; then
+  usage
+  exit 1
+fi
+
+# Validate dirs and build teleprompter args in one pass. Relative paths resolve
+# against the repo root so a setlist works regardless of the current directory.
 tp_args=()
 valid_dirs=()
-for dir in "$@"; do
-  abs="$(cd "$dir" 2>/dev/null && pwd)" || { echo "Skip (not a directory): $dir" >&2; continue; }
+for dir in "${raw_dirs[@]}"; do
+  case "$dir" in
+    /*) cand="$dir" ;;
+    *)  cand="$REPO_ROOT/$dir" ;;
+  esac
+  abs="$(cd "$cand" 2>/dev/null && pwd)" || { echo "Skip (not a directory): $dir" >&2; continue; }
   valid_dirs+=("$abs")
   tp_args+=(--songs-dir "$abs")
 done

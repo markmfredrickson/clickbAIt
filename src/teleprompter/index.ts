@@ -7,7 +7,7 @@
 
 import { networkInterfaces } from "node:os";
 import { readdirSync } from "node:fs";
-import { startRelay } from "./relay.js";
+import { startRelay, songSlugsFromFiles } from "./relay.js";
 import { buildClient } from "./build-client.js";
 import { exportSongPayload } from "./export.js";
 import type { Song } from "../core/dsongl/index.js";
@@ -78,9 +78,7 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
     const seen = new Set<string>();
     for (const dir of songsDirs) {
       try {
-        for (const f of readdirSync(dir)) {
-          if (f.endsWith(".json")) seen.add(f.replace(".json", ""));
-        }
+        for (const slug of songSlugsFromFiles(readdirSync(dir))) seen.add(slug);
       } catch { /* dir doesn't exist yet */ }
     }
     console.log(`  Songs available (${seen.size}):`);

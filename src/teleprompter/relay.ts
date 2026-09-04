@@ -148,6 +148,24 @@ function isLyricsDisplay(song: LoadedSong): song is LyricsDisplay {
   return "schema" in song && song.schema === "clickbait/lyrics-display@1";
 }
 
+/** The one file a song folder offers the client, as a suffix. */
+const DISPLAY_SUFFIX = ".lyrics-display.json";
+
+/**
+ * Song slugs to offer for a directory listing.
+ *
+ * Allowlist, not a blocklist: a song folder is mostly derived sidecars
+ * (`*.song.json`, `*.lookup.json`, `*.beats.json`, `*.beatmap.json`,
+ * `package.json`), so listing every `.json` advertised them as playable and
+ * they then failed the schema check on load. Only the built display file is a
+ * song. Shared with the startup banner so the two can't drift apart.
+ */
+export function songSlugsFromFiles(files: readonly string[]): string[] {
+  return files
+    .filter((f) => f.endsWith(DISPLAY_SUFFIX))
+    .map((f) => f.slice(0, -DISPLAY_SUFFIX.length));
+}
+
 /**
  * Parse REAPER's `/beat/str` ("measure.beat.hundredths", PROJOFFS-aware so the
  * downbeat is measure 1 and the count-in is negative measures) into a
@@ -374,10 +392,7 @@ export function startRelay(opts: RelayOptions) {
       const seen = new Set<string>();
       for (const dir of songsDirs) {
         try {
-          const files = await readdir(dir);
-          for (const f of files) {
-            if (f.endsWith(".json")) seen.add(f.replace(".json", ""));
-          }
+          for (const slug of songSlugsFromFiles(await readdir(dir))) seen.add(slug);
         } catch { /* dir missing — skip */ }
       }
       res.writeHead(200, { "Content-Type": "application/json" });

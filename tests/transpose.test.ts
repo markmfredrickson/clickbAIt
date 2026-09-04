@@ -115,8 +115,12 @@ describe("stemPlayback", () => {
     expect(stemPlayback("other", -5)).toEqual({ pitch: -5, mode: SHIFTER_MODES.pro });
   });
 
-  it("drums stay unshifted by default even when the song transposes", () => {
-    expect(stemPlayback("drums", -5)).toEqual({ pitch: 0, mode: -1 });
+  it("drums follow the song shift by default (out-of-key stem bleed beats transient smear)", () => {
+    expect(stemPlayback("drums", -5)).toEqual({ pitch: -5, mode: SHIFTER_MODES.pro });
+  });
+
+  it("per-stem override can pin drums to 0 when the stem is clean", () => {
+    expect(stemPlayback("drums", { steps: -5, stems: { drums: 0 } })).toEqual({ pitch: 0, mode: -1 });
   });
 
   it("a zero-step spec leaves every stem untouched", () => {
@@ -136,10 +140,6 @@ describe("stemPlayback", () => {
     expect(stemPlayback("vocals", spec)).toEqual({ pitch: -5, mode: SHIFTER_MODES.soloist });
   });
 
-  it("per-stem override can shift drums (out-of-key bleed case)", () => {
-    const spec = { steps: -5, stems: { drums: -5 } };
-    expect(stemPlayback("drums", spec)).toEqual({ pitch: -5, mode: SHIFTER_MODES.pro });
-  });
 
   it("per-stem override to 0 silences the shift for that stem", () => {
     const spec = { steps: -5, stems: { other: 0 } };
@@ -264,8 +264,8 @@ describe("manifestToSong transpose plumbing", () => {
     expect(byName.get("vocals").pitchMode).toBe(SHIFTER_MODES.soloist);
     expect(byName.get("bass").pitch).toBe(-5);
     expect(byName.get("bass").pitchMode).toBe(SHIFTER_MODES.pro);
-    expect(byName.get("drums").pitch).toBeUndefined();
-    expect(byName.get("drums").pitchMode).toBeUndefined();
+    expect(byName.get("drums").pitch).toBe(-5);
+    expect(byName.get("drums").pitchMode).toBe(SHIFTER_MODES.pro);
   });
 
   it("leaves audio nodes untouched without a transpose", () => {

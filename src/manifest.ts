@@ -232,8 +232,8 @@ const Section = z
  * with either explicit `steps` or a `from`/`to` key pair (steps inferred —
  * shortest distance, tritone resolves down; the pair also documents the keys
  * for later chart uses). `stems` overrides the semitones per stem (bass up a
- * fifth instead of down a fourth; drums default to 0 — override to shift them
- * when out-of-key bleed is audible). `shifters` overrides the pitch-shift
+ * fifth instead of down a fourth; `drums: 0` pins a clean drum stem back to
+ * unshifted). `shifters` overrides the pitch-shift
  * engine per stem, by name (see SHIFTER_MODES in build/transpose.ts) or raw
  * REAPER pitchmode int. Lyric/beat timing is untouched — pitch-only.
  */

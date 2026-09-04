@@ -11,8 +11,10 @@
  * Defaults (from the Creep G→D shifter A/B, 2026-09-04, judged in the mix):
  * vocal stems → élastique Soloist Monophonic (best voice quality; known octave
  * flips on falsetto/harmonies — override to "pro-formants" when they bite);
- * drums → unshifted (mostly unpitched, shifting smears transients; override
- * when out-of-key bleed is audible); other pitched stems → élastique Pro.
+ * everything else, DRUMS INCLUDED, → élastique Pro. Drums shift with the song
+ * because demucs drum stems carry pitched bleed, and bleed a fourth off-key is
+ * worse than the transient smear from shifting; pin a clean drum stem back to
+ * 0 with `stems: { drums: 0 }`.
  */
 
 /** Named shifters → REAPER item pitchmode ints ((mode << 16) | submode). */
@@ -92,11 +94,6 @@ function isVocalStem(stem: string): boolean {
   return /vocal|vox/i.test(stem);
 }
 
-/** Whether a stem name means drums/percussion. */
-function isDrumStem(stem: string): boolean {
-  return /drum|perc/i.test(stem);
-}
-
 /** Resolve a shifter override (name or raw pitchmode int) to an int. */
 function shifterMode(v: string | number): number {
   if (typeof v === "number") return v;
@@ -119,8 +116,7 @@ export function stemPlayback(
   if (spec === undefined) return { pitch: 0, mode: PROJECT_DEFAULT };
   const songSteps = transposeSteps(spec);
   const overrides = typeof spec === "number" ? undefined : spec.stems;
-  const defaultSteps = isDrumStem(stem) ? 0 : songSteps;
-  const pitch = overrides?.[stem] ?? defaultSteps;
+  const pitch = overrides?.[stem] ?? songSteps;
   if (pitch === 0) return { pitch: 0, mode: PROJECT_DEFAULT };
 
   const shifters = typeof spec === "number" ? undefined : spec.shifters;

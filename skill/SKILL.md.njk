@@ -70,7 +70,7 @@ npm run analyze
 - **lookup** — Deezer (BPM), Genius (lyrics with section markers), MusicBrainz → `<slug>.lookup.json` (line-oriented text despite the name, lyrics between `---lyrics-raw---` sentinels).
 - **lyrics-txt** — flat lyric text for the aligner (file-to-file, so lyrics don't pass through you).
 - **beats** — single drum-stem detection (energy) → `source.m4a.beats.json`.
-- **align** — chunked forced alignment of the lyrics onto the vocal stem (can't hallucinate; maps the supplied text). `transcribe` (Whisper) is the fallback when no lyrics can be fetched.
+- **align** — forced alignment of the lyrics onto the vocal stem (can't hallucinate; maps the supplied text). `transcribe` (Whisper) is the fallback when no lyrics can be fetched.
 
 Sidecars are human-editable — fix a wrong lyric or beat in the JSON and the next step uses your correction.
 
@@ -120,7 +120,7 @@ Runs **smooth** (de-warble the beats → beatmap) then **build/generate**: spoke
 - **`lookup`** — Deezer/Genius/MusicBrainz → `<slug>.lookup.json`. Network task with no file inputs, so it re-runs when invoked; kept **out of the build chain** so a rebuild never re-hits the network.
 - **`lyrics-txt`** — `<slug>.lookup.json` → `<slug>.lyrics.txt`.
 - **`beats`** — detect from the drum stem: `clickbait-audio beats stems/source_drums.wav --min-bpm <lo> --max-bpm <hi> [--start <s>] [--until <s>] > source.m4a.beats.json`. `--start`/`--until` (source seconds) crop a loose/rubato intro or a slowing outro. Window is `--bpm` ±10% (or a wide default). **Standalone — not a build dep**, so a tuned detection is never re-run by accident. (For drum-*silent* passages, detect two-pass + `beats:unify` by hand instead.)
-- **`align`** — chunked forced alignment → `stems/source_vocals.align.json`.
+- **`align`** — single-shot `clickbait-audio align` → `stems/source_vocals.align.json`. KV/multitrack songs have no demucs vocal stem, so they get no `align` task; their alignment is produced by `npm run realign-all` (desilence) from the `lead vocal` track instead.
 
 **`init-manifest`** — the one-shot first-cut manifest from the analysis sidecars. **Standalone, never a build dep**, and guarded against clobbering your authored sections.
 

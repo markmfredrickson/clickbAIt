@@ -248,12 +248,14 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !ex
   const maxBpm = Math.round(manifest.bpm * 1.1);
   // Forced alignment is a build output: derive the vocal stem from the manifest's
   // alignment.file (`<stem>.align.json` → `<stem>.wav`) and align the authored
-  // `<slug>.lyrics.txt` against it. Default is the CHUNKED aligner (chunk on
-  // silence → Whisper-match → wav2vec2 per chunk → stitch), which handles repeated
-  // choruses far better than the single-shot binary `align`. Only emit the task
-  // when the manifest declares an alignment AND the standard inputs exist; a KV
-  // multitrack or a missing lyrics text falls back to a tracked align.json (author
-  // wires it by hand). Dense-vocal songs may need chunk-param tuning appended here.
+  // `<slug>.lyrics.txt` against it. The emitted task is the single-shot binary
+  // `align` (see song-recipe.ts); the desilence-concatenate aligner is currently
+  // run out-of-band by `npm run realign-all`, not wired per-song here.
+  //
+  // Only emit the task when the manifest declares an alignment AND the standard
+  // inputs exist. A KV multitrack has no demucs vocal stem, so no task is
+  // emitted — that song's align.json is still GENERATED, just by realign-all,
+  // which finds the `lead vocal` audio beside the manifest's alignment.file.
   const alignFile = manifest.lyrics?.alignment?.file;
   const alignStem = alignFile?.replace(/\.align\.json$/, ".wav");
   const lyricsTxt = `${slug}.lyrics.txt`;

@@ -36,9 +36,15 @@ export interface SongRecipeOpts {
   /** The recording file the manifest references — always "source.m4a". */
   recFile?: string;
   /**
-   * Whether to wire forced alignment. True for the normal ground-up flow (a
-   * vocal stem + a lyrics text). False for KV/multitrack songs with no vocal
-   * stem — the author supplies a tracked align.json by hand.
+   * Whether to wire an `align` TASK into this recipe. True for the normal
+   * ground-up flow (a demucs `stems/source_vocals.wav` + a lyrics text).
+   *
+   * False for KV/multitrack songs. Those still HAVE vocals — a `lead vocal`
+   * track in `sources.stems.files` — they just have no demucs split for the
+   * task to point at. Their alignment is produced out-of-band by
+   * `npm run realign-all`, which locates the vocal audio beside the manifest's
+   * `lyrics.alignment.file` and runs desilence-align on it. So the align.json
+   * is generated either way; only the producing task differs.
    */
   canAlign?: boolean;
   /** Vocal stem to align (default the 4-stem convention). */

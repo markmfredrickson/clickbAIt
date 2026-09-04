@@ -74,6 +74,8 @@ export interface Audio {
   sourceEnd?: number; // optional source end in seconds (file-absolute); caps item length to sourceEnd - soffs
   beatsFile?: string; // path to .beats.json sidecar for stretch marker generation
   smStride?: number;  // emit a stretch marker every Nth beat (default 1); use 4 in 4/4 to pin only downbeats
+  pitch?: number;     // playback pitch shift in semitones (transpose); default 0
+  pitchMode?: number; // REAPER pitch shifter mode int ((mode<<16)|submode); default -1 (project default)
 }
 
 /** Any node in the tree. */

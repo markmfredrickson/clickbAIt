@@ -21,6 +21,10 @@ export interface LinearEvent {
   tone?: string[];
   /** For a pitch cue: how many bars the tone is held. */
   toneBars?: number;
+  /** For audio events: playback pitch shift in semitones (transpose) */
+  pitch?: number;
+  /** For audio events: REAPER pitch shifter mode int; -1 = project default */
+  pitchMode?: number;
 }
 
 interface Context {
@@ -88,6 +92,8 @@ function walk(node: Node, ctx: Context, out: LinearEvent[]): void {
         sourceEnd: node.sourceEnd,
         beatsFile: node.beatsFile,
         smStride: node.smStride,
+        pitch: node.pitch,
+        pitchMode: node.pitchMode,
       });
       break;
     }

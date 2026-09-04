@@ -21,6 +21,7 @@ import type { SongManifest } from "../manifest.js";
 import { sectionStarts } from "../manifest.js";
 import { beatMapToBeats, beatMapCurve } from "../core/beat-map.js";
 import { Curve } from "../core/curve.js";
+import { stemPlayback, transposeSteps, transposeNote } from "./transpose.js";
 
 /** Stable, slug-safe id for a pitch cue's synthesized WAV, from its notes.
  *  e.g. ["F#3","A#3","C#4"] → "tone-f-3-a-3-c-4". Idempotent under the cue-file
@@ -46,6 +47,14 @@ export function manifestToSong(
   manifest: SongManifest,
   manifestDir: string,
 ): Song {
+  // Transpose: song-level steps move the prep tones; per-stem pitch + shifter
+  // land on the audio nodes below. Authored tone notes stay in the ORIGINAL
+  // key in the manifest — they transpose here, so the slug (and thus the
+  // synthesized WAV) follows the sounding pitch.
+  const songSteps = manifest.transpose !== undefined ? transposeSteps(manifest.transpose) : 0;
+  const transposeTone = (notes: string[]) =>
+    songSteps === 0 ? notes : notes.map((n) => transposeNote(n, songSteps));
+
   // Sections -> spans. Structure only (name, duration, cue, meter override);
   // lyrics stay out of the tree — build-lyrics measures their timing.
   const spans: Node[] = manifest.sections.map((s) => {
@@ -56,11 +65,11 @@ export function manifestToSong(
     // Manual cues become cue() events at section-relative beats. A pitch cue
     // (`tone`) carries its notes + duration; its `value` is a stable slug for the
     // synthesized WAV. A spoken cue keeps its label.
-    const marks: Node[] = (s.cues ?? []).map((m) =>
-      m.tone
-        ? { ...cue(toneSlug(m.tone), m.at), tone: m.tone, toneBars: m.bars ?? 1 }
-        : cue(m.label!, m.at),
-    );
+    const marks: Node[] = (s.cues ?? []).map((m) => {
+      if (!m.tone) return cue(m.label!, m.at);
+      const notes = transposeTone(m.tone);
+      return { ...cue(toneSlug(notes), m.at), tone: notes, toneBars: m.bars ?? 1 };
+    });
     return marks.length > 0 ? span(s.name, bars(s.bars), opts, marks) : span(s.name, bars(s.bars), opts);
   });
 
@@ -73,6 +82,12 @@ export function manifestToSong(
   const beatMap = manifest.sources.recording.beatMap;
   const { offset } = beatMapToBeats(beatMap, manifest.bpm);
   const audios: Node[] = [];
+  // Per-stem transpose (semitones + REAPER shifter mode). Zero-shift stems get
+  // no fields at all, so an untransposed build stays byte-identical.
+  const pitchOpts = (stemKey: string) => {
+    const { pitch, mode } = stemPlayback(stemKey, manifest.transpose);
+    return pitch !== 0 ? { pitch, pitchMode: mode } : {};
+  };
   if (stems) {
     const files = Object.entries(stems.files);
     if (stems.clips && stems.clips.length > 0) {
@@ -97,6 +112,7 @@ export function manifestToSong(
               offset: cursorBeat,
               soffs: clip.from,
               sourceEnd: to,
+              ...pitchOpts(key),
             }),
           );
         }
@@ -117,6 +133,7 @@ export function manifestToSong(
             offset,
             ...(stems.soffs !== undefined ? { soffs: stems.soffs } : {}),
             ...(stems.sourceEnd !== undefined ? { sourceEnd: stems.sourceEnd } : {}),
+            ...pitchOpts(key),
           }),
         );
       }

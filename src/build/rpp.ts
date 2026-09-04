@@ -840,7 +840,10 @@ function buildAudioFileItems(
     if (groupId !== undefined) lines.push(`      GROUP ${groupId}`);
     lines.push(`      VOLPAN 1 0 1 -1`);
     lines.push(`      SOFFS ${fmtPos(soffs)}`);
-    lines.push(`      PLAYRATE 1 1 0 -1 0 0.0025`);
+    // Transpose: pitch in semitones + explicit shifter mode ((mode<<16)|submode).
+    // Untransposed stems keep `0 -1` (project-default shifter), byte-identical
+    // to pre-transpose builds.
+    lines.push(`      PLAYRATE 1 1 ${fmt(e.pitch ?? 0)} ${e.pitchMode ?? -1} 0 0.0025`);
     lines.push(`      CHANMODE 0`);
     lines.push(`      GUID ${newGuid()}`);
     for (const sm of smLines) {

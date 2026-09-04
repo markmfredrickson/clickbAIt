@@ -66,6 +66,8 @@ interface AudioOptions {
   sourceEnd?: number;
   beatsFile?: string;
   smStride?: number;
+  pitch?: number;
+  pitchMode?: number;
 }
 
 export function audio(name: string, file: string, opts?: AudioOptions): Audio {
@@ -78,6 +80,8 @@ export function audio(name: string, file: string, opts?: AudioOptions): Audio {
     ...opts?.sourceEnd !== undefined && { sourceEnd: opts.sourceEnd },
     ...opts?.beatsFile !== undefined && { beatsFile: opts.beatsFile },
     ...opts?.smStride !== undefined && { smStride: opts.smStride },
+    ...opts?.pitch !== undefined && { pitch: opts.pitch },
+    ...opts?.pitchMode !== undefined && { pitchMode: opts.pitchMode },
   };
 }
 

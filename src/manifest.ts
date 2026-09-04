@@ -227,6 +227,32 @@ const Section = z
   })
   .strict();
 
+/**
+ * Transposition for the whole show track: bare semitones, or a spec object
+ * with either explicit `steps` or a `from`/`to` key pair (steps inferred —
+ * shortest distance, tritone resolves down; the pair also documents the keys
+ * for later chart uses). `stems` overrides the semitones per stem (bass up a
+ * fifth instead of down a fourth; drums default to 0 — override to shift them
+ * when out-of-key bleed is audible). `shifters` overrides the pitch-shift
+ * engine per stem, by name (see SHIFTER_MODES in build/transpose.ts) or raw
+ * REAPER pitchmode int. Lyric/beat timing is untouched — pitch-only.
+ */
+const TransposeSpec = z.union([
+  z.number().int(),
+  z
+    .object({
+      steps: z.number().int().optional(),
+      from: z.string().min(1).optional(),
+      to: z.string().min(1).optional(),
+      stems: z.record(z.string(), z.number().int()).optional(),
+      shifters: z.record(z.string(), z.union([z.string().min(1), z.number().int()])).optional(),
+    })
+    .strict()
+    .refine((t) => (t.steps !== undefined) !== (t.from !== undefined && t.to !== undefined), {
+      message: "transpose needs exactly one of `steps` or a full `from`/`to` key pair",
+    }),
+]);
+
 export const SongManifestSchema = z
   .object({
     schema: z.literal("clickbait/song@1"),
@@ -235,6 +261,7 @@ export const SongManifestSchema = z
     key: z.string().optional(),
     bpm: z.number().positive(),
     timeSignature: TimeSignature,
+    transpose: TransposeSpec.optional(),
 
     /**
      * Whole bars of count-in/cue lead-in before the song's downbeat. The

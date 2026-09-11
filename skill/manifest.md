@@ -143,6 +143,64 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
         }
       ]
     },
+    "transpose": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "object",
+          "properties": {
+            "steps": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "from": {
+              "type": "string",
+              "minLength": 1
+            },
+            "to": {
+              "type": "string",
+              "minLength": 1
+            },
+            "stems": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "shifters": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "preRollBars": {
       "default": 0,
       "type": "integer",

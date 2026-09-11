@@ -137,6 +137,54 @@ pub fn spectral_flux_activation(samples: &[f32], sample_rate: u32, fps: f64) -> 
     activation
 }
 
+/// Kick-weighted energy activation.
+///
+/// A drummer's downbeat lattice is kick+hat, which carries LESS broadband
+/// energy than snare+hat — plain energy activation can prefer the offbeat
+/// eighths (open hats, accented "ands") and let the DBN lock or slip half a
+/// beat off the drummer's "1" (see last-nite). The kick, though, lives almost
+/// alone below ~120 Hz. Blending a low-band energy envelope into the full-band
+/// one re-weights the lattice toward beats a drummer would count.
+///
+/// `kick_weight` scales the low band relative to full band (1.0 = equal after
+/// each is normalized).
+pub fn kick_energy_activation(
+    samples: &[f32],
+    sample_rate: u32,
+    fps: f64,
+    kick_weight: f64,
+) -> Vec<f64> {
+    let full = energy_activation(samples, sample_rate, fps);
+
+    // Two cascaded one-pole low-passes at ~120 Hz (≈ -12 dB/oct above cutoff):
+    // crude but plenty to separate kick fundamentals from snare/hat energy.
+    let cutoff_hz = 120.0;
+    let dt = 1.0 / sample_rate as f64;
+    let rc = 1.0 / (2.0 * PI * cutoff_hz);
+    let alpha = dt / (rc + dt);
+    let mut y1 = 0.0_f64;
+    let mut y2 = 0.0_f64;
+    let low: Vec<f32> = samples
+        .iter()
+        .map(|&s| {
+            y1 += alpha * (s as f64 - y1);
+            y2 += alpha * (y1 - y2);
+            y2 as f32
+        })
+        .collect();
+    let low_act = energy_activation(&low, sample_rate, fps);
+
+    let n = full.len().min(low_act.len());
+    let mut act: Vec<f64> = (0..n).map(|i| full[i] + kick_weight * low_act[i]).collect();
+    let max_val = act.iter().cloned().fold(0.0_f64, f64::max);
+    if max_val > 0.0 {
+        for v in &mut act {
+            *v /= max_val;
+        }
+    }
+    act
+}
+
 fn hann_window(size: usize) -> Vec<f64> {
     (0..size)
         .map(|i| 0.5 * (1.0 - (2.0 * PI * i as f64 / size as f64).cos()))
@@ -269,6 +317,75 @@ mod tests {
         assert!(
             (result.bpm - 120.0).abs() < 5.0,
             "expected ~120 BPM, got {:.1}", result.bpm
+        );
+    }
+
+    /// Kick+hat on the beats (quiet), snare-ish accents on the "ands" (loud):
+    /// plain energy activation prefers the ands; kick-weighted must prefer the
+    /// beats. This is the last-nite failure mode in miniature.
+    #[test]
+    fn kick_activation_prefers_downbeat_lattice() {
+        let sr = 44100u32;
+        let fps = 100.0;
+        let bpm = 104.0;
+        let n = (8.0 * sr as f64) as usize;
+        let beat = 60.0 / bpm * sr as f64;
+        let mut signal = vec![0.0f32; n];
+
+        // 60 Hz kick thump + soft hat tick on every beat; loud broadband burst
+        // (snare/open-hat stand-in) on every "and".
+        let put_tone = |sig: &mut Vec<f32>, start: usize, freq: f64, amp: f32, len_s: f64| {
+            let len = (len_s * sr as f64) as usize;
+            for j in 0..len {
+                let idx = start + j;
+                if idx < n {
+                    let env = (-6.0 * j as f64 / len as f64).exp() as f32;
+                    sig[idx] += amp * env * (2.0 * PI * freq * j as f64 / sr as f64).sin() as f32;
+                }
+            }
+        };
+        let mut pos = 0.0f64;
+        while (pos as usize) < n {
+            let b = pos as usize;
+            put_tone(&mut signal, b, 60.0, 0.5, 0.06); // kick
+            put_tone(&mut signal, b, 6000.0, 0.15, 0.02); // hat
+            let and = (pos + beat / 2.0) as usize;
+            if and < n {
+                put_tone(&mut signal, and, 6000.0, 0.6, 0.03); // accented and
+                put_tone(&mut signal, and, 900.0, 0.5, 0.03);
+            }
+            pos += beat;
+        }
+
+        let score = |act: &[f64]| {
+            // energy of activation sampled at beats vs at ands
+            let mut on = 0.0;
+            let mut off = 0.0;
+            let mut p = 0.0f64;
+            while p < 8.0 * sr as f64 {
+                let fb = (p / sr as f64 * fps) as usize;
+                let fa = ((p + beat / 2.0) / sr as f64 * fps) as usize;
+                for d in 0..3usize {
+                    if fb + d < act.len() {
+                        on = f64::max(on + 0.0, on.max(0.0));
+                        on += act[fb + d];
+                    }
+                    if fa + d < act.len() {
+                        off += act[fa + d];
+                    }
+                }
+                p += beat;
+            }
+            (on, off)
+        };
+
+        let kick = kick_energy_activation(&signal, sr, fps, 1.0);
+        let (on_k, off_k) = score(&kick);
+        assert!(
+            on_k > off_k,
+            "kick-weighted activation must peak on the beat lattice (on {:.2} vs off {:.2})",
+            on_k,
+            off_k
         );
     }
 

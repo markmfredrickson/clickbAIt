@@ -30,6 +30,55 @@ Compare the detected BPM (both passes) with online lookups. Agreement = high con
 
 There is no separate "pre-roll silence" field: silence before the first note is naturally encoded in the `beatMap` times (beat 0's source second is wherever the downbeat is), and stems trim it via `soffs`. `preRollBars` is a musical count-in, not a silence trim. The `analyze` command still exists for a rough onset/BPM cross-check, but the two-pass beats detection is the source of the grid.
 
+## Phase: is the click on the right hits?
+
+"Phase" in the QC output is a music problem wearing a math word. The beat
+tracker has two separate jobs: find the spacing of the beats (the tempo), and
+decide **which hits are the beats**. Phase is the second job. A grid with
+perfect spacing can still be wrong the way a listener clapping on the wrong
+half of the groove is wrong — every clap lands on a real hit, and every clap
+is wrong.
+
+What a phase error sounds and looks like:
+
+- **Half a beat off (the common one).** The click sits on the "ands" — the
+  off-beat eighths — instead of the beats. In REAPER the drums sound behind
+  (or ahead of) the click by the same amount everywhere, and in busy sections
+  the stretch markers still touch waveforms (there's a hat on every eighth),
+  so it *looks* aligned while feeling wrong. In sparse sections the markers
+  sit on air. Trust the feel and the sparse sections.
+- **A mid-song slip.** The tracker can also *change* its answer at a fill or
+  a section change: it can't skip a beat, so it "pays" for the switch by
+  faking a short tempo surge — a run of stretch markers around 0.9x/1.1x is
+  the fingerprint (the build refuses to proceed past ~8%). Before the slip
+  the click is right; after it, everything is half a beat off.
+
+Why detection gets this wrong: the tracker follows energy, and a drummer's
+"1" is often the *quiet* option — kick + closed hat — while the snare and
+open-hat accents (and a bass player pushing ahead of the beat, bleeding into
+the drum stem) put more energy on the 2s, 4s, and "ands". The machine picks
+the loud lattice; the musician counts the quiet one.
+
+What to do about it:
+
+- **The ear is the referee.** No onset statistic can settle which eighth is
+  "1" in a straight-eighths song — both candidates sit on real hits. When the
+  build prints the phase-ambiguity warning, play the click against the song
+  and check that beat 1 of the click lands with the kick.
+- **Fix phase by nudging, not re-detecting.** A wrong-but-consistent grid is
+  one flip away from right. For 16th-heavy or syncopated drum parts, detect
+  at **double the BPM window** so the tracker follows the eighth grid (dense
+  evidence — it can't slip), then fold down and pick the side:
+  ```bash
+  clickbait-audio beats stems/source_drums.wav --min-bpm 190 --max-bpm 225 --start <drum entry> > detected.beats.json
+  npx tsx src/authoring/fold-beats-cli.ts detected.beats.json --phase 1 > folded.beats.json
+  ```
+  `--phase 0|1` chooses which alternate eighths are the beats. If the click
+  comes out on the "ands", flip the phase and rebuild — that's the whole fix.
+- A mid-song slip means the quarter-note tracker guessed twice; the
+  double-tempo detect + fold above makes the slip impossible rather than
+  patching it.
+
 ## Working with pre-existing stems
 
 When the user already has stems (from Karaoke Version, etc.), they may be tempo-warped. KV stems are often recorded at constant BPM then warped to match the original feel.

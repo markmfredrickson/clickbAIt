@@ -328,6 +328,22 @@ if (qcFlags.length === 0) {
   if (minor) console.error(`  (${minor} minor 5–10% segment(s) not shown)`);
 }
 
+// Critical gate: a stretch this large is a grid DEFECT (a tracker slip, a
+// mis-pinned beat), not a performance nuance — a show track built on it would
+// audibly warp. Refuse to hand it over. Raise the ceiling explicitly with
+// CLICKBAIT_MAX_STRETCH (fraction, e.g. 0.12) only for a song whose recording
+// genuinely moves that hard.
+const maxStretch = Number(process.env.CLICKBAIT_MAX_STRETCH ?? 0.08);
+const critical = qcFlags.filter((f) => Math.abs(f.relChange) >= maxStretch);
+if (critical.length > 0) {
+  for (const f of critical) console.error(`  ✗ CRITICAL bar ${f.bar} (${f.time.toFixed(1)}s)  ${pct(f.relChange)} stretch`);
+  console.error(
+    `timekeeping QC: ${critical.length} segment(s) ≥ ${(maxStretch * 100).toFixed(0)}% — grid defect; refusing. ` +
+      `Fix the beat grid (or set CLICKBAIT_MAX_STRETCH higher for a recording that truly moves this much).`,
+  );
+  process.exit(1);
+}
+
 // Phase-ambiguity QC (guiding principle: raise a red flag when the DBN and the raw
 // onsets disagree on phase — a human ear settles it). The DBN beat-tracker locks
 // phase by onset STRENGTH, so a soft true downbeat next to a louder offbeat can

@@ -53,6 +53,16 @@ enum Commands {
         /// free outro / ring-out past the click region. Default: to the end of the file.
         #[arg(long)]
         until: Option<f64>,
+        /// Tempo-change penalty (madmom transition_lambda). Higher = stiffer tempo:
+        /// resists brief fake rushes that let the tracker slip onto offbeat eighths
+        /// at a fill; lower = follows tempo changes more eagerly.
+        #[arg(long, default_value_t = 100.0)]
+        transition_lambda: f64,
+        /// Low-band (<~120 Hz, kick) weight for --activation kick: re-weights the
+        /// lattice toward kick+hat beats when snare/hat accents on the "ands"
+        /// would otherwise win.
+        #[arg(long, default_value_t = 1.0)]
+        kick_weight: f64,
     },
     /// Transcribe lyrics with word-level timestamps
     Transcribe {
@@ -154,7 +164,7 @@ fn main() -> Result<()> {
         },
         Commands::Setup => setup::run(),
         Commands::Analyze { file } => analyze::run(&file),
-        Commands::Beats { file, activation: act_fn, min_bpm, max_bpm, start, until } => {
+        Commands::Beats { file, activation: act_fn, min_bpm, max_bpm, start, until, transition_lambda, kick_weight } => {
             eprintln!("Decoding {}...", file);
             let (samples, sample_rate) = analyze::decode_audio(&file)?;
             let duration = samples.len() as f64 / sample_rate as f64;
@@ -164,8 +174,9 @@ fn main() -> Result<()> {
             eprintln!("Computing {} activation...", act_fn);
             let mut act = match act_fn.as_str() {
                 "energy" => activation::energy_activation(&samples, sample_rate, fps),
+                "kick" => activation::kick_energy_activation(&samples, sample_rate, fps, kick_weight),
                 "spectral-flux" => activation::spectral_flux_activation(&samples, sample_rate, fps),
-                other => anyhow::bail!("Unknown activation function: {other}. Use 'energy' or 'spectral-flux'."),
+                other => anyhow::bail!("Unknown activation function: {other}. Use 'energy', 'kick', or 'spectral-flux'."),
             };
             // Crop the activation to the click region [start, until) before tracking.
             // A loose/rubato intro or a free/slowing outro (ring-out) otherwise pulls a
@@ -185,6 +196,7 @@ fn main() -> Result<()> {
                 min_bpm,
                 max_bpm,
                 fps,
+                transition_lambda,
                 ..Default::default()
             };
 

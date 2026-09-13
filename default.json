@@ -24,8 +24,8 @@
   },
 
   "drums": [
-    { "name": "X32 AUX 01/02 (Drums Mix)", "channel": [21, 22] },
-    { "name": "X32 AUX 03 (Kick Drum)",    "channel": 23 },
-    { "name": "X32 AUX 04 (Snare Drum)",   "channel": 24 }
+    { "name": "X32 AUX 01/02 (Drums Mix)", "channel": [25, 26] },
+    { "name": "X32 AUX 03 (Kick Drum)",    "channel": 27 },
+    { "name": "X32 AUX 04 (Snare Drum)",   "channel": 28 }
   ]
 }

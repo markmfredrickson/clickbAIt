@@ -313,12 +313,14 @@ for (let k = 1; k < markerBeats.length; k++) {
     qcFlags.push({ time: markerBeats[k - 1].time, bar: Math.floor(markerBeats[k - 1].sb / 4) + 1, relChange: rel });
   }
 }
+/** Signed percent, e.g. "+11%". Used by both the QC report and the gate below. */
+const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(0)}%`;
+
 if (qcFlags.length === 0) {
   console.error(`timekeeping QC: clean (0 stretch segments > 5%)`);
 } else {
   // Two tiers: >5% is routine looseness (counted); >=10% is a painful, likely-
-  // audible glitch — surface EVERY one of those (worst-first), never bury them.
-  const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(0)}%`;
+  // audible glitch — report EVERY one of those (worst-first), never bury them.
   const big = qcFlags
     .filter((f) => Math.abs(f.relChange) >= 0.1)
     .sort((a, b) => Math.abs(b.relChange) - Math.abs(a.relChange));

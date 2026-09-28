@@ -143,6 +143,26 @@ describe("SongManifestSchema", () => {
     expect(() => SongManifestSchema.parse(m)).toThrow(/curveRef/i);
   });
 
+  // -- Practice bundle variants: `bundle.variants` names stems to mute --------
+  it("accepts a bundle.variants block whose mute keys name stems", () => {
+    const m = validManifest() as any;
+    m.bundle = { variants: [{ id: "minus-rhythm", label: "No drums or bass", mute: ["drums", "bass"] }] };
+    const parsed = SongManifestSchema.parse(m);
+    expect(parsed.bundle?.variants?.[0].mute).toEqual(["drums", "bass"]);
+  });
+
+  it("rejects a bundle variant that mutes a key no stem has", () => {
+    const m = validManifest() as any;
+    m.bundle = { variants: [{ id: "x", mute: ["keys"] }] };
+    expect(() => SongManifestSchema.parse(m)).toThrow(/keys/);
+  });
+
+  it("rejects a bundle block with unknown fields", () => {
+    const m = validManifest() as any;
+    m.bundle = { variants: [], bitrate: 96 };
+    expect(() => SongManifestSchema.parse(m)).toThrow();
+  });
+
   it("accepts a valid curveRef", () => {
     const m = validManifest() as any;
     m.sources.stems.curveRef = "recording";

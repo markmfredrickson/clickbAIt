@@ -170,6 +170,20 @@ import { activeIndex } from "../highlight.js";
   function setupBundleControls(audio) {
     if (!bundleControls) return;
     bundleControls.hidden = false;
+
+    // Mix variant (full / minus-<part> / click only): the bundle inlines one
+    // <option> per rendered file. Every variant is the same render length, so
+    // section loops carry over; playback restarts from the top on a switch.
+    var variantSel = document.getElementById("mix-variant");
+    if (variantSel) {
+      variantSel.addEventListener("change", function () {
+        var wasPlaying = !audio.paused;
+        audio.src = variantSel.value;
+        audio.load();
+        audio.currentTime = 0;
+        if (wasPlaying) audio.play().catch(function () {});
+      });
+    }
     var sections = (isLD && song.display && song.display.sections) || [];
 
     // "from" gets Off + every section; "to" gets every section (instrumentals

@@ -381,3 +381,44 @@ describe("buildRpp", () => {
   });
 
 });
+
+describe("buildRpp — practice-variant options", () => {
+  const guitarsPath = resolve(fixturesDir, "stems", "guitars.wav");
+  const bassPath = resolve(fixturesDir, "stems", "bass.wav");
+  const s = song("Test", 120,
+    seq(span("Intro", bars(2)), span("Verse", bars(4))),
+    audio("Guitars", guitarsPath),
+    audio("Bass", bassPath),
+  );
+  const trackBlock = (rpp: string, name: string) => {
+    // Names with spaces are quoted in the RPP.
+    const start = rpp.indexOf(`NAME ${/\s/.test(name) ? `"${name}"` : name}\n`);
+    expect(start).toBeGreaterThan(-1);
+    return rpp.slice(start, rpp.indexOf("\n  >", start));
+  };
+
+  it("mutes only the named stem track (siblings and the Stems parent stay live)", () => {
+    const { rpp } = buildRpp(s, { ...defaultOpts, muteTracks: ["Bass"] });
+    expect(trackBlock(rpp, "Bass")).toMatch(/MUTESOLO 1 0 0/);
+    expect(trackBlock(rpp, "Guitars")).toMatch(/MUTESOLO 0 0 0/);
+    expect(trackBlock(rpp, "Stems")).toMatch(/MUTESOLO 0 0 0/);
+  });
+
+  it("mutes every stem for a click-only render while click and cues stay live", () => {
+    const { rpp } = buildRpp(s, { ...defaultOpts, muteTracks: ["Guitars", "Bass"] });
+    expect(trackBlock(rpp, "Guitars")).toMatch(/MUTESOLO 1 0 0/);
+    expect(trackBlock(rpp, "Bass")).toMatch(/MUTESOLO 1 0 0/);
+    expect(trackBlock(rpp, "Click")).toMatch(/MUTESOLO 0 0 0/);
+    expect(trackBlock(rpp, "Cues & Counts")).toMatch(/MUTESOLO 0 0 0/);
+  });
+
+  it("rejects a muteTracks name that matches no stem track", () => {
+    expect(() => buildRpp(s, { ...defaultOpts, muteTracks: ["Keys"] })).toThrow(/Keys/);
+  });
+
+  it("renders to the song slug by default and to renderName when given", () => {
+    expect(buildRpp(s, defaultOpts).rpp).toContain("RENDER_PATTERN test\n");
+    expect(buildRpp(s, { ...defaultOpts, renderName: "test.minus-bass" }).rpp)
+      .toContain("RENDER_PATTERN test.minus-bass\n");
+  });
+});

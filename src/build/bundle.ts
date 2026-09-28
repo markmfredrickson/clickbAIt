@@ -22,6 +22,8 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { resolve, join } from "path";
 import { buildClient } from "../teleprompter/build-client.js";
+import { SongManifestSchema } from "../manifest.js";
+import { bundleVariants, type BundleVariant } from "./bundle-variants.js";
 
 function fail(msg: string): never {
   console.error("error: " + msg);
@@ -67,21 +69,26 @@ songData.bundle = true;
 const slug: string = songData.slug ?? displayFiles[0].replace(".lyrics-display.json", "");
 const outDir = resolve(repoRoot, outArg ?? `bundles/${slug}`);
 
-// The rendered mix (smallest format first). Prefer a slug-named render
-// (<slug>.opus, what current RPPs render to); fall back to the older mix.* name.
-const exts = ["opus", "ogg", "m4a", "wav"];
-const mixCandidates = [...exts.map((e) => `${slug}.${e}`), ...exts.map((e) => `mix.${e}`)];
-const mixFile = mixCandidates.find((n) => existsSync(join(songDir, n)));
-if (!mixFile) {
+// The rendered mixes. Every variant the manifest asks for (full, minus-<part>,
+// click-only — see bundle-variants.ts) that has actually been rendered is
+// carried; the full mix must exist. Files are already slug-named on disk.
+const manifestFile = readdirSync(songDir).find((f) => f.endsWith(".song.json"));
+if (!manifestFile) fail(`no *.song.json in ${songDir}`);
+const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(join(songDir, manifestFile), "utf8")));
+const wanted = bundleVariants(manifest, slug);
+const variants: BundleVariant[] = wanted.filter((v) => existsSync(join(songDir, v.file)));
+for (const v of wanted) {
+  if (!variants.includes(v)) console.error(`warning: variant "${v.id}" not rendered (${v.file} missing) — skipped`);
+}
+const full = variants.find((v) => v.id === "full") ?? variants[0];
+if (!full) {
   fail(
-    `no mix file in ${songDir}\n` +
-    `  Looked for: ${mixCandidates.join(", ")}\n` +
-    `  Render the song's RPP in REAPER and save the result into the song folder.`,
+    `no rendered mix in ${songDir}\n` +
+    `  Looked for: ${wanted.map((v) => v.file).join(", ")}\n` +
+    `  Render with:  npm run bundle:render -- ${songDirArg}`,
   );
 }
-// Name the bundle's audio with the song slug so it's identifiable on someone's
-// drive (e.g. "<song>-<artist>.opus"), like the .RPP.
-const bundleMix = `${slug}.${mixFile.split(".").pop()}`;
+songData.variants = variants.map(({ id, label, file }) => ({ id, label, file }));
 
 const clientDir = resolve(repoRoot, "src", "teleprompter", "client");
 if (!existsSync(clientDir)) fail(`teleprompter client dir missing: ${clientDir}`);
@@ -93,14 +100,22 @@ await buildClient(clientDir);
 mkdirSync(outDir, { recursive: true });
 copyFileSync(join(clientDir, "style.css"), join(outDir, "style.css"));
 copyFileSync(join(clientDir, "teleprompter.js"), join(outDir, "teleprompter.js"));
-copyFileSync(join(songDir, mixFile), join(outDir, bundleMix));
+for (const v of variants) copyFileSync(join(songDir, v.file), join(outDir, v.file));
 writeFileSync(join(outDir, "song.json"), JSON.stringify(songData, null, 2)); // for HTTP-served debugging
 
 // index.html — put the mix player in the sticky header, and inline the display
 // data before teleprompter.js so the bundle works when opened over file://.
 const indexHtmlSrc = readFileSync(join(clientDir, "index.html"), "utf8");
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+const variantSelect = variants.length > 1
+  ? `    <label style="display:block;margin-top:0.5rem">Mix\n` +
+    `      <select id="mix-variant" title="Which parts play (click and cues always do)">\n` +
+    variants.map((v) => `        <option value="${esc(v.file)}"${v === full ? " selected" : ""}>${esc(v.label)}</option>`).join("\n") + `\n` +
+    `      </select>\n    </label>\n`
+  : "";
 const audioTag =
-  `    <audio id="mix-audio" src="${bundleMix}" controls preload="auto" style="width:100%;margin-top:0.5rem"></audio>`;
+  variantSelect +
+  `    <audio id="mix-audio" src="${esc(full.file)}" controls preload="auto" style="width:100%;margin-top:0.5rem"></audio>`;
 const songScript = `  <script>window.__SONG_DATA__ = ${JSON.stringify(songData)};</script>`;
 const indexHtml = indexHtmlSrc
   .replace(/(<\/header>)/, `${audioTag}\n  $1`)
@@ -113,6 +128,12 @@ writeFileSync(
     `How to use:\n` +
     `  1. Double-click index.html to open it in your browser.\n` +
     `  2. Press play on the audio control; the lyrics scroll automatically.\n` +
+    (variants.length > 1
+      ? `     "Mix" picks which parts play: the full mix, minus your own part\n` +
+        `     (practice against the rest of the band), or click only. The audio\n` +
+        `     files are also plain .opus you can copy to a phone or player:\n` +
+        variants.map((v) => `       ${v.file}  —  ${v.label}\n`).join("")
+      : "") +
     `  3. Use the Offset slider to get the lyrics a beat or two ahead.\n` +
     `  4. To drill a part: pick it from "Loop" (or click a section name) — it\n` +
     `     repeats that section. "Speed" slows playback down (pitch preserved).\n\n` +
@@ -123,5 +144,5 @@ writeFileSync(
 
 console.log(`wrote ${outDir}`);
 console.log(`  ${songData.title} — ${songData.artist ?? "?"} (${songData.bpm} BPM)`);
-console.log(`  mix: ${mixFile}  |  ${songData.display?.sections?.length ?? 0} sections, ${songData.words?.length ?? 0} words`);
+console.log(`  mixes: ${variants.map((v) => v.id).join(", ")}  |  ${songData.display?.sections?.length ?? 0} sections, ${songData.words?.length ?? 0} words`);
 console.log(`\nOpen ${join(outDir, "index.html")} in a browser to test.`);

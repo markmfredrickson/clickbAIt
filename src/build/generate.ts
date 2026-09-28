@@ -19,6 +19,7 @@ import { manifestToSong } from "./manifest-to-song.js";
 import { chordWav } from "./tone.js";
 import { RigSchema } from "../rig.js";
 import { buildRpp } from "./rpp.js";
+import { stemTrackName } from "./bundle-variants.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
 import { songRecipe } from "./song-recipe.js";
 import { extractSections } from "./sections.js";
@@ -30,13 +31,25 @@ import type { AlignInput } from "./lyrics-timing.js";
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
 
-const manifestPath = process.argv[2];
+// Flags (practice-bundle variant renders; see bundle-variants.ts):
+//   --mute-stems drums,bass   mute those stem tracks (keys of sources.stems.files)
+//   --render-name <name>      RENDER_PATTERN override (default: the song slug)
+const flags: Record<string, string> = {};
+const positional: string[] = [];
+for (let i = 2; i < process.argv.length; i++) {
+  const a = process.argv[i];
+  if (a.startsWith("--")) flags[a.slice(2)] = process.argv[++i] ?? "";
+  else positional.push(a);
+}
+const manifestPath = positional[0];
 if (!manifestPath) {
-  console.error("usage: npx tsx src/generate-from-manifest.ts <manifest.song.json> [out-dir]");
+  console.error("usage: npx tsx src/build/generate.ts <manifest.song.json> [out-dir] [--mute-stems a,b] [--render-name name]");
   process.exit(1);
 }
 const dir = dirname(resolve(manifestPath));
-const outDir = process.argv[3] ? resolve(process.argv[3]) : dir;
+const outDir = positional[1] ? resolve(positional[1]) : dir;
+const muteTracks = (flags["mute-stems"] ?? "").split(",").filter(Boolean).map(stemTrackName);
+const renderName = flags["render-name"] || undefined;
 
 const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
 // Resolve the beat-map: if it points at an external <source>.beatmap.json, load
@@ -203,7 +216,7 @@ for (const e of events) {
   if (v !== undefined) cueOnsets[sl] = v;
 }
 
-const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, clickDropBeat, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets });
+const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, clickDropBeat, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets, muteTracks, renderName });
 const slug = songSlug(song);
 // Emit RELATIVE media paths so the project folder is self-contained and portable
 // (REAPER resolves paths against the .RPP's own folder). In-folder media —

@@ -128,7 +128,7 @@ Runs **smooth** (de-warble the beats → beatmap) then **build/generate**: spoke
 
 - **`smooth`** — reads `source.m4a.beats.json` + the manifest's `sources.recording.startBeat` anchor, de-warbles at `--max-warble` (default `0.04`), writes `source.m4a.beatmap.json`. Normalizes against the *detected* bpm.
 - **`build`** — assembles the RPP (this is `generate`); depends **only on `smooth`** and consumes the align sidecar + beatmap as file inputs, so a rebuild never re-runs the network `lookup` or the slow `align`.
-- **`bundle`** — renders the mix + bundle (REAPER; opt-in).
+- **`bundle`** — renders the practice mixes + take-home bundle (REAPER; opt-in). One Opus per **variant**: the full mix, a *minus-\<stem\>* for every stem in `sources.stems.files` (a member practices against the rest of the band), and *click only* (click + cues). Files are slug-named (`<slug>.minus-drums.opus`) so they read on a phone; the bundle player has a "Mix" dropdown. A manifest `bundle.variants` block **replaces** the default list, e.g. `{"variants": [{"id": "minus-rhythm", "label": "No drums or bass", "mute": ["drums", "bass"]}]}` — `mute` names stem keys; empty = full mix.
 
 Rebuild from the repo root:
 

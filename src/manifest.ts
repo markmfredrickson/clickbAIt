@@ -253,6 +253,27 @@ const TransposeSpec = z.union([
     }),
 ]);
 
+/**
+ * A practice-bundle audio variant: one rendered mix with the named stems muted
+ * (click + cues always play). `mute` lists keys of `sources.stems.files`; an
+ * empty list is the full mix, every key is click-only. When `bundle.variants`
+ * is present it REPLACES the default list (full, minus-<each stem>, click-only)
+ * — see src/build/bundle-variants.ts.
+ */
+const BundleVariant = z
+  .object({
+    id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "variant id must be a kebab-case slug"),
+    label: z.string().min(1).optional(),
+    mute: z.array(z.string().min(1)),
+  })
+  .strict();
+
+const BundleSpec = z
+  .object({
+    variants: z.array(BundleVariant).optional(),
+  })
+  .strict();
+
 export const SongManifestSchema = z
   .object({
     schema: z.literal("clickbait/song@1"),
@@ -307,6 +328,9 @@ export const SongManifestSchema = z
       .object({ dir: z.string().min(1) })
       .strict()
       .optional(),
+
+    /** Practice-bundle rendering (mix-minus variants). Absent → defaults. */
+    bundle: BundleSpec.optional(),
   })
   .strict()
   // Cross-field: any source's curveRef must name an existing source key.
@@ -322,6 +346,19 @@ export const SongManifestSchema = z
         });
       }
     }
+    // Every bundle variant's mute keys must name stems the manifest has.
+    const stemKeys = new Set(Object.keys(m.sources.stems?.files ?? {}));
+    m.bundle?.variants?.forEach((v, vi) => {
+      v.mute.forEach((k, ki) => {
+        if (!stemKeys.has(k)) {
+          ctx.addIssue({
+            code: "custom",
+            message: `bundle.variants[${vi}] ("${v.id}") mutes "${k}", which is not a stem (have: ${[...stemKeys].join(", ") || "none"})`,
+            path: ["bundle", "variants", vi, "mute", ki],
+          });
+        }
+      });
+    });
   });
 
 export type SongManifest = z.infer<typeof SongManifestSchema>;

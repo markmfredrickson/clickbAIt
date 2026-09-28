@@ -139,6 +139,13 @@ export interface BuildOptions {
    *  the "1"); for a count number it's the digit's onset. Absent → a name falls
    *  back to its full duration, a number to 0 (starts on the beat). See cue-onset.ts. */
   cueOnsets?: Record<string, number>;
+  /** Stem TRACK names (e.g. "Drums") to mute in this project — a practice-bundle
+   *  mix-minus render. The mute goes on the child track, not the Stems folder,
+   *  so the rest of the backing still plays. Unknown names are an error. */
+  muteTracks?: string[];
+  /** RENDER_PATTERN override (default: the song slug), so a variant renders to
+   *  its own file, e.g. `<slug>.minus-drums`. */
+  renderName?: string;
 }
 
 /** Track options (mainsend/hwout/mute/gain) for a generated track from a rig
@@ -407,7 +414,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // render WAV from REAPER because REAPER's Opus encoder produces files that
   // Safari/QuickTime can't play; ffmpeg post-encode handles Opus reliably.
   rppLines.push(`  RENDER_FILE ""`);
-  rppLines.push(`  RENDER_PATTERN ${slug}`);
+  rppLines.push(`  RENDER_PATTERN ${opts.renderName ?? slug}`);
   rppLines.push(`  RENDER_FMT 0 2 44100`);
   rppLines.push(`  RENDER_1X 0`);
   rppLines.push(`  RENDER_RANGE 1 0 0 0 1000`);
@@ -498,6 +505,12 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // folder encoding (ISBUS): parent = "1 1", the last child closes the folder
   // with "2 -1"; regular children stay "0 0".
   const stemNames = [...audioByTrack.keys()];
+  const muteTracks = new Set(opts.muteTracks ?? []);
+  for (const name of muteTracks) {
+    if (!audioByTrack.has(name)) {
+      throw new Error(`muteTracks: "${name}" is not a stem track (have: ${stemNames.join(", ") || "none"})`);
+    }
+  }
   if (stemNames.length > 0) {
     // The mute lives on the folder PARENT, not the children — muting the parent
     // silences the whole group, so "ship muted" means the user unmutes one track
@@ -516,6 +529,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
       rppLines.push(buildTrack(trackName, stemsR.gain, items, {
         beat: -1, mainsend: stemsR.mainsend, hwout: stemsR.hwout,
         isbus: i === stemNames.length - 1 ? "2 -1" : "0 0",
+        muted: muteTracks.has(trackName),
       }));
     });
   }

@@ -363,6 +363,21 @@ import { activeIndex } from "../highlight.js";
     });
   }
 
+  // ── Show state (bail / vamp), pushed by the relay ──
+  //
+  // The display's precision should track the system's confidence. While
+  // following, it highlights the current word. The moment someone bails, the
+  // band is free-running and any word-level claim is the track's opinion rather
+  // than the room's — so the body gets a mode class and the CSS lights the
+  // whole section instead of pointing at a line that may be wrong.
+  function applyShowState(state) {
+    if (!state || !state.mode) return;
+    document.body.classList.remove(
+      "show-following", "show-out", "show-vamping", "show-leaving", "show-stopped",
+    );
+    document.body.classList.add("show-" + state.mode);
+  }
+
   // ── WebSocket ──
   function connectWebSocket() {
     var protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -379,6 +394,7 @@ import { activeIndex } from "../highlight.js";
       else if (msg.type === "stop") transportLight.className = "stopped";
       else if (msg.type === "play") transportLight.className = "playing";
       else if (msg.type === "song-changed") loadSong();
+      else if (msg.type === "show-state") applyShowState(msg.state);
     };
     ws.onclose = function () {
       statusEl.textContent = "Disconnected — retrying…";

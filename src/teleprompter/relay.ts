@@ -17,6 +17,16 @@ import type { SongPayload, TempoPoint } from "./types.js";
 import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
 import { toSlug } from "../core/dsongl/index.js";
 import { Curve, type Anchor } from "../core/curve.js";
+import { encode, asFloat } from "../core/osc.js";
+import {
+  apply as applyIntent,
+  advance as advanceShow,
+  initialState as initialShowState,
+  type Intent,
+  type ShowEffect,
+  type ShowSection,
+  type ShowState,
+} from "./show-state.js";
 
 /** Either song format the relay can serve. */
 type LoadedSong = SongPayload | LyricsDisplay;
@@ -34,6 +44,16 @@ export interface RelayOptions {
   song?: LoadedSong;
   /** Directory containing the static client files */
   clientDir?: string;
+  /** Where REAPER listens for OSC — its device "local listen port". */
+  reaperHost?: string;
+  reaperPort?: number;
+  /**
+   * REAPER track numbers for the tracks the bail mutes. build-rpp emits these
+   * in a fixed order, so the defaults hold for any generated project; override
+   * only for a hand-built one. Muting needs DEVICE_TRACK_COUNT above 0 in the
+   * OSC pattern config — it ships at 0 to keep traffic down.
+   */
+  tracks?: { click?: number; cues?: number; stems?: number };
 }
 
 function escapeHtml(s: string): string {
@@ -208,6 +228,91 @@ export function startRelay(opts: RelayOptions) {
   const songsDirs = opts.songsDirs && opts.songsDirs.length > 0 ? opts.songsDirs : [process.cwd()];
   const ip = getLocalIP();
   const baseUrl = `http://${ip}:${httpPort}`;
+  const reaperHost = opts.reaperHost ?? "127.0.0.1";
+  const reaperPort = opts.reaperPort ?? 8000;
+  const trackOf = { click: 1, cues: 2, stems: 3, ...opts.tracks };
+
+  // ── Show control (bail / vamp / stop) ──
+  // The state machine is shared with both browser clients so all three agree;
+  // the relay's extra job is turning a transition's effects into OSC.
+  let showState: ShowState = initialShowState;
+  let lastBeat = 0;
+  let playing = false;
+  const control = createSocket("udp4");
+
+  function toReaper(address: string, args: (number | string | boolean)[] = []): void {
+    const buf = encode(address, args);
+    control.send(buf, reaperPort, reaperHost, (err) => {
+      if (err) console.error(`  ✗ OSC → REAPER failed: ${err.message}`);
+    });
+  }
+
+  /** Sections in the shape the state machine wants, from either song format. */
+  function showSections(song: LoadedSong | null): ShowSection[] {
+    if (!song) return [];
+    if (isLyricsDisplay(song)) {
+      // LyricsDisplay carries only a start beat per section, so a section runs
+      // until the next one starts (the last to the end of the last word).
+      const secs = song.display?.sections ?? [];
+      const end = song.words?.length ? Math.max(...song.words.map((w) => w.endBeat)) : 0;
+      // No `vamp` flag yet — authored open sections aren't in the manifest
+      // schema, so every vamp is currently ad-hoc (chosen from the drawer).
+      return secs.map((s, i) => ({
+        name: s.name,
+        beat: s.startBeat,
+        durationBeats: (i + 1 < secs.length ? secs[i + 1].startBeat : Math.max(end, s.startBeat)) - s.startBeat,
+      }));
+    }
+    return song.sections.map((s) => ({ name: s.name, beat: s.beat, durationBeats: s.durationBeats }));
+  }
+
+  /** Push a transition's effects to REAPER. Locate is deliberately not sent. */
+  function runEffect(effect: ShowEffect): void {
+    if (effect.click !== undefined) toReaper(`/track/${trackOf.click}/mute`, [asFloat(effect.click ? 0 : 1)]);
+    if (effect.cues !== undefined) toReaper(`/track/${trackOf.cues}/mute`, [asFloat(effect.cues ? 0 : 1)]);
+    if (effect.repeat !== undefined) toReaper("/repeat", [asFloat(effect.repeat ? 1 : 0)]);
+    if (effect.transport === "stop") toReaper("/stop", [asFloat(1)]);
+    // Seeking to a section needs a locate REAPER's OSC vocabulary may not
+    // expose (see scripts/osc-probe.ts). Until that's settled, re-entry moves
+    // the DISPLAY and leaves the transport alone — so say so rather than
+    // silently doing half of it.
+    if (effect.locateBeat !== undefined) {
+      console.log(`  ⤳ re-entry at beat ${effect.locateBeat.toFixed(0)} — display only, no locate sent`);
+    }
+  }
+
+  function pushShowState(): void {
+    broadcast(JSON.stringify({ type: "show-state", state: showState, playing }));
+  }
+
+  /**
+   * The transport stopping ends the show state along with it. Otherwise a bail
+   * or a vamp outlives the take that produced it and is waiting, wrongly armed,
+   * when the next one starts.
+   */
+  function resetShowState(): void {
+    if (showState.mode === "following") return;
+    showState = initialShowState;
+    runEffect({ click: true, cues: true, repeat: false });
+    console.log(`  ⎉ transport stopped → following (show state reset)`);
+    // The caller pushes — it has to anyway, to carry the new `playing` value.
+  }
+
+  /**
+   * Every position update goes through here: fan the beat out, then let the
+   * state machine handle the two things that happen with nobody touching the
+   * control — a marked section engaging its vamp, and a loop ending while
+   * we're leaving it.
+   */
+  function onPosition(beat: number): void {
+    lastBeat = beat;
+    broadcast(JSON.stringify({ type: "position", beat }));
+    const { state, effect } = advanceShow(showState, showSections(currentSong), beat);
+    if (state === showState) return;
+    showState = state;
+    runEffect(effect);
+    pushShowState();
+  }
 
   // Current song state
   let currentSong: LoadedSong | null = opts.song ?? null;
@@ -295,8 +400,10 @@ export function startRelay(opts: RelayOptions) {
   }, pollIntervalMs);
   pollTimer.unref();
 
-  // Pre-generate QR code as SVG
+  // Pre-generate QR codes as SVG — one to follow along, one to take control.
   let qrSvgCache: string | null = null;
+  let qrControlCache: string | null = null;
+  const controlUrl = `${baseUrl}/control`;
 
   // HTTP server
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -317,6 +424,9 @@ export function startRelay(opts: RelayOptions) {
       if (!qrSvgCache) {
         qrSvgCache = await QRCode.toString(baseUrl, { type: "svg" });
       }
+      if (!qrControlCache) {
+        qrControlCache = await QRCode.toString(controlUrl, { type: "svg" });
+      }
       const songLine = currentSong
         ? `${escapeHtml(currentSong.title)}${currentSong.artist ? ` — ${escapeHtml(currentSong.artist)}` : ""}`
         : "Waiting for song…";
@@ -334,11 +444,18 @@ export function startRelay(opts: RelayOptions) {
            min-height: 100vh; text-align: center; padding: 2rem; }
     h1 { font-size: 2rem; margin-bottom: 0.3rem; }
     .subtitle { color: #888; font-size: 1rem; margin-bottom: 2rem; }
-    .qr { width: min(70vw, 400px); height: auto; background: #fff; padding: 1.5rem;
+    .codes { display: flex; flex-wrap: wrap; gap: 2.5rem; justify-content: center; }
+    .code { display: flex; flex-direction: column; align-items: center; }
+    .qr { width: min(70vw, 300px); height: auto; background: #fff; padding: 1.25rem;
            border-radius: 12px; }
     .qr svg { width: 100%; height: auto; }
-    .url { margin-top: 1.5rem; font-size: 1.2rem; font-family: monospace;
+    .url { margin-top: 1rem; font-size: 0.95rem; font-family: monospace;
            color: #ffcc00; word-break: break-all; }
+    .url.control, .subtitle.control { color: #a678ff; }
+    .go { display: inline-block; margin-top: 1rem; padding: 0.8rem 2rem; background: #ffcc00;
+          color: #111; text-decoration: none; border-radius: 8px; font-weight: 700;
+          font-size: 1.1rem; }
+    .go.control { background: #a678ff; color: #120823; }
     .song-title { font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffcc00;
                    transition: text-shadow 0.5s ease; }
     .song-title.glow { text-shadow: 0 0 20px #ffcc00, 0 0 40px #ffcc00; }
@@ -346,13 +463,21 @@ export function startRelay(opts: RelayOptions) {
 </head>
 <body>
   <h1>clickbAIt: One Simple Track</h1>
-  <p class="subtitle">Scan to follow along</p>
   <p class="song-title" id="song-title">${songLine}</p>
-  <div class="qr">${qrSvgCache}</div>
-  <p class="url">${baseUrl}</p>
-  <a href="/lyrics" style="display:inline-block; margin-top:1.5rem; padding:0.8rem 2rem;
-     background:#ffcc00; color:#111; text-decoration:none; border-radius:8px;
-     font-weight:700; font-size:1.1rem;">Open Lyrics</a>
+  <div class="codes">
+    <div class="code">
+      <p class="subtitle">Scan to follow along</p>
+      <div class="qr">${qrSvgCache}</div>
+      <p class="url">${baseUrl}</p>
+      <a class="go" href="/lyrics">Open Lyrics</a>
+    </div>
+    <div class="code">
+      <p class="subtitle control">Scan to take control</p>
+      <div class="qr">${qrControlCache}</div>
+      <p class="url control">${controlUrl}</p>
+      <a class="go control" href="/control">Open Control</a>
+    </div>
+  </div>
   <script>
     (function() {
       var el = document.getElementById("song-title");
@@ -400,8 +525,9 @@ export function startRelay(opts: RelayOptions) {
       return;
     }
 
-    // Serve static files (/lyrics is the teleprompter view)
-    const filePath = url === "/lyrics" ? "index.html" : url.slice(1);
+    // Serve static files (/lyrics is the teleprompter, /control the bail bar)
+    const filePath =
+      url === "/lyrics" ? "index.html" : url === "/control" ? "control.html" : url.slice(1);
     try {
       const fullPath = join(clientDir, filePath);
       const content = await readFile(fullPath);
@@ -425,6 +551,32 @@ export function startRelay(opts: RelayOptions) {
     if (currentSong) {
       ws.send(JSON.stringify({ type: "song-changed", slug: currentSlug }));
     }
+    ws.send(JSON.stringify({ type: "show-state", state: showState, playing }));
+
+    // Control intents arrive here from /control. Anything on this socket is
+    // untrusted input off the LAN, so a malformed message is dropped rather
+    // than allowed to throw and take the relay down mid-show.
+    ws.on("message", (raw) => {
+      let msg: { type?: string; intent?: Intent };
+      try { msg = JSON.parse(String(raw)); } catch { return; }
+      if (msg.type !== "intent" || !msg.intent || typeof msg.intent.action !== "string") return;
+
+      // Belt and braces: a throw in here would kill this socket's handler and
+      // silently deafen the control page for the rest of the show, which is
+      // exactly when you'd least notice and most care.
+      try {
+        const sections = showSections(currentSong);
+        const { state, effect } = applyIntent(showState, msg.intent, sections, lastBeat, playing);
+        if (state === showState) return;        // rejected — nothing to say
+        showState = state;
+        runEffect(effect);
+        pushShowState();
+        console.log(`  ⎉ ${msg.intent.action} → ${state.mode}${state.loop ? ` (${state.loop.from}–${state.loop.to})` : ""}`);
+      } catch (err) {
+        console.error(`  ✗ intent "${msg.intent.action}" failed:`, err instanceof Error ? err.message : err);
+      }
+    });
+
     ws.on("close", () => clients.delete(ws));
   });
 
@@ -438,7 +590,6 @@ export function startRelay(opts: RelayOptions) {
 
   // OSC UDP listener
   const udp = createSocket("udp4");
-  let playing = false;
   let lastBeatLog = -1;
 
   udp.on("message", (msg: Buffer) => {
@@ -450,7 +601,7 @@ export function startRelay(opts: RelayOptions) {
         // is PROJOFFS-aware and stays correct at any tempo/playrate.
         if (parsed.address === "/time" && currentSong && !isLyricsDisplay(currentSong)) {
           const beat = secondsToBeats(parsed.value, currentSong);
-          broadcast(JSON.stringify({ type: "position", beat }));
+          onPosition(beat);
           // Log beat progress as a spinner (update every ~4 beats)
           const rounded = Math.floor(beat / 4) * 4;
           if (rounded !== lastBeatLog) {
@@ -461,18 +612,21 @@ export function startRelay(opts: RelayOptions) {
             process.stdout.write(`\r  ♩ beat ${rounded}  ${min}:${s}  `);
           }
         } else if (parsed.address === "/beat") {
-          broadcast(JSON.stringify({ type: "position", beat: parsed.value }));
+          onPosition(parsed.value);
         } else if (parsed.address === "/play") {
           const isPlaying = parsed.value > 0.5;
           broadcast(JSON.stringify({ type: isPlaying ? "play" : "stop" }));
           if (isPlaying && !playing) {
             playing = true;
+            pushShowState();
             console.log(`\n  ▶ Playing${currentSong ? `: ${currentSong.title}` : ""}`);
           } else if (!isPlaying && playing) {
             playing = false;
             process.stdout.write("\r");
             console.log(`  ■ Stopped`);
             lastBeatLog = -1;
+            resetShowState();
+            pushShowState();
           }
         }
       } else if (parsed.type === "string") {
@@ -483,7 +637,7 @@ export function startRelay(opts: RelayOptions) {
             parsed.value,
             currentSong.meterMap ?? currentSong.timeSignature[0],
           );
-          broadcast(JSON.stringify({ type: "position", beat }));
+          onPosition(beat);
         } else if ((parsed.address === "/lastmarker/name" || parsed.address === "/lastregion/name") && parsed.value) {
           const slug = toSlug(parsed.value);
           if (slug) switchSong(slug);

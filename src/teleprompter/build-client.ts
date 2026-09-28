@@ -21,8 +21,10 @@ export const clientDir = join(import.meta.dirname, "client");
 /** Bundle client/teleprompter.ts -> client/teleprompter.js (IIFE). Fast (~ms). */
 export async function buildClient(dir = clientDir): Promise<void> {
   await esbuild.build({
-    entryPoints: [join(dir, "teleprompter.ts")],
-    outfile: join(dir, "teleprompter.js"),
+    // Two pages, same shared modules: the lyrics display and the control bar.
+    // Both import show-state, so the bail logic can't drift between them.
+    entryPoints: [join(dir, "teleprompter.ts"), join(dir, "control.ts")],
+    outdir: dir,
     bundle: true,
     platform: "browser",
     format: "iife",

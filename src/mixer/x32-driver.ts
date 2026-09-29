@@ -12,7 +12,9 @@
  * - Pacing. The X32 drops messages when sent a burst, so sends go out one per
  *   `sendIntervalMs`, and a newer value for an address replaces an unsent one.
  *   A jump in the song then costs one message per parameter, however many
- *   intermediate values the show passed through.
+ *   intermediate values the show passed through. The replacement goes to the
+ *   back of the queue, so a value always goes out after anything set before
+ *   it: fading into a mute (mute, then restore the fader) depends on that.
  */
 
 import { asFloat, decodePacket, encode } from "../core/osc.js";
@@ -47,7 +49,7 @@ export class X32Driver implements MixerDriver {
   private readonly known = new Map<string, number>();
   private readonly listeners = new Map<string, ((v: MixerValue) => void)[]>();
   private readonly pending = new Map<string, { resolve: (v: MixerValue) => void; reject: (e: Error) => void }[]>();
-  /** Unsent messages, keyed so a newer one replaces an older one in place. */
+  /** Unsent messages, keyed so a newer one replaces an older one. */
   private readonly queue = new Map<string, Buffer>();
   private lastSentAt = -Infinity;
   private sendTimer: ReturnType<typeof setTimeout> | undefined;
@@ -119,6 +121,7 @@ export class X32Driver implements MixerDriver {
   }
 
   private enqueue(key: string, buf: Buffer): void {
+    this.queue.delete(key); // re-insert at the back: order follows the latest set
     this.queue.set(key, buf);
     this.pump();
   }

@@ -178,6 +178,24 @@ describe("X32Driver — pacing", () => {
   });
 });
 
+describe("X32Driver — ordering", () => {
+  it("sends a replaced value after messages queued before it", async () => {
+    // Fading into a mute is: mute, then restore the fader behind it. If a
+    // glide already queued a fader value, the restore must still go out after
+    // the mute, or the fader jumps up with the channel live.
+    const { board, driver } = rig();
+    driver.set("ch.9.mix.lvl", 0); // goes out at once
+    driver.set("ch.0.mix.lvl", -40); // queued (a glide step)
+    driver.set("ch.0.mix.on", false); // queued: the mute
+    driver.set("ch.0.mix.lvl", 0); // the restore replaces the glide step
+    await drain();
+    const order = board.received
+      .filter((m) => m.address.startsWith("/ch/01/"))
+      .map((m) => m.address);
+    expect(order).toEqual(["/ch/01/mix/on", "/ch/01/mix/fader"]);
+  });
+});
+
 describe("X32Driver — close", () => {
   it("stops renewing /xremote and closes the transport", async () => {
     const { board, driver } = rig();

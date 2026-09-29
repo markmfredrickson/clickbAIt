@@ -70,7 +70,7 @@ function rowInput(cur: ChartsCurrent): RowInput {
 }
 
 function channelsOf(cur: ChartsCurrent) {
-  return songChannels({ hasLyrics: cur.display.words.length > 0, charts: cur.charts?.charts.map((c) => ({ ...c, sections: [] })) ?? [] });
+  return songChannels({ hasLyrics: cur.display.words.length > 0, charts: cur.charts?.charts ?? [] });
 }
 
 /** Returns a handler that answers /charts/* and returns false for anything else. */

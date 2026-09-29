@@ -612,7 +612,7 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
       },
       "additionalProperties": false
     },
-    "charts": {
+    "scores": {
       "type": "array",
       "items": {
         "type": "object",
@@ -621,26 +621,9 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
             "type": "string",
             "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
           },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "tab",
-              "staff",
-              "drums"
-            ]
-          },
-          "instrument": {
+          "file": {
             "type": "string",
             "minLength": 1
-          },
-          "source": {
-            "type": "string",
-            "minLength": 1
-          },
-          "track": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
           },
           "sections": {
             "type": "array",
@@ -687,11 +670,49 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
         },
         "required": [
           "id",
+          "file",
+          "sections"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "charts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tab",
+              "staff",
+              "drums"
+            ]
+          },
+          "instrument": {
+            "type": "string",
+            "minLength": 1
+          },
+          "score": {
+            "type": "string",
+            "minLength": 1
+          },
+          "track": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
           "kind",
           "instrument",
-          "source",
-          "track",
-          "sections"
+          "score",
+          "track"
         ],
         "additionalProperties": false
       }

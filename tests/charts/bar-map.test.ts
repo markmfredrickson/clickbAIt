@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { mapChart, songSections } from "../../src/charts/bar-map.js";
+import { mapScore, songSections } from "../../src/charts/bar-map.js";
 import type { ScoreInfo } from "../../src/charts/score-info.js";
-import type { ChartSpec } from "../../src/manifest.js";
+import type { ScoreSpec } from "../../src/manifest.js";
 
 // Seven Nation Army's shape: Riff/Verse/Instrumental pairs, then a 1-bar Hit
 // the transcription doesn't have. 4/4 throughout, 117 bars.
@@ -32,18 +32,10 @@ const SCORE: ScoreInfo = {
   markers: [],
 };
 
-const chart = (sections: ChartSpec["sections"], extra: Partial<ChartSpec> = {}): ChartSpec => ({
-  id: "rhythm-guitar",
-  kind: "tab",
-  instrument: "guitar",
-  source: "song.gp5",
-  track: 2,
-  sections,
-  ...extra,
-});
+const score = (sections: ScoreSpec["sections"]): ScoreSpec => ({ id: "ug", file: "song.gp5", sections });
 
 /** Score bars for a run of song bars (1-based, inclusive). */
-const scoreBars = (bars: ReturnType<typeof mapChart>["bars"], from: number, to: number) =>
+const scoreBars = (bars: ReturnType<typeof mapScore>["bars"], from: number, to: number) =>
   bars.filter((b) => b.songBar >= from && b.songBar <= to).map((b) => b.scoreBar);
 
 describe("songSections", () => {
@@ -55,9 +47,9 @@ describe("songSections", () => {
   });
 });
 
-describe("mapChart", () => {
+describe("mapScore", () => {
   it("maps a section occurrence's bars onto the score bars given for it", () => {
-    const { bars, errors } = mapChart(chart([{ section: "Verse", occurrence: 2, bars: [45, 62] }]), SECTIONS, SCORE);
+    const { bars, errors } = mapScore(score([{ section: "Verse", occurrence: 2, bars: [45, 62] }]), SECTIONS, SCORE);
     expect(errors).toEqual([]);
     const first = bars.find((b) => b.songBar === 45)!;
     expect(first).toMatchObject({ scoreBar: 45, startBeat: 176, beats: 4, section: 4 });
@@ -65,14 +57,14 @@ describe("mapChart", () => {
   });
 
   it("covers every song bar, with null where the chart has nothing", () => {
-    const { bars } = mapChart(chart([{ section: "Verse", occurrence: 2, bars: [45, 62] }]), SECTIONS, SCORE);
+    const { bars } = mapScore(score([{ section: "Verse", occurrence: 2, bars: [45, 62] }]), SECTIONS, SCORE);
     expect(bars).toHaveLength(117);
     expect(bars[0]).toMatchObject({ songBar: 1, scoreBar: null });
     expect(bars[116]).toMatchObject({ songBar: 117, scoreBar: null }); // the Hit
   });
 
   it("applies a name-wide entry to every occurrence, and a per-occurrence entry overrides it", () => {
-    const { bars } = mapChart(chart([
+    const { bars } = mapScore(score([
       { section: "Riff", bars: [1, 8] },
       { section: "Riff", occurrence: 3, bars: [81, 88] },
     ]), SECTIONS, SCORE);
@@ -82,24 +74,19 @@ describe("mapChart", () => {
   });
 
   it("plays a repeated range at the beats where each repetition falls", () => {
-    const { bars } = mapChart(chart([{ section: "Riff", occurrence: 1, bars: [1, 2], repeat: 4 }]), SECTIONS, SCORE);
+    const { bars } = mapScore(score([{ section: "Riff", occurrence: 1, bars: [1, 2], repeat: 4 }]), SECTIONS, SCORE);
     expect(scoreBars(bars, 1, 8)).toEqual([1, 2, 1, 2, 1, 2, 1, 2]);
     expect(bars.find((b) => b.songBar === 3)).toMatchObject({ scoreBar: 1, startBeat: 8 });
   });
 
-  it("reports a track the score doesn't have", () => {
-    const { errors } = mapChart(chart([], { track: 7 }), SECTIONS, SCORE);
-    expect(errors.join("\n")).toMatch(/track 7/);
-  });
-
   it("reports score bars past the end of the score", () => {
-    const { errors } = mapChart(chart([{ section: "Hit", bars: [117, 117] }]), SECTIONS, SCORE);
+    const { errors } = mapScore(score([{ section: "Hit", bars: [117, 117] }]), SECTIONS, SCORE);
     expect(errors.join("\n")).toMatch(/Hit.*117.*116/);
   });
 
   it("honors a per-section meter", () => {
     const sections = songSections([{ name: "Pickup", bars: 1, timeSignature: [2, 4] }, { name: "Verse", bars: 2 }], [4, 4]);
-    const { bars } = mapChart(chart([{ section: "Verse", bars: [2, 3] }]), sections, { ...SCORE, bars: 3 });
+    const { bars } = mapScore(score([{ section: "Verse", bars: [2, 3] }]), sections, { ...SCORE, bars: 3 });
     expect(bars.map((b) => [b.songBar, b.startBeat, b.beats])).toEqual([[1, 0, 2], [2, 2, 4], [3, 6, 4]]);
   });
 });

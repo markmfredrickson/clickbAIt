@@ -275,14 +275,14 @@ const BundleSpec = z
   .strict();
 
 /**
- * One link from a chart's score to our sections: these score bars play during
- * this section. Without `occurrence` the link applies to every section with
- * that name; with it, only to that one (1 = first), overriding a name-wide
- * link. The range must be exactly the section's length, or fill it exactly
- * with `repeat`. Repeating is never inferred from lengths that happen to
- * divide: the author states it.
+ * One link from a score to our sections: these score bars play during this
+ * section. Without `occurrence` the link applies to every section with that
+ * name; with it, only to that one (1 = first), overriding a name-wide link.
+ * The range must be exactly the section's length, or fill it exactly with
+ * `repeat`. Repeating is never inferred from lengths that happen to divide:
+ * the author states it.
  */
-const ChartSectionLink = z
+const ScoreSectionLink = z
   .object({
     section: z.string().min(1),
     occurrence: z.number().int().positive().optional(),
@@ -295,25 +295,39 @@ const ChartSectionLink = z
   .strict();
 
 /**
- * A chart channel: one track of a score file (Guitar Pro, MusicXML, alphaTex)
- * shown alongside the song. `kind` says how to draw it; `instrument` groups
- * channels, so a display can ask for "guitar" and get every guitar chart.
- * The file's section markers are only a check; `sections` is the authority
- * for which score bars play when.
+ * A score file (Guitar Pro, MusicXML, alphaTex) and which of its bars play in
+ * which of our sections. The mapping belongs to the file, not to a track:
+ * every track in it shares the same bars, so it is written once here and each
+ * chart picks a track. The file's own section markers are only a check;
+ * `sections` is the authority.
+ */
+const ScoreSpecSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "score id must be a kebab-case slug"),
+    /** Relative to the song folder. */
+    file: z.string().min(1),
+    sections: z.array(ScoreSectionLink),
+  })
+  .strict();
+
+/**
+ * A chart channel: one track of a score, shown alongside the song. `kind`
+ * says how to draw it; `instrument` groups channels, so a display can ask for
+ * "guitar" and get every guitar chart.
  */
 const ChartSpecSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "chart id must be a kebab-case slug"),
     kind: z.enum(["tab", "staff", "drums"]),
     instrument: z.string().min(1),
-    /** Score file, relative to the song folder. */
-    source: z.string().min(1),
+    /** Id of an entry in `scores`. */
+    score: z.string().min(1),
     /** 0-based track index within the score. */
     track: z.number().int().nonnegative(),
-    sections: z.array(ChartSectionLink),
   })
   .strict();
 
+export type ScoreSpec = z.infer<typeof ScoreSpecSchema>;
 export type ChartSpec = z.infer<typeof ChartSpecSchema>;
 
 /** Channel ids the display provides itself; a chart can't use them. */
@@ -327,33 +341,31 @@ export function ordinal(n: number): string {
 }
 
 /**
- * Cross-checks a manifest's charts against its sections. Everything that
- * could be read two ways is an error here rather than a guess: an unknown
- * section, two links for the same occurrence, or a range that doesn't match
- * its section's length without a `repeat` saying how to fill it.
+ * Cross-checks a manifest's scores and charts against its sections.
+ * Everything that could be read two ways is an error here rather than a
+ * guess: an unknown section, two links for the same occurrence, a range that
+ * doesn't match its section's length without a `repeat` saying how to fill
+ * it, or a chart naming a score that isn't there.
  */
 function checkCharts(
-  m: { sections: { name: string; bars: number }[]; charts?: ChartSpec[] },
+  m: { sections: { name: string; bars: number }[]; scores?: ScoreSpec[]; charts?: ChartSpec[] },
   ctx: z.RefinementCtx,
 ): void {
   const counts = new Map<string, number>();
   for (const s of m.sections) counts.set(s.name, (counts.get(s.name) ?? 0) + 1);
   const barsOf = (name: string, occurrence: number) => m.sections.filter((s) => s.name === name)[occurrence - 1].bars;
 
-  const seenIds = new Set<string>();
-  m.charts?.forEach((chart, ci) => {
-    const where = `charts[${ci}] ("${chart.id}")`;
+  const scoreIds = new Set<string>();
+  m.scores?.forEach((score, si) => {
+    const where = `scores[${si}] ("${score.id}")`;
     const issue = (message: string, path: (string | number)[]) =>
-      ctx.addIssue({ code: "custom", message: `${where}: ${message}`, path: ["charts", ci, ...path] });
+      ctx.addIssue({ code: "custom", message: `${where}: ${message}`, path: ["scores", si, ...path] });
 
-    if ((BUILT_IN_CHANNELS as readonly string[]).includes(chart.id)) {
-      issue(`"${chart.id}" is a built-in channel name`, ["id"]);
-    }
-    if (seenIds.has(chart.id)) issue(`another chart already uses the id "${chart.id}"`, ["id"]);
-    seenIds.add(chart.id);
+    if (scoreIds.has(score.id)) issue(`another score already uses the id "${score.id}"`, ["id"]);
+    scoreIds.add(score.id);
 
     const seenLinks = new Set<string>();
-    chart.sections.forEach((link, li) => {
+    score.sections.forEach((link, li) => {
       const count = counts.get(link.section) ?? 0;
       if (count === 0) {
         issue(`no section named "${link.section}" (have: ${[...counts.keys()].join(", ")})`, ["sections", li, "section"]);
@@ -370,7 +382,7 @@ function checkCharts(
 
       // A name-wide link covers every occurrence that has no link of its own.
       const overridden = new Set(
-        chart.sections.filter((l) => l.section === link.section && l.occurrence).map((l) => l.occurrence),
+        score.sections.filter((l) => l.section === link.section && l.occurrence).map((l) => l.occurrence),
       );
       const covered = link.occurrence
         ? [link.occurrence]
@@ -394,6 +406,22 @@ function checkCharts(
         }
       }
     });
+  });
+
+  const chartIds = new Set<string>();
+  m.charts?.forEach((chart, ci) => {
+    const where = `charts[${ci}] ("${chart.id}")`;
+    const issue = (message: string, path: (string | number)[]) =>
+      ctx.addIssue({ code: "custom", message: `${where}: ${message}`, path: ["charts", ci, ...path] });
+
+    if ((BUILT_IN_CHANNELS as readonly string[]).includes(chart.id)) {
+      issue(`"${chart.id}" is a built-in channel name`, ["id"]);
+    }
+    if (chartIds.has(chart.id)) issue(`another chart already uses the id "${chart.id}"`, ["id"]);
+    chartIds.add(chart.id);
+    if (!scoreIds.has(chart.score)) {
+      issue(`no score with the id "${chart.score}" (have: ${[...scoreIds].join(", ") || "none"})`, ["score"]);
+    }
   });
 }
 
@@ -455,7 +483,10 @@ export const SongManifestSchema = z
     /** Practice-bundle rendering (mix-minus variants). Absent → defaults. */
     bundle: BundleSpec.optional(),
 
-    /** Chart channels from score files (tab, staff, drums). See ChartSpecSchema. */
+    /** Score files and which of their bars play in which sections. See ScoreSpecSchema. */
+    scores: z.array(ScoreSpecSchema).optional(),
+
+    /** Chart channels, each one track of a score (tab, staff, drums). See ChartSpecSchema. */
     charts: z.array(ChartSpecSchema).optional(),
   })
   .strict()

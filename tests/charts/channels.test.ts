@@ -3,7 +3,7 @@ import { songChannels, resolveChannels, parseChannelParam } from "../../src/char
 import type { ChartSpec } from "../../src/manifest.js";
 
 const spec = (id: string, instrument: string, kind: ChartSpec["kind"] = "tab"): ChartSpec => ({
-  id, kind, instrument, source: "song.gp5", track: 0, sections: [],
+  id, kind, instrument, score: "ug", track: 0,
 });
 const CHARTS = [spec("lead-guitar", "guitar"), spec("rhythm-guitar", "guitar"), spec("bass", "bass"), spec("drums", "drums", "drums")];
 

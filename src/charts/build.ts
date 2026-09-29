@@ -4,17 +4,20 @@
  * each of our bars. Derived at build from the manifest and the score files;
  * never edited by hand.
  *
- * Every problem across every chart is collected and reported together, so a
- * build fails once with the full list instead of once per fix.
+ * Each score used by a chart is read and mapped once; its charts share the
+ * result. Every problem is collected and reported together, so a build fails
+ * once with the full list instead of once per fix.
  */
 
 import { songSlug } from "../core/dsongl/index.js";
 import type { Song } from "../core/dsongl/types.js";
-import type { ChartSpec } from "../manifest.js";
-import { mapChart, songSections, type MappedBar, type SongSection } from "./bar-map.js";
+import type { ChartSpec, ScoreSpec } from "../manifest.js";
+import { mapScore, songSections, type MappedBar, type SongSection } from "./bar-map.js";
 import { readScoreInfo, type ScoreInfo } from "./score-info.js";
 
 export interface BuiltChart extends ChartSpec {
+  /** The score file, relative to the song folder. */
+  source: string;
   /** The score track's own name, for labeling. */
   trackName: string;
   bars: MappedBar[];
@@ -24,7 +27,7 @@ export interface ChartsFile {
   schema: "clickbait/charts@1";
   slug: string;
   sections: SongSection[];
-  charts: Omit<BuiltChart, "sections">[];
+  charts: BuiltChart[];
 }
 
 /** The parts of a manifest the charts file needs. */
@@ -33,33 +36,45 @@ export interface ChartsSong {
   artist?: string;
   timeSignature: [number, number];
   sections: { name: string; bars: number; timeSignature?: [number, number] }[];
+  scores?: ScoreSpec[];
   charts?: ChartSpec[];
 }
 
 export function buildChartsFile(song: ChartsSong, readFile: (name: string) => Uint8Array): ChartsFile {
   const sections = songSections(song.sections, song.timeSignature);
   const errors: string[] = [];
-  const scores = new Map<string, ScoreInfo | null>();
-  const scoreFor = (source: string): ScoreInfo | null => {
-    if (!scores.has(source)) {
+
+  // Map each score once, the first time a chart asks for it.
+  const mapped = new Map<string, { info: ScoreInfo; bars: MappedBar[] } | null>();
+  const scoreFor = (spec: ScoreSpec) => {
+    if (!mapped.has(spec.id)) {
       try {
-        scores.set(source, readScoreInfo(readFile(source), source));
+        const info = readScoreInfo(readFile(spec.file), spec.file);
+        const result = mapScore(spec, sections, info);
+        errors.push(...result.errors);
+        mapped.set(spec.id, { info, bars: result.bars });
       } catch (err) {
-        errors.push(`score file ${source}: ${(err as Error).message}`);
-        scores.set(source, null);
+        errors.push(`score "${spec.id}" (${spec.file}): ${(err as Error).message}`);
+        mapped.set(spec.id, null);
       }
     }
-    return scores.get(source)!;
+    return mapped.get(spec.id)!;
   };
 
-  const charts: ChartsFile["charts"] = [];
-  for (const spec of song.charts ?? []) {
-    const score = scoreFor(spec.source);
-    if (!score) continue;
-    const mapped = mapChart(spec, sections, score);
-    errors.push(...mapped.errors);
-    const { sections: _links, ...rest } = spec;
-    charts.push({ ...rest, trackName: score.tracks[spec.track]?.name ?? "", bars: mapped.bars });
+  const charts: BuiltChart[] = [];
+  for (const chart of song.charts ?? []) {
+    // The manifest schema already checked that the score exists.
+    const spec = song.scores?.find((s) => s.id === chart.score);
+    const score = spec ? scoreFor(spec) : null;
+    if (!spec || !score) continue;
+    const track = score.info.tracks[chart.track];
+    if (!track) {
+      errors.push(
+        `chart "${chart.id}": score "${spec.id}" has ${score.info.tracks.length} tracks, so there is no track ${chart.track}`,
+      );
+      continue;
+    }
+    charts.push({ ...chart, source: spec.file, trackName: track.name, bars: score.bars });
   }
   if (errors.length > 0) {
     throw new Error(`charts for "${song.title}" have ${errors.length} problem(s):\n  ${errors.join("\n  ")}`);

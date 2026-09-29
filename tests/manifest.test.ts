@@ -249,10 +249,11 @@ describe("sectionStarts", () => {
   });
 });
 
-// -- Chart channels: `charts` maps a score's bars onto our sections -----------
-describe("SongManifestSchema — charts", () => {
+// -- Chart channels: `scores` maps a score's bars onto our sections, and each
+// -- entry in `charts` is one track of a score ------------------------------
+describe("SongManifestSchema — scores and charts", () => {
   /** validManifest() with three Riff/Verse pairs, as in Seven Nation Army. */
-  function withCharts(charts: unknown[]): any {
+  function withScore(links: unknown[], charts: unknown[] = [chart()], scoreExtra: object = {}): any {
     const m = validManifest() as any;
     m.sections = [
       { name: "Riff", bars: 8 },
@@ -262,98 +263,99 @@ describe("SongManifestSchema — charts", () => {
       { name: "Riff", bars: 8 },
       { name: "Verse", bars: 16 },
     ];
+    m.scores = [{ id: "ug", file: "song.gp5", sections: links, ...scoreExtra }];
     m.charts = charts;
     return m;
   }
-  const chart = (sections: unknown[], extra: object = {}) => ({
-    id: "rhythm-guitar",
-    kind: "tab",
-    instrument: "guitar",
-    source: "song.gp5",
-    track: 2,
-    sections,
-    ...extra,
-  });
+  function chart(extra: object = {}) {
+    return { id: "rhythm-guitar", kind: "tab", instrument: "guitar", score: "ug", track: 2, ...extra };
+  }
 
-  it("accepts a chart that maps sections to score bars", () => {
-    const m = withCharts([chart([
-      { section: "Riff", bars: [1, 8] },
-      { section: "Verse", occurrence: 1, bars: [9, 26] },
-      { section: "Verse", occurrence: 2, bars: [45, 62] },
-      { section: "Verse", occurrence: 3, bars: [89, 104] },
-    ])]);
+  it("accepts a score whose links map sections to its bars, and charts that pick its tracks", () => {
+    const m = withScore(
+      [
+        { section: "Riff", bars: [1, 8] },
+        { section: "Verse", occurrence: 1, bars: [9, 26] },
+        { section: "Verse", occurrence: 2, bars: [45, 62] },
+        { section: "Verse", occurrence: 3, bars: [89, 104] },
+      ],
+      [chart(), chart({ id: "bass", instrument: "bass", track: 3 })],
+    );
     const parsed = SongManifestSchema.parse(m);
-    expect(parsed.charts?.[0].sections).toHaveLength(4);
+    expect(parsed.scores?.[0].sections).toHaveLength(4);
+    expect(parsed.charts?.map((c) => c.track)).toEqual([2, 3]);
   });
 
   it("lets every occurrence of a section share one score range", () => {
-    expect(() => SongManifestSchema.parse(withCharts([chart([{ section: "Riff", bars: [1, 8] }])]))).not.toThrow();
+    expect(() => SongManifestSchema.parse(withScore([{ section: "Riff", bars: [1, 8] }]))).not.toThrow();
   });
 
   it("rejects a section name the song doesn't have", () => {
-    const m = withCharts([chart([{ section: "Chorus", bars: [1, 8] }])]);
-    expect(() => SongManifestSchema.parse(m)).toThrow(/Chorus/);
+    expect(() => SongManifestSchema.parse(withScore([{ section: "Chorus", bars: [1, 8] }]))).toThrow(/Chorus/);
   });
 
   it("rejects an occurrence past the last one", () => {
-    const m = withCharts([chart([{ section: "Verse", occurrence: 4, bars: [1, 18] }])]);
+    const m = withScore([{ section: "Verse", occurrence: 4, bars: [1, 18] }]);
     expect(() => SongManifestSchema.parse(m)).toThrow(/Verse.*4/);
   });
 
   it("rejects a range whose length differs from the section, naming both lengths", () => {
-    const m = withCharts([chart([{ section: "Riff", bars: [1, 4] }])]);
-    expect(() => SongManifestSchema.parse(m)).toThrow(/Riff.*8 bars.*4/s);
+    expect(() => SongManifestSchema.parse(withScore([{ section: "Riff", bars: [1, 4] }]))).toThrow(/Riff.*8 bars.*4/s);
   });
 
   it("rejects a mismatch even when the range divides the section evenly", () => {
     // Repeating is the human's call, stated with `repeat`, never inferred.
-    const m = withCharts([chart([{ section: "Riff", bars: [1, 2] }])]);
-    expect(() => SongManifestSchema.parse(m)).toThrow(/repeat/);
+    expect(() => SongManifestSchema.parse(withScore([{ section: "Riff", bars: [1, 2] }]))).toThrow(/repeat/);
   });
 
   it("accepts an explicit repeat that fills the section, and rejects one that doesn't", () => {
-    const fills = withCharts([chart([{ section: "Riff", bars: [1, 2], repeat: 4 }])]);
-    expect(() => SongManifestSchema.parse(fills)).not.toThrow();
-    const short = withCharts([chart([{ section: "Riff", bars: [1, 2], repeat: 3 }])]);
-    expect(() => SongManifestSchema.parse(short)).toThrow(/Riff/);
+    expect(() => SongManifestSchema.parse(withScore([{ section: "Riff", bars: [1, 2], repeat: 4 }]))).not.toThrow();
+    expect(() => SongManifestSchema.parse(withScore([{ section: "Riff", bars: [1, 2], repeat: 3 }]))).toThrow(/Riff/);
   });
 
-  it("checks a name-wide mapping against every occurrence's length", () => {
+  it("checks a name-wide link against every occurrence's length", () => {
     // The third Verse is 16 bars, so one 18-bar range can't serve all three.
-    const m = withCharts([chart([{ section: "Verse", bars: [9, 26] }])]);
-    expect(() => SongManifestSchema.parse(m)).toThrow(/Verse.*3/);
+    expect(() => SongManifestSchema.parse(withScore([{ section: "Verse", bars: [9, 26] }]))).toThrow(/Verse.*3/);
   });
 
-  it("lets a per-occurrence entry override a name-wide one", () => {
-    const m = withCharts([chart([
+  it("lets a per-occurrence link override a name-wide one", () => {
+    const m = withScore([
       { section: "Verse", bars: [9, 26] },
       { section: "Verse", occurrence: 3, bars: [89, 104] },
-    ])]);
+    ]);
     expect(() => SongManifestSchema.parse(m)).not.toThrow();
   });
 
-  it("rejects two entries for the same section occurrence", () => {
-    const twiceByName = withCharts([chart([
+  it("rejects two links for the same section occurrence", () => {
+    const twiceByName = withScore([
       { section: "Riff", bars: [1, 8] },
       { section: "Riff", bars: [37, 44] },
-    ])]);
+    ]);
     expect(() => SongManifestSchema.parse(twiceByName)).toThrow(/Riff/);
-    const twiceByOccurrence = withCharts([chart([
+    const twiceByOccurrence = withScore([
       { section: "Riff", occurrence: 2, bars: [1, 8] },
       { section: "Riff", occurrence: 2, bars: [37, 44] },
-    ])]);
+    ]);
     expect(() => SongManifestSchema.parse(twiceByOccurrence)).toThrow(/Riff/);
   });
 
   it("rejects a reversed bar range", () => {
-    const m = withCharts([chart([{ section: "Riff", bars: [8, 1] }])]);
-    expect(() => SongManifestSchema.parse(m)).toThrow();
+    expect(() => SongManifestSchema.parse(withScore([{ section: "Riff", bars: [8, 1] }]))).toThrow();
+  });
+
+  it("rejects a chart that names a score the manifest doesn't have", () => {
+    const m = withScore([], [chart({ score: "songsterr" })]);
+    expect(() => SongManifestSchema.parse(m)).toThrow(/songsterr/);
+  });
+
+  it("rejects duplicate score ids", () => {
+    const m = withScore([]);
+    m.scores.push({ id: "ug", file: "other.gp5", sections: [] });
+    expect(() => SongManifestSchema.parse(m)).toThrow(/ug/);
   });
 
   it("rejects duplicate chart ids and ids that clash with built-in channels", () => {
-    const dup = withCharts([chart([]), chart([])]);
-    expect(() => SongManifestSchema.parse(dup)).toThrow(/rhythm-guitar/);
-    const reserved = withCharts([chart([], { id: "lyrics" })]);
-    expect(() => SongManifestSchema.parse(reserved)).toThrow(/lyrics/);
+    expect(() => SongManifestSchema.parse(withScore([], [chart(), chart()]))).toThrow(/rhythm-guitar/);
+    expect(() => SongManifestSchema.parse(withScore([], [chart({ id: "lyrics" })]))).toThrow(/lyrics/);
   });
 });

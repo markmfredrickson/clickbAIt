@@ -21,6 +21,7 @@ import { RigSchema } from "../rig.js";
 import { buildRpp } from "./rpp.js";
 import { stemTrackName } from "./bundle-variants.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
+import { buildChartsFile } from "../charts/build.js";
 import { songRecipe } from "./song-recipe.js";
 import { extractSections } from "./sections.js";
 import { cueOnset } from "./cue-onset.js";
@@ -243,6 +244,14 @@ if (manifest.lyrics.alignment) {
   const display = buildLyricsDisplay(manifest, align, { renderOffsetBeats: paddingBeats });
   writeFileSync(join(outDir, `${slug}.lyrics-display.json`), JSON.stringify(display, null, 2));
   lyricsMsg = `${display.words.length} words, ${display.display.lines.length} lines`;
+}
+
+// Chart channels, when the manifest has any: which score bar plays in each of
+// our bars. Fails the build with every problem listed rather than guessing.
+if (manifest.charts?.length) {
+  const chartsFile = buildChartsFile(manifest, (name) => new Uint8Array(readFileSync(join(dir, name))));
+  writeFileSync(join(outDir, `${slug}.charts.json`), JSON.stringify(chartsFile, null, 2));
+  lyricsMsg += `; ${chartsFile.charts.length} chart(s)`;
 }
 
 // Scaffold the per-song build unit — a package.json wireit recipe — but ONLY if

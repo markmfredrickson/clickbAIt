@@ -611,6 +611,90 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
         }
       },
       "additionalProperties": false
+    },
+    "charts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "tab",
+              "staff",
+              "drums"
+            ]
+          },
+          "instrument": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "track": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "occurrence": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "bars": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  ]
+                },
+                "repeat": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "section",
+                "bars"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "instrument",
+          "source",
+          "track",
+          "sections"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [

@@ -132,6 +132,19 @@ describe("buildLyricsDisplay", () => {
     ]);
   });
 
+  it("records each line's section index, so repeated section names stay distinct", () => {
+    // Two sections named "Verse": the name alone can't say which a line is in.
+    const align = mkAlign([["ONE", 1000, 1100], ["TWO", 2000, 2100], ["THREE", 40000, 40100]]);
+    const m = mkManifest({
+      sections: [
+        { name: "Verse", bars: 16, lines: [{ text: "one" }, { text: "two" }] },
+        { name: "Verse", bars: 16, lines: [{ text: "three" }] },
+      ],
+    });
+    const out = buildLyricsDisplay(m, align);
+    expect(out.display.lines.map((l) => l.sectionIndex)).toEqual([0, 0, 1]);
+  });
+
   // #5 explicit section membership — a pickup groups under its section even
   // though its measured beat lands before the section's start beat.
   it("uses the containing section, so a pickup groups under its section", () => {

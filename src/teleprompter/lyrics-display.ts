@@ -53,6 +53,9 @@ export interface DisplayLine {
   tag?: string;
   /** Name of the section this line belongs to. */
   section?: string;
+  /** Index into `display.sections` of that section. Names repeat (three
+   *  Verses), so this is what says which one. Absent in older files. */
+  sectionIndex?: number;
 }
 
 /** A section label with a start beat. For navigation and cues, not a container. */

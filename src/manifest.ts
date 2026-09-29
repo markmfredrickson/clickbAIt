@@ -274,6 +274,129 @@ const BundleSpec = z
   })
   .strict();
 
+/**
+ * One link from a chart's score to our sections: these score bars play during
+ * this section. Without `occurrence` the link applies to every section with
+ * that name; with it, only to that one (1 = first), overriding a name-wide
+ * link. The range must be exactly the section's length, or fill it exactly
+ * with `repeat`. Repeating is never inferred from lengths that happen to
+ * divide: the author states it.
+ */
+const ChartSectionLink = z
+  .object({
+    section: z.string().min(1),
+    occurrence: z.number().int().positive().optional(),
+    /** [first, last] score bars, 1-based and inclusive. */
+    bars: z
+      .tuple([z.number().int().positive(), z.number().int().positive()])
+      .refine(([a, b]) => a <= b, { message: "bars must be [first, last] with first <= last" }),
+    repeat: z.number().int().min(2).optional(),
+  })
+  .strict();
+
+/**
+ * A chart channel: one track of a score file (Guitar Pro, MusicXML, alphaTex)
+ * shown alongside the song. `kind` says how to draw it; `instrument` groups
+ * channels, so a display can ask for "guitar" and get every guitar chart.
+ * The file's section markers are only a check; `sections` is the authority
+ * for which score bars play when.
+ */
+const ChartSpecSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "chart id must be a kebab-case slug"),
+    kind: z.enum(["tab", "staff", "drums"]),
+    instrument: z.string().min(1),
+    /** Score file, relative to the song folder. */
+    source: z.string().min(1),
+    /** 0-based track index within the score. */
+    track: z.number().int().nonnegative(),
+    sections: z.array(ChartSectionLink),
+  })
+  .strict();
+
+export type ChartSpec = z.infer<typeof ChartSpecSchema>;
+
+/** Channel ids the display provides itself; a chart can't use them. */
+export const BUILT_IN_CHANNELS = ["sections", "lyrics"] as const;
+
+/** 1 → "1st", 2 → "2nd", 11 → "11th": for naming a section occurrence. */
+export function ordinal(n: number): string {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
+/**
+ * Cross-checks a manifest's charts against its sections. Everything that
+ * could be read two ways is an error here rather than a guess: an unknown
+ * section, two links for the same occurrence, or a range that doesn't match
+ * its section's length without a `repeat` saying how to fill it.
+ */
+function checkCharts(
+  m: { sections: { name: string; bars: number }[]; charts?: ChartSpec[] },
+  ctx: z.RefinementCtx,
+): void {
+  const counts = new Map<string, number>();
+  for (const s of m.sections) counts.set(s.name, (counts.get(s.name) ?? 0) + 1);
+  const barsOf = (name: string, occurrence: number) => m.sections.filter((s) => s.name === name)[occurrence - 1].bars;
+
+  const seenIds = new Set<string>();
+  m.charts?.forEach((chart, ci) => {
+    const where = `charts[${ci}] ("${chart.id}")`;
+    const issue = (message: string, path: (string | number)[]) =>
+      ctx.addIssue({ code: "custom", message: `${where}: ${message}`, path: ["charts", ci, ...path] });
+
+    if ((BUILT_IN_CHANNELS as readonly string[]).includes(chart.id)) {
+      issue(`"${chart.id}" is a built-in channel name`, ["id"]);
+    }
+    if (seenIds.has(chart.id)) issue(`another chart already uses the id "${chart.id}"`, ["id"]);
+    seenIds.add(chart.id);
+
+    const seenLinks = new Set<string>();
+    chart.sections.forEach((link, li) => {
+      const count = counts.get(link.section) ?? 0;
+      if (count === 0) {
+        issue(`no section named "${link.section}" (have: ${[...counts.keys()].join(", ")})`, ["sections", li, "section"]);
+        return;
+      }
+      if (link.occurrence !== undefined && link.occurrence > count) {
+        issue(`${link.section} has ${count} occurrence(s), so there is no ${ordinal(link.occurrence)}`, ["sections", li, "occurrence"]);
+        return;
+      }
+      const key = `${link.section}#${link.occurrence ?? "*"}`;
+      const label = link.occurrence ? `${link.section} (${ordinal(link.occurrence)})` : `${link.section} (every occurrence)`;
+      if (seenLinks.has(key)) issue(`two links for ${label}`, ["sections", li]);
+      seenLinks.add(key);
+
+      // A name-wide link covers every occurrence that has no link of its own.
+      const overridden = new Set(
+        chart.sections.filter((l) => l.section === link.section && l.occurrence).map((l) => l.occurrence),
+      );
+      const covered = link.occurrence
+        ? [link.occurrence]
+        : Array.from({ length: count }, (_, i) => i + 1).filter((o) => !overridden.has(o));
+      const [first, last] = link.bars;
+      const length = last - first + 1;
+      for (const o of covered) {
+        const want = barsOf(link.section, o);
+        const name = `${link.section} (${ordinal(o)})`;
+        if (link.repeat === undefined && length !== want) {
+          issue(
+            `${name} is ${want} bars but score bars ${first}–${last} are ${length}; ` +
+              `if the range should repeat to fill the section, state a repeat`,
+            ["sections", li, "bars"],
+          );
+        } else if (link.repeat !== undefined && length * link.repeat !== want) {
+          issue(
+            `${name} is ${want} bars but score bars ${first}–${last} × ${link.repeat} are ${length * link.repeat}`,
+            ["sections", li, "repeat"],
+          );
+        }
+      }
+    });
+  });
+}
+
 export const SongManifestSchema = z
   .object({
     schema: z.literal("clickbait/song@1"),
@@ -331,6 +454,9 @@ export const SongManifestSchema = z
 
     /** Practice-bundle rendering (mix-minus variants). Absent → defaults. */
     bundle: BundleSpec.optional(),
+
+    /** Chart channels from score files (tab, staff, drums). See ChartSpecSchema. */
+    charts: z.array(ChartSpecSchema).optional(),
   })
   .strict()
   // Cross-field: any source's curveRef must name an existing source key.
@@ -346,6 +472,7 @@ export const SongManifestSchema = z
         });
       }
     }
+    checkCharts(m, ctx);
     // Every bundle variant's mute keys must name stems the manifest has.
     const stemKeys = new Set(Object.keys(m.sources.stems?.files ?? {}));
     m.bundle?.variants?.forEach((v, vi) => {

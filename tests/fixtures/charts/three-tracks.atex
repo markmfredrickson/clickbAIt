@@ -1,0 +1,15 @@
+\title "Fixture"
+\tempo 120
+\track "Guitar"
+\staff {tabs}
+\section "Intro" 0.6.4 0.6.4 0.6.4 0.6.4 | 0.6.4 0.6.4 0.6.4 0.6.4 |
+\section "Verse" 3.5.4 3.5.4 3.5.4 3.5.4 | r.1 |
+\track "Bass"
+\staff {tabs}
+\tuning (E1 A1 D2 G2)
+0.4.4 0.4.4 0.4.4 0.4.4 | 0.4.4 0.4.4 0.4.4 0.4.4 | 3.3.4 3.3.4 3.3.4 3.3.4 | r.1 |
+\track "Drums"
+\instrument percussion
+\articulation defaults
+\staff {score}
+KickHit.4 SnareHit.4 KickHit.4 SnareHit.4 | r.1 | r.1 | r.1 |

@@ -8,13 +8,15 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { join, extname } from "node:path";
+import { join, extname, dirname } from "node:path";
 import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
 import QRCode from "qrcode";
 import { networkInterfaces, tmpdir } from "node:os";
 import { createEinkRoutes } from "./eink/routes.js";
 import { renderPages } from "./eink/render.js";
+import { createChartRoutes } from "../charts/routes.js";
+import type { ChartsFile } from "../charts/build.js";
 import type { SongPayload, TempoPoint } from "./types.js";
 import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
 import { toSlug } from "../core/dsongl/index.js";
@@ -412,6 +414,20 @@ export function startRelay(opts: RelayOptions) {
     cacheDir: opts.einkCacheDir ?? join(tmpdir(), "clickbait-eink"),
   });
 
+  // Chart channels for the current song. The charts file sits beside the
+  // lyrics display and is read per request, so a rebuild shows up at once.
+  const charts = createChartRoutes({
+    current: async () => {
+      if (!currentSong || !isLyricsDisplay(currentSong)) return null;
+      const songDir = currentCacheEntry?.filePath ? dirname(currentCacheEntry.filePath) : songsDirs[0];
+      let file: ChartsFile | null = null;
+      try {
+        file = JSON.parse(await readFile(join(songDir, `${currentSlug}.charts.json`), "utf8")) as ChartsFile;
+      } catch { /* no charts for this song */ }
+      return { slug: currentSlug, display: currentSong, charts: file, songDir };
+    },
+  });
+
   // Pre-generate QR codes as SVG — one to follow along, one to take control.
   let qrSvgCache: string | null = null;
   let qrControlCache: string | null = null;
@@ -422,6 +438,7 @@ export function startRelay(opts: RelayOptions) {
     const url = req.url ?? "/";
 
     if (url.startsWith("/eink/") && (await eink(req, res))) return;
+    if (url.startsWith("/charts/") && (await charts(req, res))) return;
 
     if (url === "/song.json") {
       if (!currentSong) {

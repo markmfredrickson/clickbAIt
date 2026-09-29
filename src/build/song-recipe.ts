@@ -58,6 +58,9 @@ function q(s: string): string {
   return s.replace(/"/g, '\\"');
 }
 
+/** Score files a chart can come from: Guitar Pro, MusicXML, alphaTex. */
+export const SCORE_GLOBS = ["*.gp", "*.gp3", "*.gp4", "*.gp5", "*.gpx", "*.musicxml", "*.mxl", "*.atex"];
+
 /**
  * Build the per-song wireit unit (the parsed package.json object). Callers
  * JSON.stringify it. Task commands are CWD-relative to the song folder; paths
@@ -182,8 +185,10 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   // slow `align` into every build. Same standalone philosophy as `beats`.
   const build = {
     command: `npx tsx ${rel}/src/build/generate.ts ${manifest}`,
-    files: [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`],
-    output: ["*.RPP", "*.lyrics-display.json", "cues/**"],
+    // Score files are chart sources (manifest `charts`); the build maps them
+    // into <slug>.charts.json.
+    files: [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`, ...SCORE_GLOBS],
+    output: ["*.RPP", "*.lyrics-display.json", "*.charts.json", "cues/**"],
     dependencies: ["smooth"],
   };
 

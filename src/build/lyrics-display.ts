@@ -220,6 +220,7 @@ export function buildLyricsDisplay(
         words: [start, end],
         ...(line.tag ? { tag: line.tag } : {}),
         section: section.name,
+        sectionIndex: si,
       });
     }
   }

@@ -12,7 +12,9 @@ import { join, extname } from "node:path";
 import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
 import QRCode from "qrcode";
-import { networkInterfaces } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
+import { createEinkRoutes } from "./eink/routes.js";
+import { renderPages } from "./eink/render.js";
 import type { SongPayload, TempoPoint } from "./types.js";
 import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
 import { toSlug } from "../core/dsongl/index.js";
@@ -54,6 +56,8 @@ export interface RelayOptions {
    * OSC pattern config — it ships at 0 to keep traffic down.
    */
   tracks?: { click?: number; cues?: number; stems?: number };
+  /** Where rendered e-ink pages are cached (default: a folder in the OS temp dir). */
+  einkCacheDir?: string;
 }
 
 function escapeHtml(s: string): string {
@@ -400,6 +404,14 @@ export function startRelay(opts: RelayOptions) {
   }, pollIntervalMs);
   pollTimer.unref();
 
+  // E-ink pages for the current song, rendered at each device's size.
+  const eink = createEinkRoutes({
+    current: () =>
+      currentSong ? { slug: currentSlug, song: currentSong, version: String(currentCacheEntry?.mtimeMs ?? 0) } : null,
+    render: renderPages,
+    cacheDir: opts.einkCacheDir ?? join(tmpdir(), "clickbait-eink"),
+  });
+
   // Pre-generate QR codes as SVG — one to follow along, one to take control.
   let qrSvgCache: string | null = null;
   let qrControlCache: string | null = null;
@@ -408,6 +420,8 @@ export function startRelay(opts: RelayOptions) {
   // HTTP server
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = req.url ?? "/";
+
+    if (url.startsWith("/eink/") && (await eink(req, res))) return;
 
     if (url === "/song.json") {
       if (!currentSong) {
@@ -525,9 +539,12 @@ export function startRelay(opts: RelayOptions) {
       return;
     }
 
-    // Serve static files (/lyrics is the teleprompter, /control the bail bar)
-    const filePath =
-      url === "/lyrics" ? "index.html" : url === "/control" ? "control.html" : url.slice(1);
+    // Serve static files (/lyrics is the teleprompter, /control the bail bar,
+    // /eink the pre-rendered pages for e-ink screens). Query strings are
+    // options for the page, not part of the file name.
+    const path = url.split("?")[0];
+    const pages: Record<string, string> = { "/lyrics": "index.html", "/control": "control.html", "/eink": "eink.html" };
+    const filePath = pages[path] ?? path.slice(1);
     try {
       const fullPath = join(clientDir, filePath);
       const content = await readFile(fullPath);

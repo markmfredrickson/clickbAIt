@@ -102,3 +102,4 @@ songs/example-songs/stems/
 # Built browser client (from teleprompter.ts via esbuild)
 src/teleprompter/client/teleprompter.js
 src/teleprompter/client/control.js
+src/teleprompter/client/eink.js

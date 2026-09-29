@@ -73,6 +73,7 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   console.log("");
   console.log(qr);
   console.log(`  OSC listening on UDP port ${oscPort}`);
+  console.log(`  E-ink screens (Kindle browser): ${url}/eink`);
 
   if (songsDirs && songsDirs.length > 0) {
     const seen = new Set<string>();

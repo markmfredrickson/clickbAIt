@@ -21,9 +21,10 @@ export const clientDir = join(import.meta.dirname, "client");
 /** Bundle client/teleprompter.ts -> client/teleprompter.js (IIFE). Fast (~ms). */
 export async function buildClient(dir = clientDir): Promise<void> {
   await esbuild.build({
-    // Two pages, same shared modules: the lyrics display and the control bar.
-    // Both import show-state, so the bail logic can't drift between them.
-    entryPoints: [join(dir, "teleprompter.ts"), join(dir, "control.ts")],
+    // The lyrics display and the control bar share show-state, so the bail
+    // logic can't drift between them. The e-ink client shares eink/layout
+    // with the relay's page renderer.
+    entryPoints: [join(dir, "teleprompter.ts"), join(dir, "control.ts"), join(dir, "eink.ts")],
     outdir: dir,
     bundle: true,
     platform: "browser",

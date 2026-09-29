@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>clickbAIt e-ink</title>
+<style>
+  /* touch-action: none keeps the browser from claiming swipes for pan/zoom. */
+  html, body { margin: 0; padding: 0; background: #fff; overflow: hidden; touch-action: none; }
+  #stage { position: absolute; left: 0; top: 0; }
+  #stage img { position: absolute; left: 0; top: 0; display: none;
+               -webkit-user-drag: none; user-select: none; -webkit-user-select: none; }
+  /* Current line: a white box in difference mode inverts the page under it.
+     ?marker=bar gives a margin bar instead, ?marker=0 none. */
+  #marker { position: absolute; left: 0; background: #fff; mix-blend-mode: difference; display: none; }
+  #marker.bar { background: #000; mix-blend-mode: normal; width: 14px !important; }
+  #msg { position: absolute; left: 24px; top: 24px; right: 24px; font: 32px/1.3 Arial, sans-serif; }
+  /* Shown only after a manual turn; tapping it returns to the live page. */
+  #live { position: absolute; left: 50%; bottom: 24px; margin-left: -150px; width: 300px; height: 90px;
+          text-align: center; font: bold 40px/90px Arial, sans-serif; letter-spacing: 2px;
+          background: #000; color: #fff; border: 4px solid #fff; outline: 3px solid #000; display: none; }
+  /* Tap reminder: the Kindle's sleep timer only counts touches. Tapping it
+     (or the top strip) keeps the screen awake without turning the page. */
+  #awake { position: absolute; left: 0; top: 0; width: 100%; box-sizing: border-box; padding: 20px 24px;
+           background: #000; color: #fff; font: bold 36px/1.25 Arial, sans-serif; text-align: center; display: none; }
+  /* Empty circle = not connected to the relay. */
+  #dot { position: absolute; right: 6px; top: 6px; width: 14px; height: 14px; border: 3px solid #000;
+         border-radius: 50%; display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="marker"></div></div>
+<div id="msg">Connecting…</div>
+<div id="dot"></div>
+<div id="live">LIVE</div>
+<div id="awake">Tap here to keep the screen awake</div>
+<script src="eink.js"></script>
+</body>
+</html>

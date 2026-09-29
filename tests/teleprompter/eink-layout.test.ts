@@ -64,7 +64,15 @@ describe("blocksFrom", () => {
     expect(solo.bars).toBe(16);
   });
 
-  it("gives the last section no bar count, since the song's end isn't known", () => {
+  it("uses authored bar counts when the song has them, including the last section", () => {
+    const s = song([["Chorus", 0], ["Outro", 32]], [{ beat: 1, section: "Chorus" }]);
+    s.display.sections[0].bars = 8;
+    s.display.sections[1].bars = 6;
+    const bars = blocksFrom(s).filter((b) => b.kind === "section").map((b) => b.bars);
+    expect(bars).toEqual([8, 6]);
+  });
+
+  it("gives the last section no bar count when an older build didn't record it", () => {
     // An instrumental outro starts after the last word — measuring to that word gave "0 bars".
     const s = song([["Chorus", 0], ["Outro", 32]], [{ beat: 1, section: "Chorus" }, { beat: 20, section: "Chorus" }]);
     const outro = blocksFrom(s).find((b) => b.text === "Outro")!;

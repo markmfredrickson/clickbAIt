@@ -59,6 +59,9 @@ export interface DisplayLine {
 export interface DisplaySection {
   name: string;
   startBeat: number;
+  /** Length in bars of the section's own meter, from the manifest. Absent in
+   *  files built before it was added. */
+  bars?: number;
   cue?: boolean;
 }
 

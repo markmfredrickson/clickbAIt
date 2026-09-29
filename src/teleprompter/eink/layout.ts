@@ -68,11 +68,13 @@ export function blocksFrom(ld: LyricsDisplay): Block[] {
   const { words } = ld;
   const { sections, lines } = ld.display;
 
-  // A section runs to the next one. The display data doesn't say where the
-  // song ends, so the last section gets no bar count rather than a guess.
+  // Bar counts come from the manifest. Files built before they were recorded
+  // fall back to measuring to the next section, and the last section of such
+  // a file gets no count rather than a guess.
   const groups: Block[][] = sections.map((s, i) => {
     const header: Block = { kind: "section", beat: s.startBeat, text: s.name };
-    if (i + 1 < sections.length) header.bars = Math.round((sections[i + 1].startBeat - s.startBeat) / bpb);
+    if (s.bars !== undefined) header.bars = s.bars;
+    else if (i + 1 < sections.length) header.bars = Math.round((sections[i + 1].startBeat - s.startBeat) / bpb);
     return [header];
   });
 

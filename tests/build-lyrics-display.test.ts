@@ -115,7 +115,9 @@ describe("buildLyricsDisplay", () => {
   });
 
   // #4 sections copied as display labels
-  it("copies manifest sections to display.sections", () => {
+  it("copies manifest sections to display.sections, with their bar counts", () => {
+    // The bar count lets a client size the last section, which has no
+    // following start beat to measure against.
     const align = mkAlign([["A", 1000, 1100]]);
     const m = mkManifest({
       sections: [
@@ -125,8 +127,8 @@ describe("buildLyricsDisplay", () => {
     });
     const out = buildLyricsDisplay(m, align);
     expect(out.display.sections).toEqual([
-      { name: "Chorus 1", startBeat: 0, cue: true },
-      { name: "Instrumental", startBeat: 64 },
+      { name: "Chorus 1", startBeat: 0, bars: 16, cue: true },
+      { name: "Instrumental", startBeat: 64, bars: 20 },
     ]);
   });
 

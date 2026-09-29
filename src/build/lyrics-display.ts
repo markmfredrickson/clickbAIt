@@ -149,9 +149,12 @@ export function buildLyricsDisplay(
   // Sections become display labels (beat-only). Start beats are inferred from
   // section order + length, not authored.
   const starts = sectionStarts(manifest.sections, manifest.timeSignature);
+  // Bars ride along so a client can size the last section, which has no next
+  // start beat to measure against.
   const sections: DisplaySection[] = manifest.sections.map((s, i) => ({
     name: s.name,
     startBeat: starts[i],
+    bars: s.bars,
     ...(s.cue !== undefined ? { cue: s.cue } : {}),
   }));
 

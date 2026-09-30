@@ -396,3 +396,29 @@ describe("SongManifestSchema — chords", () => {
     expect(() => SongManifestSchema.parse(m)).toThrow(/chords.*is a built-in channel name/);
   });
 });
+
+describe("SongManifestSchema — barsPerRow", () => {
+  it("accepts bars per chord row on the song and on sections", () => {
+    const m = validManifest() as any;
+    m.barsPerRow = 4;
+    m.sections[0].barsPerRow = 3;
+    const parsed = SongManifestSchema.parse(m);
+    expect([parsed.barsPerRow, parsed.sections[0].barsPerRow]).toEqual([4, 3]);
+  });
+
+  it("leaves it out when not given (the rows default to 4)", () => {
+    const parsed = SongManifestSchema.parse(validManifest());
+    expect(parsed.barsPerRow).toBeUndefined();
+  });
+
+  it("takes only a positive whole number", () => {
+    for (const bad of [0, -2, 2.5, "4"]) {
+      const m = validManifest() as any;
+      m.barsPerRow = bad;
+      expect(() => SongManifestSchema.parse(m)).toThrow();
+      const s = validManifest() as any;
+      s.sections[0].barsPerRow = bad;
+      expect(() => SongManifestSchema.parse(s)).toThrow();
+    }
+  });
+});

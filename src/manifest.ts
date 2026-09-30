@@ -164,6 +164,8 @@ const Section = z
   .object({
     name: z.string().min(1),
     bars: z.number().positive(),
+    /** Bars per chord row in this section, if not the song's. See the song's `barsPerRow`. */
+    barsPerRow: z.number().int().positive().optional(),
     cue: z.boolean().optional(),
     /** Meter for this section, if it differs from the song default (e.g. a 6/8
      *  bridge). Omitted = inherit the song's timeSignature. */
@@ -507,6 +509,9 @@ export const SongManifestSchema = z
 
     /** Chord file for the `chords` channel. See ChordsSpec. */
     chords: ChordsSpec.optional(),
+
+    /** Bars per chord row on the displays (default 4); a section can set its own. */
+    barsPerRow: z.number().int().positive().optional(),
   })
   .strict()
   // Cross-field: any source's curveRef must name an existing source key.

@@ -22,6 +22,7 @@ import { buildRpp } from "./rpp.js";
 import { stemTrackName } from "./bundle-variants.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
 import { buildChartsFile } from "../charts/build.js";
+import { buildRows } from "../teleprompter/rows.js";
 import { songRecipe } from "./song-recipe.js";
 import { extractSections } from "./sections.js";
 import { cueOnset } from "./cue-onset.js";
@@ -239,9 +240,10 @@ writeFileSync(
 
 // LyricsDisplay, when an alignment is referenced.
 let lyricsMsg = "(no alignment — skipped LyricsDisplay)";
+let display: ReturnType<typeof buildLyricsDisplay> | undefined;
 if (manifest.lyrics.alignment) {
   const align = JSON.parse(readFileSync(join(dir, manifest.lyrics.alignment.file), "utf8")) as AlignInput;
-  const display = buildLyricsDisplay(manifest, align, { renderOffsetBeats: paddingBeats });
+  display = buildLyricsDisplay(manifest, align, { renderOffsetBeats: paddingBeats });
   writeFileSync(join(outDir, `${slug}.lyrics-display.json`), JSON.stringify(display, null, 2));
   lyricsMsg = `${display.words.length} words, ${display.display.lines.length} lines`;
 }
@@ -249,8 +251,9 @@ if (manifest.lyrics.alignment) {
 // Chart channels, when the manifest has any: which score bar plays in each of
 // our bars, and the chord file's chords on the beat grid. Fails the build with
 // every problem listed rather than guessing.
+let chartsFile: ReturnType<typeof buildChartsFile> | undefined;
 if (manifest.charts?.length || manifest.chords) {
-  const chartsFile = buildChartsFile(manifest, (name) => new Uint8Array(readFileSync(join(dir, name))), {
+  chartsFile = buildChartsFile(manifest, (name) => new Uint8Array(readFileSync(join(dir, name))), {
     timing: {
       curve: beatMapCurve(manifest.sources.recording.beatMap, manifest.bpm),
       clips: manifest.sources.stems?.clips,
@@ -262,6 +265,17 @@ if (manifest.charts?.length || manifest.chords) {
   lyricsMsg += `; ${chartsFile.charts.length} chart(s)`;
   if (chartsFile.chords) lyricsMsg += `; ${chartsFile.chords.length} chord(s)`;
 }
+
+// The row document: every channel laid out as rows, for the displays' panes.
+const rows = buildRows({
+  slug,
+  title: manifest.title,
+  song: manifest,
+  ...(display ? { lyrics: { words: display.words, lines: display.display.lines } } : {}),
+  ...(chartsFile?.chords ? { chords: chartsFile.chords } : {}),
+  ...(chartsFile ? { charts: chartsFile.charts } : {}),
+});
+writeFileSync(join(outDir, `${slug}.rows.json`), JSON.stringify(rows, null, 2));
 
 // Scaffold the per-song build unit — a package.json wireit recipe — but ONLY if
 // it doesn't already exist. The recipe is AUTHORED (you tune --min-bpm/--max-bpm,
@@ -311,7 +325,7 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !ex
   writeFileSync(pkgPath, JSON.stringify(unit, null, 2) + "\n");
 }
 
-console.error(`wrote ${slug}.RPP + ${slug}.lyrics-display.json (${lyricsMsg}) + cues/ in ${outDir}`);
+console.error(`wrote ${slug}.RPP + ${slug}.lyrics-display.json + ${slug}.rows.json (${lyricsMsg}) + cues/ in ${outDir}`);
 
 // Timekeeping QC: check each actual STRETCH SEGMENT (marker to marker) against
 // the constant tempo. Non-strided sections = per-beat; strided sections =

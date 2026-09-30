@@ -191,7 +191,7 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     // Score files and chord files are chart sources (manifest `charts`,
     // `chords`); the build maps them into <slug>.charts.json.
     files: [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`, ...SCORE_GLOBS, CHORD_FILE_GLOB],
-    output: ["*.RPP", "*.lyrics-display.json", "*.charts.json", "cues/**"],
+    output: ["*.RPP", "*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**"],
     dependencies: ["smooth"],
   };
 

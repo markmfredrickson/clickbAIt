@@ -113,6 +113,8 @@ A song's chords live in a `.lab` file, `<slug>.chords.lab`: one `start end label
 
 To start one from a chord sheet (chord names over the lyrics, with `[Section]` headers), run `npm run chords-draft -- <manifest> <sheet.txt>`. It places each chord in the bar its word is sung in and splits bars evenly, which is only a rough draft: chord sheets are imprecise about where changes fall. The `.lab` is authored from then on. Nudge it against the stems in Sonic Visualiser or Audacity (both open `.lab` as a label layer) or in a text editor. The draft never replaces an existing file.
 
+Displays show chords in rows of 4 bars. Set `"barsPerRow"` on the song to change that, or on a section to change it there (e.g. `3` for a 6-bar section). A row never runs past the end of its section.
+
 ## Full schema
 
 Generated from `src/manifest.ts` (zod → JSON Schema). The source file is authoritative; read it for exact constraints and inline comments.

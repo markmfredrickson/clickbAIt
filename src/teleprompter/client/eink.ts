@@ -78,7 +78,9 @@ function show(p: number, line: number): void {
   if (useMarker && !manual && l) {
     marker.style.top = `${l.y - 4}px`;
     marker.style.height = `${l.h + 8}px`;
-    marker.style.width = `${deck.width}px`;
+    // A chord bar has its own box; a lyric line spans the page.
+    marker.style.left = l.x !== undefined ? `${l.x - 4}px` : "0";
+    marker.style.width = l.w !== undefined ? `${l.w + 8}px` : `${deck.width}px`;
     marker.style.display = "block";
   } else {
     marker.style.display = "none";
@@ -102,7 +104,10 @@ function follow(): void {
 async function loadDeck(): Promise<void> {
   const gen = ++generation;
   say("Loading pages…");
-  const q = `/eink/deck?w=${W}&h=${H}&dpr=${DPR}${params.has("font") ? `&font=${params.get("font")}` : ""}`;
+  const q =
+    `/eink/deck?w=${W}&h=${H}&dpr=${DPR}` +
+    (params.has("font") ? `&font=${params.get("font")}` : "") +
+    (params.has("channels") ? `&channels=${encodeURIComponent(params.get("channels")!)}` : "");
   let next: Deck;
   try {
     const res = await fetch(q);

@@ -11,6 +11,7 @@
  *
  * Inputs (already produced by the normal pipeline), found in the song folder:
  *   - <slug>.lyrics-display.json  — from `npm run generate` (the built display)
+ *   - <slug>.charts.json          — optional, also from generate; its chords are carried
  *   - mix.opus | mix.ogg | mix.m4a | mix.wav — the rendered show mix
  *     (render the song's RPP in REAPER and save it into the song folder).
  *
@@ -89,6 +90,14 @@ if (!full) {
   );
 }
 songData.variants = variants.map(({ id, label, file }) => ({ id, label, file }));
+
+// Chords, when the song has them: the bundle has no relay to ask, so they ride
+// along in the display data, in the same shape the relay's /charts/chords sends.
+const chartsPath = join(songDir, `${slug}.charts.json`);
+if (existsSync(chartsPath)) {
+  const charts = JSON.parse(readFileSync(chartsPath, "utf8"));
+  if (charts.chords) songData.chordData = { slug, sections: charts.sections, chords: charts.chords };
+}
 
 const clientDir = resolve(repoRoot, "src", "teleprompter", "client");
 if (!existsSync(clientDir)) fail(`teleprompter client dir missing: ${clientDir}`);

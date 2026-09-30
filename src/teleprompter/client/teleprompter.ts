@@ -15,7 +15,7 @@
 import { Curve } from "../../core/curve.js";
 import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
 import { activeIndex } from "../highlight.js";
-import { layoutChords, currentChord, followTarget } from "../../charts/chord-layout.js";
+import { layoutChords, currentChord, followTarget, barGrid, rowLines, BARS_PER_LINE } from "../../charts/chord-layout.js";
 import { songPosition, sectionMeters } from "../position.js";
 import { parseDisplayOptions, displayQuery } from "../display-options.js";
 import { songMap, songProgress } from "../song-map.js";
@@ -138,7 +138,8 @@ import { songMap, songProgress } from "../song-map.js";
   async function loadSong() {
     if (typeof window.__SONG_DATA__ === "object" && window.__SONG_DATA__) {
       song = window.__SONG_DATA__;
-      chordData = null;
+      // A practice bundle carries its chords inline; there's no relay to ask.
+      chordData = song.chordData || null;
       renderSong();
       return;
     }
@@ -268,24 +269,38 @@ import { songMap, songProgress } from "../song-map.js";
       wrap.appendChild(nameEl);
       sectionElements.push({ el: nameEl, beat: row.bars[0].startBeat });
     }
-    var barsEl = document.createElement("div");
-    barsEl.className = "chord-bars";
-    row.bars.forEach(function (bar) {
-      var barEl = document.createElement("div");
-      barEl.className = "chord-bar";
-      // Eighth-note columns, so chords a quarter apart still have room.
-      barEl.style.gridTemplateColumns = "repeat(" + Math.max(1, Math.round(bar.beats * 2)) + ", minmax(1.5em, 1fr))";
-      bar.chords.forEach(function (c) {
-        var el = document.createElement("span");
-        el.className = "chord";
-        el.textContent = chordData.chords[c.chord].chord;
-        el.style.gridColumnStart = String(Math.round(c.at * bar.beats * 2) + 1);
-        barEl.appendChild(el);
-        chordEls[c.chord] = el;
+    // Four-bar lines, the same breaks e-ink uses.
+    rowLines(row.bars).forEach(function (line) {
+      var barsEl = document.createElement("div");
+      barsEl.className = "chord-bars";
+      // Each bar's share of the line is set by its beats; a short last line is
+      // padded so its bars line up with the lines above.
+      line.forEach(function (bar, k) {
+        var barEl = document.createElement("div");
+        barEl.className = "chord-bar" + (k === line.length - 1 ? " end" : "");
+        var grid = barGrid(bar);
+        barEl.style.flexGrow = String(bar.beats);
+        barEl.style.gridTemplateColumns = "repeat(" + grid.columns + ", 1fr)";
+        bar.chords.forEach(function (c, k) {
+          var el = document.createElement("span");
+          el.className = "chord";
+          el.textContent = chordData.chords[c.chord].chord;
+          el.style.gridColumnStart = String(grid.starts[k]);
+          barEl.appendChild(el);
+          chordEls[c.chord] = el;
+        });
+        barsEl.appendChild(barEl);
       });
-      barsEl.appendChild(barEl);
+      // A full line is four of the song's bars; pad a shorter one to that.
+      var room = BARS_PER_LINE * countInBeatsPerBar - line.reduce(function (sum, bar) { return sum + bar.beats; }, 0);
+      if (room > 0) {
+        var pad = document.createElement("div");
+        pad.className = "chord-bar-pad";
+        pad.style.flexGrow = String(room);
+        barsEl.appendChild(pad);
+      }
+      wrap.appendChild(barsEl);
     });
-    wrap.appendChild(barsEl);
     return wrap;
   }
 
@@ -478,7 +493,7 @@ import { songMap, songProgress } from "../song-map.js";
       sections.forEach(function (s) {
         var nameEl = document.createElement("div");
         nameEl.className = "section-name";
-        nameEl.textContent = s.name + (s.bars ? " · " + s.bars + " bars" : "");
+        nameEl.textContent = s.name + (s.bars ? " · " + s.bars + (s.bars === 1 ? " bar" : " bars") : "");
         container.appendChild(nameEl);
         sectionElements.push({ el: nameEl, beat: s.startBeat });
       });

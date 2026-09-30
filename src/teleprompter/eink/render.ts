@@ -8,7 +8,8 @@
 
 import { join } from "node:path";
 import type { LyricsDisplay } from "../lyrics-display.js";
-import { assemblePages, blocksFrom, type Block, type Page, type PageLayout } from "./layout.js";
+import { assemblePages, blocksFrom, type Block, type EinkView, type Page, type PageLayout } from "./layout.js";
+import { barGrid } from "../../charts/chord-layout.js";
 
 export interface RenderSize {
   /** CSS px. */
@@ -58,11 +59,33 @@ function pageHtml(blocks: Block[], title: string, size: Required<RenderSize>): s
   const pad = Math.round(f * 0.3);
   const footRoom = Math.round(f * 0.55);
   const flow = blocks
-    .map((b, i) =>
-      b.kind === "section"
-        ? `<div class="blk sec" data-i="${i}"><span>${esc(b.text)}</span><em>${b.bars !== undefined ? `${b.bars} bars` : ""}</em></div>`
-        : `<div class="blk line${b.tag && /backing/i.test(b.tag) ? " bv" : ""}" data-i="${i}">${esc(b.text)}</div>`,
-    )
+    .map((b, i) => {
+      if (b.kind === "section") {
+        return `<div class="blk sec" data-i="${i}"><span>${esc(b.text)}</span><em>${b.bars !== undefined ? `${b.bars} bar${b.bars === 1 ? "" : "s"}` : ""}</em></div>`;
+      }
+      if (b.kind === "chords") {
+        // One line of bars, as wide as the page, each bar's share set by its
+        // beats. A short last line is padded so its bars line up with the
+        // lines above.
+        const line = b.chordBars ?? [];
+        const bars = line
+          .map((bar, k) => {
+            const grid = barGrid(bar);
+            const cs = bar.chords.map((c, j) => `<b style="grid-column-start:${grid.starts[j]}">${esc(c.chord)}</b>`).join("");
+            const end = k === line.length - 1 ? " end" : "";
+            return `<div class="bar${end}" style="flex-grow:${bar.beats};grid-template-columns:repeat(${grid.columns},1fr)">${cs}</div>`;
+          })
+          .join("");
+        const room = (b.lineBeats ?? 0) - line.reduce((sum, bar) => sum + bar.beats, 0);
+        const pad = room > 0 ? `<div class="pad" style="flex-grow:${room}"></div>` : "";
+        return `<div class="blk crow" data-i="${i}">${bars}${pad}</div>`;
+      }
+      // A line with chords: each word a column, chord slot on top, so the text stays level.
+      const text = b.words
+        ? b.words.map((w) => `<span class="w"><b>${w.chord ? esc(w.chord) : "&nbsp;"}</b>${esc(w.text)}</span>`).join(" ")
+        : esc(b.text);
+      return `<div class="blk line${b.tag && /backing/i.test(b.tag) ? " bv" : ""}" data-i="${i}">${text}</div>`;
+    })
     .join("\n");
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     html, body { margin: 0; background: #fff; color: #000; }
@@ -77,6 +100,13 @@ function pageHtml(blocks: Block[], title: string, size: Required<RenderSize>): s
     .page > .blk:first-child.sec { margin-top: 0; }
     .line { margin: ${Math.round(f * 0.12)}px 0; }
     .bv { font-style: italic; color: #333; }
+    .w { display: inline-flex; flex-direction: column; vertical-align: bottom; line-height: 1.1; }
+    .w b { font-size: 0.7em; font-weight: 700; white-space: nowrap; }
+    .crow b { font-weight: 700; white-space: nowrap; padding-right: 0.3em; }
+    .crow { font-size: 0.7em; display: flex; margin: ${Math.round(f * 0.12)}px 0; }
+    .crow .bar { display: grid; flex-basis: 0; border-left: 2px solid #000; padding: 0 ${Math.round(f * 0.15)}px; }
+    .crow .bar.end { border-right: 2px solid #000; }
+    .crow .pad { flex-basis: 0; }
     #flow { display: none; }
   </style></head><body><div id="flow">${flow}</div><div id="pages"></div><script>
     function paginate() {
@@ -106,7 +136,15 @@ function pageHtml(blocks: Block[], title: string, size: Required<RenderSize>): s
         p.appendChild(foot);
         return {
           blocks: kids.map(function (k) { return +k.dataset.i; }),
-          geometry: kids.map(function (k) { return { y: k.offsetTop, h: k.offsetHeight }; })
+          geometry: kids.map(function (k) {
+            var g = { y: k.offsetTop, h: k.offsetHeight };
+            // A chord row also reports each bar, so each can be highlighted.
+            var bars = k.querySelectorAll('.bar');
+            if (bars.length) g.bars = Array.prototype.map.call(bars, function (b) {
+              return { x: b.offsetLeft, y: b.offsetTop, w: b.offsetWidth, h: b.offsetHeight };
+            });
+            return g;
+          })
         };
       });
     }
@@ -114,9 +152,9 @@ function pageHtml(blocks: Block[], title: string, size: Required<RenderSize>): s
 }
 
 /** Render `ld` into `outDir/<n>.png` (one per page) and return the page table. */
-export async function renderPages(ld: LyricsDisplay, size: RenderSize, outDir: string): Promise<Page[]> {
+export async function renderPages(ld: LyricsDisplay, size: RenderSize, outDir: string, view: EinkView = {}): Promise<Page[]> {
   const full: Required<RenderSize> = { ...size, fontPx: size.fontPx ?? Math.round(size.height / 22) };
-  const blocks = blocksFrom(ld);
+  const blocks = blocksFrom(ld, view);
   const browser = await (await chromium()).launch({ channel: "chrome" });
   try {
     const page = await browser.newPage({

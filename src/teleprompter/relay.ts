@@ -8,6 +8,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -408,9 +409,22 @@ export function startRelay(opts: RelayOptions) {
   pollTimer.unref();
 
   // E-ink pages for the current song, rendered at each device's size.
+  // The current song's chords, from the charts file beside its lyrics display.
+  function currentChords(): { sections: ChartsFile["sections"]; chords: NonNullable<ChartsFile["chords"]> } | null {
+    const songDir = currentCacheEntry?.filePath ? dirname(currentCacheEntry.filePath) : songsDirs[0];
+    try {
+      const file = JSON.parse(readFileSync(join(songDir, `${currentSlug}.charts.json`), "utf8")) as ChartsFile;
+      return file.chords ? { sections: file.sections, chords: file.chords } : null;
+    } catch {
+      return null;
+    }
+  }
+
   const eink = createEinkRoutes({
     current: () =>
-      currentSong ? { slug: currentSlug, song: currentSong, version: String(currentCacheEntry?.mtimeMs ?? 0) } : null,
+      currentSong
+        ? { slug: currentSlug, song: currentSong, version: String(currentCacheEntry?.mtimeMs ?? 0), chords: currentChords() }
+        : null,
     render: renderPages,
     cacheDir: opts.einkCacheDir ?? join(tmpdir(), "clickbait-eink"),
   });

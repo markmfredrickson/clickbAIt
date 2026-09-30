@@ -1,7 +1,8 @@
 /**
  * The relay's e-ink endpoints.
  *
- *   GET /eink/deck?w=&h=&dpr=[&font=]  page table for the current song at that size
+ *   GET /eink/deck?w=&h=&dpr=[&font=][&channels=lyrics,chords]
+ *                                      page table for the current song at that size
  *   GET /eink/pages/<key>/<n>.png      a rendered page
  *
  * The client page itself (/eink) is a static file in the client directory.
@@ -14,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import type { LyricsDisplay } from "../lyrics-display.js";
-import type { Page } from "./layout.js";
+import type { EinkChords, Page } from "./layout.js";
 import type { RenderSize } from "./render.js";
 
 /** The relay's current song. `version` changes whenever the file does. */
@@ -22,10 +23,18 @@ export interface EinkCurrent {
   slug: string;
   song: unknown;
   version: string;
+  /** The song's chords, when it has a chord file. */
+  chords?: EinkChords | null;
+}
+
+/** What a deck shows. */
+export interface EinkDeckView {
+  lyrics: boolean;
+  chords: EinkChords | null;
 }
 
 /** Renders `song` into `outDir/<n>.png` and returns the page table. */
-export type EinkRenderer = (song: LyricsDisplay, size: RenderSize, outDir: string) => Promise<Page[]>;
+export type EinkRenderer = (song: LyricsDisplay, size: RenderSize, outDir: string, view: EinkDeckView) => Promise<Page[]>;
 
 export interface EinkRoutesOptions {
   current: () => EinkCurrent | null;
@@ -44,7 +53,7 @@ interface Deck {
 }
 
 // Bump when the page design changes, so cached decks are re-rendered.
-const RENDER_VERSION = 4;
+const RENDER_VERSION = 8;
 
 function isLyricsDisplay(song: unknown): song is LyricsDisplay {
   return !!song && typeof song === "object" && (song as { schema?: string }).schema === "clickbait/lyrics-display@1";
@@ -67,13 +76,27 @@ function parseSize(q: URLSearchParams): RenderSize | null {
   return { width, height, dpr, ...(font !== undefined ? { fontPx: font } : {}) };
 }
 
+/**
+ * The channels a page asks for (`channels=lyrics,chords`; lyrics alone by
+ * default). Chords are shown only when the song has them.
+ */
+function parseView(q: URLSearchParams, cur: EinkCurrent): EinkDeckView {
+  const asked = q.get("channels");
+  const channels = asked === null ? ["lyrics"] : asked.split(",").map((c) => c.trim());
+  return {
+    lyrics: channels.includes("lyrics"),
+    chords: channels.includes("chords") && cur.chords ? cur.chords : null,
+  };
+}
+
 /** Returns a handler that answers e-ink requests and returns false for anything else. */
 export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
   const inFlight = new Map<string, Promise<Deck>>();
 
-  async function deckFor(cur: EinkCurrent, song: LyricsDisplay, size: RenderSize): Promise<Deck> {
+  async function deckFor(cur: EinkCurrent, song: LyricsDisplay, size: RenderSize, view: EinkDeckView): Promise<Deck> {
+    // The chords themselves are in the key, so an edited chord file re-renders.
     const key = createHash("sha1")
-      .update(JSON.stringify([RENDER_VERSION, cur.slug, cur.version, size]))
+      .update(JSON.stringify([RENDER_VERSION, cur.slug, cur.version, size, view]))
       .digest("hex")
       .slice(0, 16);
     const dir = join(opts.cacheDir, key);
@@ -84,7 +107,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         key,
         (async () => {
           mkdirSync(dir, { recursive: true });
-          const pages = await opts.render(song, size, dir);
+          const pages = await opts.render(song, size, dir, view);
           const deck: Deck = {
             slug: cur.slug,
             key,
@@ -120,7 +143,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         return true;
       }
       try {
-        json(res, 200, await deckFor(cur, cur.song, size));
+        json(res, 200, await deckFor(cur, cur.song, size, parseView(url.searchParams, cur)));
       } catch (err) {
         console.error(`  ✗ e-ink render failed: ${err instanceof Error ? err.message : err}`);
         json(res, 500, { error: "render failed" });

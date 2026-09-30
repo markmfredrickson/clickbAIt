@@ -23,8 +23,9 @@ function song(
   };
 }
 
-/** Compact view: "[Name]" for a header, the beat for a line. */
-const shape = (blocks: Block[]) => blocks.map((b) => (b.kind === "section" ? `[${b.text}]` : b.beat));
+/** Compact view: "[Name]" for a header, the beat for a line, "chords@beat" for a chord row. */
+const shape = (blocks: Block[]) =>
+  blocks.map((b) => (b.kind === "section" ? `[${b.text}]` : b.kind === "chords" ? `chords@${b.beat}` : b.beat));
 
 describe("blocksFrom", () => {
   it("keeps a pickup line with its own section, not the one before", () => {
@@ -125,6 +126,25 @@ describe("assemblePages", () => {
     expect(pages.map((p) => p.startBeat)).toEqual([0, 63]);
   });
 
+  it("makes each bar of a chord row a line to highlight, with its place on the page", () => {
+    const row: Block = {
+      kind: "chords",
+      beat: 0,
+      text: "",
+      chordBars: [
+        { startBeat: 0, beats: 4, chords: [{ chord: "A", at: 0 }] },
+        { startBeat: 4, beats: 4, chords: [{ chord: "D", at: 0 }] },
+      ],
+    };
+    const pages = assemblePages([row], [
+      { blocks: [0], geometry: [{ y: 10, h: 30, bars: [{ x: 5, y: 10, w: 100, h: 30 }, { x: 105, y: 10, w: 100, h: 30 }] }] },
+    ]);
+    expect(pages[0].lines).toEqual([
+      { beat: 0, endBeat: 4, x: 5, y: 10, w: 100, h: 30 },
+      { beat: 4, endBeat: 8, x: 105, y: 10, w: 100, h: 30 },
+    ]);
+  });
+
   it("lists only lines (not headers) with their beat and position", () => {
     const pages = assemblePages(blocks, [
       { blocks: [0, 1, 2, 3], geometry: [{ y: 0, h: 40 }, { y: 40, h: 40 }, { y: 80, h: 50 }, { y: 130, h: 50 }] },
@@ -175,5 +195,59 @@ describe("lineAt", () => {
 
   it("has nothing lit on a page with no lines", () => {
     expect(lineAt([], 50, 1)).toBe(-1);
+  });
+});
+
+describe("blocksFrom — chords", () => {
+  // Intro (2 bars), Verse (2 bars, two one-word lines), Solo (1 bar).
+  const s = song([["Intro", 0], ["Verse", 8], ["Solo", 16]], [
+    { beat: 8.5, section: "Verse", text: "alpha" },
+    { beat: 12, section: "Verse", text: "bravo" },
+  ]);
+  const chords = {
+    sections: [
+      { name: "Intro", startBeat: 0, bars: 2, beatsPerBar: 4 },
+      { name: "Verse", startBeat: 8, bars: 2, beatsPerBar: 4 },
+      { name: "Solo", startBeat: 16, bars: 1, beatsPerBar: 4 },
+    ],
+    chords: [
+      { chord: "A", beat: 0 },
+      { chord: "D", beat: 4 },
+      { chord: "F", beat: 8 },
+      { chord: "G", beat: 12 },
+      { chord: "E", beat: 16 },
+    ],
+  };
+
+  it("puts each word's chord on its line", () => {
+    const lines = blocksFrom(s, { chords }).filter((b) => b.kind === "line");
+    expect(lines.map((b) => b.words)).toEqual([[{ text: "alpha", chord: "F" }], [{ text: "bravo", chord: "G" }]]);
+  });
+
+  it("places chord rows in beat order, after the header of a section they start", () => {
+    expect(shape(blocksFrom(s, { chords }))).toEqual(["[Intro]", "chords@0", "[Verse]", 8.5, 12, "[Solo]", "chords@16"]);
+    expect(blocksFrom(s, { chords })[1].chordBars).toEqual([
+      { startBeat: 0, beats: 4, chords: [{ chord: "A", at: 0 }] },
+      { startBeat: 4, beats: 4, chords: [{ chord: "D", at: 0 }] },
+    ]);
+  });
+
+  it("breaks a long chord row into lines of four bars", () => {
+    // A 6-bar intro with a chord a bar, before the verse.
+    const long = song([["Intro", 0], ["Verse", 24]], [{ beat: 24.5, section: "Verse" }]);
+    const intro = {
+      sections: [{ name: "Intro", startBeat: 0, bars: 6, beatsPerBar: 4 }, { name: "Verse", startBeat: 24, bars: 2, beatsPerBar: 4 }],
+      chords: [...[0, 4, 8, 12, 16, 20].map((beat) => ({ chord: "A", beat })), { chord: "D", beat: 24 }],
+    };
+    const rows = blocksFrom(long, { chords: intro }).filter((b) => b.kind === "chords");
+    expect(rows.map((b) => [b.beat, b.chordBars!.length])).toEqual([[0, 4], [16, 2]]);
+  });
+
+  it("shows headers and chord rows only with lyrics off", () => {
+    expect(shape(blocksFrom(s, { chords, lyrics: false }))).toEqual(["[Intro]", "chords@0", "[Verse]", "chords@8", "[Solo]", "chords@16"]);
+  });
+
+  it("leaves lines without chords when none are shown", () => {
+    expect(blocksFrom(s).filter((b) => b.kind === "line").map((b) => b.words)).toEqual([undefined, undefined]);
   });
 });

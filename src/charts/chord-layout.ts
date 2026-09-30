@@ -143,3 +143,25 @@ export function followTarget(
   const line = input.lines.findIndex((l) => l.words[0] <= word && word <= l.words[1]);
   return line >= 0 ? { line } : null;
 }
+
+/**
+ * The grid a bar of chords is drawn on: a column per beat when every chord
+ * falls on one, eighths or sixteenths only when a chord needs them, so a bar
+ * stays as narrow as its chords allow. `starts` are 1-based columns.
+ */
+export function barGrid(bar: { beats: number; chords: readonly { at: number }[] }): { columns: number; starts: number[] } {
+  const beats = Math.max(1, Math.round(bar.beats));
+  const fits = (per: number) => bar.chords.every((c) => Math.abs(c.at * beats * per - Math.round(c.at * beats * per)) < 1e-6);
+  const per = [1, 2].find(fits) ?? 4;
+  return { columns: beats * per, starts: bar.chords.map((c) => Math.round(c.at * beats * per) + 1) };
+}
+
+/** Bars per line in a chord row: a four-bar phrase reads as a unit. */
+export const BARS_PER_LINE = 4;
+
+/** A chord row's bars, split into lines of `BARS_PER_LINE`. */
+export function rowLines<T>(bars: readonly T[]): T[][] {
+  const lines: T[][] = [];
+  for (let i = 0; i < bars.length; i += BARS_PER_LINE) lines.push(bars.slice(i, i + BARS_PER_LINE));
+  return lines;
+}

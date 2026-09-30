@@ -41,9 +41,11 @@
     /* Song map — the arrangement as a strip. */
     #map { display: flex; gap: 2px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
     .seg { height: 14px; border-radius: 2px; background: #2b333c; transition: background .12s linear; }
-    .seg.now { background: var(--live); }
+    /* The current section fills as it plays (--p, 0 to 1); played ones stay tinted. */
+    .seg.now { background: linear-gradient(to right, var(--live) calc(var(--p, 0) * 100%), rgba(59,224,138,.25) 0); }
+    .seg.past { background: rgba(59,224,138,.35); }
     .seg.loop { background: var(--vamp); }
-    .m-out .seg.now { background: var(--out); }
+    .m-out .seg.now { background: linear-gradient(to right, var(--out) calc(var(--p, 0) * 100%), rgba(255,158,44,.25) 0); }
 
     #banner { padding: 13px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
     #banner-label {

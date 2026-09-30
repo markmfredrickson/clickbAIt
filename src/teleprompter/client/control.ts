@@ -13,6 +13,8 @@
 
 import { controlLabel, isControllable, sectionAt, type ShowSection, type ShowState } from "../show-state.js";
 import type { LyricsDisplay } from "../lyrics-display.js";
+import { sectionMeters, type MeteredSection } from "../position.js";
+import { songMap, songProgress } from "../song-map.js";
 
 const $ = (id: string) => document.getElementById(id)!;
 const bar = $("bar"), barMain = $("bar-main"), barSub = $("bar-sub");
@@ -22,6 +24,8 @@ const drawer = $("drawer"), drawerTitle = $("drawer-title"), drawerRows = $("dra
 const dVamp = $("d-vamp"), dStop = $("d-stop"), drawerClose = $("drawer-close");
 
 let sections: ShowSection[] = [];
+// The same sections with their meters, for the song map (shared with the prompter).
+let metered: MeteredSection[] = [];
 let state: ShowState = { mode: "following", at: 0 };
 let beat = 0;
 let playing = false;
@@ -47,8 +51,10 @@ async function loadSong(): Promise<void> {
         beat: s.startBeat,
         durationBeats: (i + 1 < secs.length ? secs[i + 1].startBeat : Math.max(end, s.startBeat)) - s.startBeat,
       }));
+      metered = sectionMeters(song);
     } else {
       sections = song.sections ?? [];
+      metered = sections.map((s) => ({ startBeat: s.beat, bars: 1, beatsPerBar: s.durationBeats }));
     }
     buildLists();
     render();
@@ -60,11 +66,12 @@ function buildLists(): void {
   rowsEl.textContent = "";
   drawerRows.textContent = "";
   segEls = []; rowEls = []; drawerRowEls = [];
+  const widths = songMap(metered);
 
   sections.forEach((s, i) => {
     const seg = document.createElement("div");
     seg.className = "seg";
-    seg.style.flex = String(Math.max(s.durationBeats, 1));
+    seg.style.flex = String(widths[i]?.width ?? Math.max(s.durationBeats, 1));
     mapEl.appendChild(seg);
     segEls.push(seg);
 
@@ -98,10 +105,14 @@ function render(): void {
 
   const here = sectionAt(sections, beat);
   const loop = state.loop;
+  const progress = songProgress(metered, beat);
   segEls.forEach((el, i) => {
     const inLoop = (loop && i >= loop.from && i <= loop.to) || (drawerOpen && i >= anchorIdx && i <= endIdx);
     el.classList.toggle("loop", !!inLoop);
     el.classList.toggle("now", i === here && !inLoop);
+    el.classList.toggle("past", i < here && !inLoop);
+    // How far through the current section, for its fill.
+    el.style.setProperty("--p", String(i === progress.section ? progress.inSection : 0));
   });
   rowEls.forEach((el, i) => el.classList.toggle("here", i === here));
 

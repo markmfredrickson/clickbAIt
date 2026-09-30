@@ -23,10 +23,12 @@ let server: Server;
 let base: string;
 let current: EinkCurrent | null;
 let renders: number;
+let views: unknown[];
 
 /** Stands in for headless Chrome: one page, one line, a placeholder PNG. */
-const fakeRender: EinkRenderer = async (_song, _size, outDir) => {
+const fakeRender: EinkRenderer = async (_song, _size, outDir, view) => {
   renders++;
+  views.push(view);
   writeFileSync(join(outDir, "0.png"), "png");
   return [{ startBeat: 0, lines: [{ beat: 1, y: 10, h: 20 }] }];
 };
@@ -35,6 +37,7 @@ beforeEach(async () => {
   cacheDir = mkdtempSync(join(tmpdir(), "eink-test-"));
   current = { slug: "test-song", song: SONG, version: "1" };
   renders = 0;
+  views = [];
   const handle = createEinkRoutes({ current: () => current, render: fakeRender, cacheDir });
   server = createServer(async (req, res) => {
     if (!(await handle(req, res))) {
@@ -107,5 +110,38 @@ describe("GET /eink/pages", () => {
 describe("routing", () => {
   it("leaves other paths to the relay", async () => {
     expect((await fetch(`${base}/lyrics`)).status).toBe(404); // fell through to the test server's 404
+  });
+});
+
+describe("GET /eink/deck — channels", () => {
+  const CHORDS = {
+    sections: [{ name: "Verse", startBeat: 0, bars: 1, beatsPerBar: 4 }],
+    chords: [{ chord: "A", beat: 0 }],
+  };
+  const deck = (q: string) => fetch(`${base}/eink/deck?w=993&h=1216&dpr=2${q}`);
+
+  it("shows lyrics only unless the page asks for more", async () => {
+    current = { ...current!, chords: CHORDS };
+    await deck("");
+    expect(views).toEqual([{ lyrics: true, chords: null }]);
+  });
+
+  it("passes the song's chords when the page asks for them", async () => {
+    current = { ...current!, chords: CHORDS };
+    await deck("&channels=chords");
+    expect(views).toEqual([{ lyrics: false, chords: CHORDS }]);
+  });
+
+  it("renders each channel set as its own deck", async () => {
+    current = { ...current!, chords: CHORDS };
+    await deck("&channels=lyrics");
+    await deck("&channels=lyrics,chords");
+    await deck("&channels=lyrics,chords");
+    expect(renders).toBe(2);
+  });
+
+  it("ignores chords for a song that has none", async () => {
+    await deck("&channels=lyrics,chords");
+    expect(views).toEqual([{ lyrics: true, chords: null }]);
   });
 });

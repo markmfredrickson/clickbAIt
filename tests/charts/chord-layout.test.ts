@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutChords, currentChord, followTarget, type LayoutInput } from "../../src/charts/chord-layout.js";
+import { layoutChords, currentChord, followTarget, barGrid, rowLines, type LayoutInput } from "../../src/charts/chord-layout.js";
 
 // Intro (2 bars, no lyrics), Verse (2 bars, two lines), Turn (1 bar of 3/4,
 // no lyrics), Solo (1 bar, one line sung late). Sections start at beats 0,
@@ -115,5 +115,33 @@ describe("followTarget", () => {
 
   it("follows nothing before the song starts", () => {
     expect(at(-2)).toBeNull();
+  });
+});
+
+describe("barGrid", () => {
+  it("uses a column per beat when every chord falls on a beat", () => {
+    expect(barGrid({ beats: 4, chords: [{ at: 0 }, { at: 0.5 }] })).toEqual({ columns: 4, starts: [1, 3] });
+  });
+
+  it("splits beats into eighths only when a chord needs it", () => {
+    expect(barGrid({ beats: 4, chords: [{ at: 0 }, { at: 0.875 }] })).toEqual({ columns: 8, starts: [1, 8] });
+  });
+
+  it("follows the bar's meter", () => {
+    expect(barGrid({ beats: 3, chords: [{ at: 0 }] })).toEqual({ columns: 3, starts: [1] });
+  });
+
+  it("falls back to sixteenths, rounding, for anything finer", () => {
+    expect(barGrid({ beats: 4, chords: [{ at: 0.1 }] })).toEqual({ columns: 16, starts: [3] });
+  });
+});
+
+describe("rowLines", () => {
+  it("splits a row's bars into lines of four, the last one shorter", () => {
+    expect(rowLines([1, 2, 3, 4, 5, 6, 7])).toEqual([[1, 2, 3, 4], [5, 6, 7]]);
+  });
+
+  it("keeps a short row on one line", () => {
+    expect(rowLines([1, 2])).toEqual([[1, 2]]);
   });
 });

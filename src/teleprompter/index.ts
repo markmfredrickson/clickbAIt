@@ -59,7 +59,8 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   const ip = getLocalIP();
   const url = `http://${ip}:${httpPort}`;
 
-  const qr = await QRCode.toString(url, { type: "terminal", small: true });
+  // Phones scan straight to the picker, where each person chooses a display.
+  const qr = await QRCode.toString(`${url}/pick`, { type: "terminal", small: true });
   console.log("");
   console.log(`  clickbAIt: One Simple Track`);
   if (payload) {
@@ -69,7 +70,7 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
     console.log(`  Songs dir${songsDirs.length > 1 ? "s" : ""}:`);
     for (const d of songsDirs) console.log(`    ${d}`);
   }
-  console.log(`  ${url}`);
+  console.log(`  ${url}  (pick a display: ${url}/pick)`);
   console.log("");
   console.log(qr);
   console.log(`  OSC listening on UDP port ${oscPort}`);

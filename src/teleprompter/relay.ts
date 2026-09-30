@@ -16,6 +16,7 @@ import { networkInterfaces, tmpdir } from "node:os";
 import { createEinkRoutes } from "./eink/routes.js";
 import { renderPages } from "./eink/render.js";
 import { createChartRoutes } from "../charts/routes.js";
+import { PRESETS, presetHref } from "./display-options.js";
 import type { ChartsFile } from "../charts/build.js";
 import type { SongPayload, TempoPoint } from "./types.js";
 import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
@@ -429,9 +430,22 @@ export function startRelay(opts: RelayOptions) {
   });
 
   // Pre-generate QR codes as SVG — one to follow along, one to take control.
+  // The join page's one QR code opens the picker, where each person chooses
+  // their display. Control (the bail bar) is for whoever runs the show, so it
+  // isn't offered there; it stays at /control.
   let qrSvgCache: string | null = null;
-  let qrControlCache: string | null = null;
-  const controlUrl = `${baseUrl}/control`;
+  const pickUrl = `${baseUrl}/pick`;
+  const pickerButtons = PRESETS.map(
+    (p) => `<a class="pick" href="${presetHref(p)}"><span class="pick-name">${escapeHtml(p.name)}</span><span class="pick-note">${escapeHtml(p.note)}</span></a>`,
+  ).join("\n      ");
+  const pickerStyle = `
+    .picks { display: flex; flex-direction: column; gap: 0.75rem; width: min(92vw, 420px); margin-top: 1.5rem; }
+    .pick { display: flex; flex-direction: column; align-items: flex-start; padding: 1rem 1.25rem;
+            background: #1d1d1d; border: 1px solid #333; border-radius: 10px; color: #fff;
+            text-decoration: none; text-align: left; }
+    .pick:active, .pick:hover { border-color: #ffcc00; }
+    .pick-name { font-size: 1.25rem; font-weight: 700; color: #ffcc00; }
+    .pick-note { font-size: 0.9rem; color: #999; margin-top: 0.2rem; }`;
 
   // HTTP server
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
@@ -451,12 +465,34 @@ export function startRelay(opts: RelayOptions) {
       return;
     }
 
+    if (url === "/pick") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pick a display — clickbAIt: One Simple Track</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; color: #fff; font-family: -apple-system, system-ui, sans-serif;
+           display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 2rem 1rem; }
+    h1 { font-size: 1.4rem; }${pickerStyle}
+  </style>
+</head>
+<body>
+  <h1>What should this screen show?</h1>
+  <div class="picks">
+      ${pickerButtons}
+  </div>
+</body>
+</html>`);
+      return;
+    }
+
     if (url === "/" || url === "/join") {
       if (!qrSvgCache) {
-        qrSvgCache = await QRCode.toString(baseUrl, { type: "svg" });
-      }
-      if (!qrControlCache) {
-        qrControlCache = await QRCode.toString(controlUrl, { type: "svg" });
+        qrSvgCache = await QRCode.toString(pickUrl, { type: "svg" });
       }
       const songLine = currentSong
         ? `${escapeHtml(currentSong.title)}${currentSong.artist ? ` — ${escapeHtml(currentSong.artist)}` : ""}`
@@ -482,14 +518,9 @@ export function startRelay(opts: RelayOptions) {
     .qr svg { width: 100%; height: auto; }
     .url { margin-top: 1rem; font-size: 0.95rem; font-family: monospace;
            color: #ffcc00; word-break: break-all; }
-    .url.control, .subtitle.control { color: #a678ff; }
-    .go { display: inline-block; margin-top: 1rem; padding: 0.8rem 2rem; background: #ffcc00;
-          color: #111; text-decoration: none; border-radius: 8px; font-weight: 700;
-          font-size: 1.1rem; }
-    .go.control { background: #a678ff; color: #120823; }
     .song-title { font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffcc00;
                    transition: text-shadow 0.5s ease; }
-    .song-title.glow { text-shadow: 0 0 20px #ffcc00, 0 0 40px #ffcc00; }
+    .song-title.glow { text-shadow: 0 0 20px #ffcc00, 0 0 40px #ffcc00; }${pickerStyle}
   </style>
 </head>
 <body>
@@ -497,17 +528,13 @@ export function startRelay(opts: RelayOptions) {
   <p class="song-title" id="song-title">${songLine}</p>
   <div class="codes">
     <div class="code">
-      <p class="subtitle">Scan to follow along</p>
+      <p class="subtitle">Scan to pick your display</p>
       <div class="qr">${qrSvgCache}</div>
-      <p class="url">${baseUrl}</p>
-      <a class="go" href="/lyrics">Open Lyrics</a>
+      <p class="url">${pickUrl}</p>
     </div>
-    <div class="code">
-      <p class="subtitle control">Scan to take control</p>
-      <div class="qr">${qrControlCache}</div>
-      <p class="url control">${controlUrl}</p>
-      <a class="go control" href="/control">Open Control</a>
-    </div>
+  </div>
+  <div class="picks">
+      ${pickerButtons}
   </div>
   <script>
     (function() {
@@ -556,11 +583,17 @@ export function startRelay(opts: RelayOptions) {
       return;
     }
 
-    // Serve static files (/lyrics is the teleprompter, /control the bail bar,
+    // Serve static files (/prompt is the teleprompter, /lyrics its old name,
+    // /control the bail bar,
     // /eink the pre-rendered pages for e-ink screens). Query strings are
     // options for the page, not part of the file name.
     const path = url.split("?")[0];
-    const pages: Record<string, string> = { "/lyrics": "index.html", "/control": "control.html", "/eink": "eink.html" };
+    const pages: Record<string, string> = {
+      "/prompt": "index.html",
+      "/lyrics": "index.html",
+      "/control": "control.html",
+      "/eink": "eink.html",
+    };
     const filePath = pages[path] ?? path.slice(1);
     try {
       const fullPath = join(clientDir, filePath);

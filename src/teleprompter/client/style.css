@@ -13,6 +13,7 @@
   --lyric-size: 1.5rem;
   --chord-size: 0.9rem;
   --section-size: 0.75rem;
+  --header-size: 1.2rem;
 }
 
 .light {
@@ -48,7 +49,7 @@ body {
 }
 
 #header h1 {
-  font-size: 1.2rem;
+  font-size: var(--header-size);
   font-weight: 600;
 }
 
@@ -57,25 +58,57 @@ body {
   color: var(--text-dim);
 }
 
-#controls {
+#header-bar {
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-top: 0.3rem;
-  font-size: 0.8rem;
 }
 
-#controls label {
+#now {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#now-section {
+  color: var(--accent);
+}
+
+/* The song map: one block per section, as wide as its share of the song. */
+#song-map {
   display: flex;
-  align-items: center;
-  gap: 0.3rem;
+  gap: 2px;
+  height: 8px;
+  margin-top: 0.35rem;
 }
 
-#offset-slider {
-  width: 80px;
+.map-seg {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
-#controls button {
+.map-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+}
+
+.map-seg.past .map-fill {
+  opacity: 0.4;
+}
+
+#bar-beat {
+  font-size: var(--header-size);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+#header button,
+#drawer button {
   background: var(--section-bg);
   color: var(--text);
   border: 1px solid var(--text-dim);
@@ -85,19 +118,86 @@ body {
   font-size: 0.8rem;
 }
 
-#controls button.active {
+#header button.active,
+#drawer button.active {
   background: var(--accent);
   color: #111;
   border-color: var(--accent);
 }
 
-/* Only in bundle mode. `:not([hidden])` so the `hidden` attribute (live mode)
-   still wins — a bare `display:flex` would override it and leak the controls
-   into the live teleprompter. */
-#bundle-controls:not([hidden]) {
+#drawer-btn {
+  font-size: 1.1rem !important;
+  line-height: 1;
+  padding: 0.3rem 0.5rem !important;
+}
+
+/* ── Settings drawer: slides over the page, so the lyrics never move ── */
+#drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(320px, 85vw);
+  z-index: 30;
+  background: var(--header-bg);
+  border-left: 1px solid var(--text-dim);
+  padding: 0.75rem 1rem 3rem;
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+  font-size: 0.85rem;
+}
+
+#drawer.open {
+  transform: translateX(0);
+}
+
+#drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.drawer-section {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--text-dim);
+}
+
+.drawer-section h2 {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 0.4rem;
+}
+
+.drawer-section label {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.drawer-section input[type="range"] {
+  flex: 1;
+  max-width: 60%;
+}
+
+/* Only in bundle mode (the drawer's Playback section). The `hidden`
+   attribute keeps it out of the live teleprompter. */
+#bundle-controls[hidden] {
+  display: none;
 }
 
 #bundle-controls select {
@@ -203,6 +303,58 @@ body {
   font-weight: 600;
 }
 
+/* ── Chords (shown when the viewer turns them on) ── */
+/* A chord sits over its word, as on a chord sheet. Every word becomes a
+   small column with a chord slot on top (blank when the word has no chord),
+   so a line is a row of chords over a row of text, and neighbouring chords
+   never overlap. */
+.chords-on .word {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: bottom;
+  line-height: 1.2;
+}
+
+.chord {
+  font-size: var(--chord-size);
+  font-weight: 700;
+  color: var(--chord-color);
+  white-space: nowrap;
+  text-shadow: none;
+  transition: color 0.08s ease;
+}
+
+.chord.current {
+  color: var(--accent);
+}
+
+/* Chords nothing is sung under: a row of bars, each bar split into eighths. */
+.chord-bars-row {
+  margin: 0.4rem 0 0.6rem;
+}
+
+.chord-bars {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 0.3rem;
+  font-size: var(--chord-size);
+}
+
+.chord-bar {
+  display: grid;
+  align-items: center;
+  border-left: 2px solid var(--text-dim);
+  padding: 0.1rem 0.3rem;
+}
+
+.chord-bar:last-child {
+  border-right: 2px solid var(--text-dim);
+}
+
+.chord-bar .chord {
+  grid-row: 1;
+}
+
 /* ── Status bar ── */
 #status-bar {
   position: fixed;
@@ -231,7 +383,7 @@ body {
 
 /* ── Print ── */
 @media print {
-  #header, #status-bar, #controls { display: none; }
+  #header, #status-bar, #drawer, #drawer-scrim { display: none; }
   .lyric-line { color: #000 !important; font-size: 12pt; line-height: 1.6; }
   .chord-row { color: #444 !important; }
   .section-name { color: #000 !important; }

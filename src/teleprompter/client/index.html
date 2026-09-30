@@ -7,48 +7,79 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- During playback only the song, the section and the count matter; the
+       rest lives in the drawer. -->
   <header id="header">
-    <h1 id="song-title"></h1>
-    <div id="song-meta"></div>
-    <div id="controls">
-      <div id="transport-light" class="stopped" title="Transport state"></div>
+    <div id="header-bar">
+      <h1 id="now"><span id="song-title"></span><span id="now-section"></span></h1>
+      <div id="bar-beat" title="Bar (of the section's bars) : beat">–</div>
+      <button id="drawer-btn" title="Display settings" aria-label="Display settings" aria-controls="drawer" aria-expanded="false">⚙</button>
+    </div>
+    <!-- The song left to right, a block per section, filling as it plays. -->
+    <div id="song-map" aria-hidden="true"></div>
+  </header>
+
+  <!-- Settings and practice controls, out of the way of the lyrics. -->
+  <div id="drawer-scrim" hidden></div>
+  <aside id="drawer" aria-label="Display settings" aria-hidden="true">
+    <div class="drawer-head">
+      <span>Display</span>
+      <button id="drawer-close" aria-label="Close">✕</button>
+    </div>
+    <!-- Channel checkboxes, then settings for each channel that's on; built by the client. -->
+    <div id="drawer-channels"></div>
+    <section class="drawer-section">
+      <h2>Song</h2>
+      <div id="song-meta"></div>
+      <label>
+        Transport
+        <div id="transport-light" class="stopped" title="Transport state"></div>
+      </label>
+    </section>
+    <!-- Practice bundles only: the player, mix, loop and speed. -->
+    <section class="drawer-section" id="bundle-controls" hidden>
+      <h2>Playback</h2>
+      <div id="bundle-player"></div>
+      <label>
+        Loop
+        <select id="loop-from" title="Loop from this section (click a section name too)">
+          <option value="-1">Off</option>
+        </select>
+      </label>
+      <label>
+        to
+        <select id="loop-to" title="…through this section (inclusive)"></select>
+      </label>
+      <label>
+        Speed
+        <input type="range" id="speed-slider" min="0.5" max="1" step="0.05" value="1" title="Slow down (pitch preserved)">
+        <span id="speed-value">100%</span>
+      </label>
+    </section>
+    <section class="drawer-section">
+      <h2>Reading</h2>
       <label>
         Offset
         <input type="range" id="offset-slider" min="0" max="16" step="0.5" value="0">
-        <span id="offset-value">0</span> beats ahead
+        <span><span id="offset-value">0</span> beats ahead</span>
       </label>
-      <button id="scroll-mode-btn" title="Toggle auto-scroll">Auto</button>
-      <span id="bundle-controls" hidden>
-        <label>
-          Loop
-          <select id="loop-from" title="Loop from this section (click a section name too)">
-            <option value="-1">Off</option>
-          </select>
-        </label>
-        <label>
-          to
-          <select id="loop-to" title="…through this section (inclusive)"></select>
-        </label>
-        <label>
-          Speed
-          <input type="range" id="speed-slider" min="0.5" max="1" step="0.05" value="1" title="Slow down (pitch preserved)">
-          <span id="speed-value">100%</span>
-        </label>
-      </span>
       <label>
-        Size
-        <input type="range" id="size-slider" min="0.75" max="8" step="0.25" value="1.5">
+        Scroll
+        <button id="scroll-mode-btn" title="Toggle auto-scroll">Auto</button>
       </label>
-      <button id="dark-mode-btn" title="Toggle dark/light">🌙</button>
-    </div>
-  </header>
+      <label>
+        Theme
+        <button id="dark-mode-btn" title="Toggle dark/light">🌙</button>
+      </label>
+    </section>
+  </aside>
 
   <main id="lyrics-container"></main>
 
   <footer id="status-bar">
     <span id="connection-status">Connecting…</span>
     <span style="opacity:0.5">AI-assisted beta</span>
-    <span id="beat-display">Beat: —</span>
+    <span id="beat-display" title="Song bar : beat, as REAPER counts measures">m–</span>
   </footer>
 
   <script src="teleprompter.js"></script>

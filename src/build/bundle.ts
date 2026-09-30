@@ -103,7 +103,7 @@ copyFileSync(join(clientDir, "teleprompter.js"), join(outDir, "teleprompter.js")
 for (const v of variants) copyFileSync(join(songDir, v.file), join(outDir, v.file));
 writeFileSync(join(outDir, "song.json"), JSON.stringify(songData, null, 2)); // for HTTP-served debugging
 
-// index.html — put the mix player in the sticky header, and inline the display
+// index.html — put the mix player in the drawer's Playback section, and inline the display
 // data before teleprompter.js so the bundle works when opened over file://.
 const indexHtmlSrc = readFileSync(join(clientDir, "index.html"), "utf8");
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -118,7 +118,7 @@ const audioTag =
   `    <audio id="mix-audio" src="${esc(full.file)}" controls preload="auto" style="width:100%;margin-top:0.5rem"></audio>`;
 const songScript = `  <script>window.__SONG_DATA__ = ${JSON.stringify(songData)};</script>`;
 const indexHtml = indexHtmlSrc
-  .replace(/(<\/header>)/, `${audioTag}\n  $1`)
+  .replace(/<div id="bundle-player"><\/div>/, `<div id="bundle-player">\n${audioTag}\n      </div>`)
   .replace(/(<script src="teleprompter\.js"><\/script>)/, `${songScript}\n  $1`);
 writeFileSync(join(outDir, "index.html"), indexHtml);
 

@@ -15,6 +15,10 @@
 import { Curve } from "../../core/curve.js";
 import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
 import { activeIndex } from "../highlight.js";
+import { layoutChords, currentChord, followTarget } from "../../charts/chord-layout.js";
+import { songPosition, sectionMeters } from "../position.js";
+import { parseDisplayOptions, displayQuery } from "../display-options.js";
+import { songMap, songProgress } from "../song-map.js";
 
 (function () {
   "use strict";
@@ -32,6 +36,21 @@ import { activeIndex } from "../highlight.js";
   let lyricElements = [];  // legacy: flat list of { el, beat, sectionIdx }
   let wordElements = [];   // LyricsDisplay: flat list of { el, startBeat, lineEl }
   let reconnectTimer = null;
+
+  // Chords: the relay's /charts/chords for the current song, shown when the
+  // viewer turns them on (a drummer's screen can leave them off).
+  // The page's options come from its URL first (so a setup is a link), then
+  // from what this screen remembers. Changing one writes it back to the URL.
+  const SIZED = ["header", "lyrics", "chords"];
+  const urlOptions = parseDisplayOptions(location.search, SIZED);
+  let chordData = null;    // { sections, chords } or null when the song has none
+  let chordsOn = channelWanted("chords", false);
+  let lyricsOn = channelWanted("lyrics", true);
+  let chordLayout = null;  // from layoutChords, while chords are shown
+  let chordInput = null;   // the layout's input, kept for followTarget
+  let chordEls = [];       // chord index -> its element
+  let rowEls = [];         // chord row index -> its element
+  let lastChord = -1;
 
   // ── Clock (pub/sub) ──
   const clock = (function () {
@@ -73,10 +92,18 @@ import { activeIndex } from "../highlight.js";
   const container = document.getElementById("lyrics-container");
   const statusEl = document.getElementById("connection-status");
   const beatDisplay = document.getElementById("beat-display");
+  const nowSectionEl = document.getElementById("now-section");
+  const barBeatEl = document.getElementById("bar-beat");
+  const songMapEl = document.getElementById("song-map");
+  let mapFills = [];  // section index -> its fill element in the song map
+
+  // Sections with their meters and names, for the header's Section and Bar:Beat.
+  let metered = [];
+  let sectionNames = [];
+  let countInBeatsPerBar = 4;
   const offsetSlider = document.getElementById("offset-slider");
   const offsetValue = document.getElementById("offset-value");
   const scrollModeBtn = document.getElementById("scroll-mode-btn");
-  const sizeSlider = document.getElementById("size-slider");
   const darkModeBtn = document.getElementById("dark-mode-btn");
   const transportLight = document.getElementById("transport-light");
   const bundleControls = document.getElementById("bundle-controls");
@@ -84,6 +111,10 @@ import { activeIndex } from "../highlight.js";
   const loopTo = document.getElementById("loop-to");
   const speedSlider = document.getElementById("speed-slider");
   const speedValue = document.getElementById("speed-value");
+  const drawer = document.getElementById("drawer");
+  const drawerBtn = document.getElementById("drawer-btn");
+  const drawerScrim = document.getElementById("drawer-scrim");
+  const drawerChannels = document.getElementById("drawer-channels");
 
   // Bundle-mode section loop: audio-time window we keep playback inside, or null.
   let loop = null;
@@ -92,6 +123,11 @@ import { activeIndex } from "../highlight.js";
   function renderWaiting() {
     titleEl.textContent = "Waiting for song…";
     metaEl.textContent = "Start playback in REAPER, or load a region matching a song slug.";
+    nowSectionEl.textContent = "";
+    barBeatEl.textContent = "–";
+    metered = [];
+    sectionNames = [];
+    renderSongMap();
     document.title = "clickbAIt: One Simple Track";
     container.innerHTML = '<div class="waiting-message">No song loaded yet.</div>';
     sectionElements = [];
@@ -102,6 +138,7 @@ import { activeIndex } from "../highlight.js";
   async function loadSong() {
     if (typeof window.__SONG_DATA__ === "object" && window.__SONG_DATA__) {
       song = window.__SONG_DATA__;
+      chordData = null;
       renderSong();
       return;
     }
@@ -109,7 +146,9 @@ import { activeIndex } from "../highlight.js";
       var res = await fetch("song.json");
       if (!res.ok) { renderWaiting(); return; }
       song = await res.json();
+      await loadChords();
       renderSong();
+      renderDrawerChannels();
     } catch (e) {
       statusEl.textContent = "Failed to load song";
       statusEl.className = "disconnected";
@@ -125,6 +164,129 @@ import { activeIndex } from "../highlight.js";
       connectWebSocket();
     }
     setupControls();
+  }
+
+  // ── Song map ──
+  function renderSongMap() {
+    songMapEl.innerHTML = "";
+    mapFills = [];
+    songMap(metered).forEach(function (seg, i) {
+      var el = document.createElement("div");
+      el.className = "map-seg";
+      el.style.flex = seg.width + " 1 0";
+      el.title = sectionNames[i] || "";
+      var fill = document.createElement("div");
+      fill.className = "map-fill";
+      el.appendChild(fill);
+      songMapEl.appendChild(el);
+      mapFills.push(fill);
+    });
+  }
+
+  function updateSongMap(beat) {
+    var p = songProgress(metered, beat);
+    mapFills.forEach(function (fill, i) {
+      var done = i < p.section ? 1 : i === p.section ? p.inSection : 0;
+      fill.style.width = (done * 100) + "%";
+      fill.parentNode.classList.toggle("past", i < p.section);
+      fill.parentNode.classList.toggle("now", i === p.section);
+    });
+  }
+
+  // ── Chords ──
+  // On when the page asks for them (?channels=chords,lyrics) or the viewer
+  // turned them on last time.
+  function channelWanted(channel, byDefault) {
+    if (urlOptions.channels) return urlOptions.channels.indexOf(channel) >= 0;
+    try {
+      var saved = localStorage.getItem("clickbait." + channel);
+      if (saved !== null) return saved === "1";
+    } catch (e) { /* private window */ }
+    return byDefault;
+  }
+
+  /** Rewrite the URL to match the page, so copying it copies the setup. */
+  function writeUrl() {
+    var options = {
+      channels: [lyricsOn ? "lyrics" : null, chordsOn ? "chords" : null].filter(Boolean),
+      sizes: {},
+      offset: offsetBeats !== 0 ? offsetBeats : undefined,
+      scroll: autoScroll ? undefined : "manual",
+      theme: document.body.classList.contains("light") ? "light" : undefined,
+    };
+    CHANNELS.forEach(function (c) {
+      if (currentSizes[c.channel] !== undefined && currentSizes[c.channel] !== c.size) options.sizes[c.channel] = currentSizes[c.channel];
+    });
+    try { history.replaceState(null, "", location.pathname + displayQuery(options, SIZED)); } catch (e) { /* file:// */ }
+  }
+
+  async function loadChords() {
+    chordData = null;
+    try {
+      var res = await fetch("/charts/chords");
+      if (res.ok) chordData = await res.json();
+    } catch (e) { /* no relay charts: no chords */ }
+  }
+
+  /** Turn chords on or off, re-rendering in place so the page keeps its beat. */
+  function setChordsOn(on) {
+    chordsOn = on;
+    channelChanged("chords", on);
+  }
+
+  function setLyricsOn(on) {
+    lyricsOn = on;
+    channelChanged("lyrics", on);
+  }
+
+  /** Remember a channel switch and re-render in place, keeping the beat. */
+  function channelChanged(channel, on) {
+    try { localStorage.setItem("clickbait." + channel, on ? "1" : "0"); } catch (e) { /* private window */ }
+    writeUrl();
+    var beat = rawBeat;
+    renderSong();
+    if (beat >= 0) onBeatUpdate(beat);
+  }
+
+  function updateChordHighlight(readingBeat) {
+    if (!chordLayout) return;
+    var c = currentChord(chordData.chords, readingBeat);
+    if (c === lastChord) return;
+    if (lastChord >= 0 && chordEls[lastChord]) chordEls[lastChord].classList.remove("current");
+    if (c >= 0 && chordEls[c]) chordEls[c].classList.add("current");
+    lastChord = c;
+  }
+
+  /** A chord row: an optional section label and a line of bars. */
+  function chordRowElement(row) {
+    var wrap = document.createElement("div");
+    wrap.className = "chord-bars-row";
+    if (row.label) {
+      var nameEl = document.createElement("div");
+      nameEl.className = "section-name";
+      nameEl.textContent = row.label;
+      wrap.appendChild(nameEl);
+      sectionElements.push({ el: nameEl, beat: row.bars[0].startBeat });
+    }
+    var barsEl = document.createElement("div");
+    barsEl.className = "chord-bars";
+    row.bars.forEach(function (bar) {
+      var barEl = document.createElement("div");
+      barEl.className = "chord-bar";
+      // Eighth-note columns, so chords a quarter apart still have room.
+      barEl.style.gridTemplateColumns = "repeat(" + Math.max(1, Math.round(bar.beats * 2)) + ", minmax(1.5em, 1fr))";
+      bar.chords.forEach(function (c) {
+        var el = document.createElement("span");
+        el.className = "chord";
+        el.textContent = chordData.chords[c.chord].chord;
+        el.style.gridColumnStart = String(Math.round(c.at * bar.beats * 2) + 1);
+        barEl.appendChild(el);
+        chordEls[c.chord] = el;
+      });
+      barsEl.appendChild(barEl);
+    });
+    wrap.appendChild(barsEl);
+    return wrap;
   }
 
   // ── Bundle-mode clock: drive from <audio id="mix-audio"> ──
@@ -252,6 +414,19 @@ import { activeIndex } from "../highlight.js";
     curve = isLD && song.curve ? new Curve(song.curve) : null;
 
     titleEl.textContent = song.title;
+    nowSectionEl.textContent = "";
+    barBeatEl.textContent = "–";
+    countInBeatsPerBar = (song.timeSignature && song.timeSignature[0]) || 4;
+    if (isLD) {
+      metered = sectionMeters(song);
+      sectionNames = song.display.sections.map(function (s) { return s.name; });
+    } else {
+      metered = (song.sections || []).map(function (s) {
+        return { startBeat: s.beat, bars: s.durationBeats / countInBeatsPerBar, beatsPerBar: countInBeatsPerBar };
+      });
+      sectionNames = (song.sections || []).map(function (s) { return s.name; });
+    }
+    renderSongMap();
     const parts = [];
     if (song.artist) parts.push(song.artist);
     if (song.key) parts.push("Key: " + song.key);
@@ -263,7 +438,24 @@ import { activeIndex } from "../highlight.js";
     sectionElements = [];
     lyricElements = [];
     wordElements = [];
+    chordEls = [];
+    rowEls = [];
+    lastChord = -1;
+    chordLayout = null;
+    chordInput = null;
+    if (isLD && chordsOn && chordData) {
+      // Without lyrics there are no words to hang chords on, so every chord
+      // goes into bar rows: a chart, a labeled row per section.
+      chordInput = {
+        sections: chordData.sections,
+        words: lyricsOn ? song.words : [],
+        lines: lyricsOn ? song.display.lines : [],
+        chords: chordData.chords,
+      };
+      chordLayout = layoutChords(chordInput);
+    }
 
+    container.classList.toggle("chords-on", !!chordLayout);
     if (isLD) renderLyricsDisplay();
     else renderLegacy();
 
@@ -279,11 +471,35 @@ import { activeIndex } from "../highlight.js";
   // ── LyricsDisplay renderer: words grouped into lines + sections ──
   function renderLyricsDisplay() {
     const words = song.words;
-    const lines = song.display.lines;
+    const lines = lyricsOn ? song.display.lines : [];
     const sections = song.display.sections || [];
+    if (!lyricsOn && !chordLayout) {
+      // Neither lyrics nor chords: just the song's sections, to follow along.
+      sections.forEach(function (s) {
+        var nameEl = document.createElement("div");
+        nameEl.className = "section-name";
+        nameEl.textContent = s.name + (s.bars ? " · " + s.bars + " bars" : "");
+        container.appendChild(nameEl);
+        sectionElements.push({ el: nameEl, beat: s.startBeat });
+      });
+      return;
+    }
     let lastSection = null;
+    const rows = chordLayout ? chordLayout.rows : [];
+    function appendRowsBefore(li) {
+      rows.forEach(function (row, ri) {
+        if (row.beforeLine !== li) return;
+        var el = chordRowElement(row);
+        rowEls[ri] = el;
+        container.appendChild(el);
+        // A labeled row names its section, so a line after it in the same
+        // section shouldn't repeat the header.
+        if (row.label) lastSection = row.label;
+      });
+    }
 
-    lines.forEach(function (line) {
+    lines.forEach(function (line, li) {
+      appendRowsBefore(li);
       // Section header when the line's section changes.
       if (line.section && line.section !== lastSection) {
         var nameEl = document.createElement("div");
@@ -306,7 +522,23 @@ import { activeIndex } from "../highlight.js";
         var w = words[i];
         var span = document.createElement("span");
         span.className = "word";
-        span.textContent = w.text;
+        if (chordLayout) {
+          // Every word gets a chord slot above it, empty or not, so all the
+          // text in a line sits at the same height under a row of chords.
+          var ci = chordLayout.overWord[i];
+          var chordEl = document.createElement("span");
+          chordEl.className = "chord";
+          if (ci !== undefined) {
+            chordEl.textContent = chordData.chords[ci].chord;
+            chordEls[ci] = chordEl;
+          } else {
+            chordEl.textContent = "\u00a0";
+          }
+          span.appendChild(chordEl);
+          span.appendChild(document.createTextNode(w.text));
+        } else {
+          span.textContent = w.text;
+        }
         lineEl.appendChild(span);
         lineEl.appendChild(document.createTextNode(" "));
         wordElements.push({ el: span, startBeat: w.startBeat, endBeat: w.endBeat, lineEl: lineEl });
@@ -314,6 +546,7 @@ import { activeIndex } from "../highlight.js";
 
       container.appendChild(lineEl);
     });
+    appendRowsBefore(lines.length);
   }
 
   // ── Legacy renderer (line-level SongPayload) ──
@@ -409,10 +642,19 @@ import { activeIndex } from "../highlight.js";
     rawBeat = beat;
     var readingBeat = beat + offsetBeats;
     currentBeat = readingBeat;
-    beatDisplay.textContent = "Beat: " + Math.round(beat * 10) / 10;
+    // What's playing now (not the reading position): section, bar and beat.
+    var pos = songPosition(metered, beat, countInBeatsPerBar);
+    updateSongMap(beat);
+    nowSectionEl.textContent = " : " + (pos.section >= 0 ? sectionNames[pos.section] : "Count-in");
+    // Bar out of the section's bars, so the reader sees how far through it is.
+    barBeatEl.textContent = pos.section >= 0
+      ? "(" + pos.bar + " : " + pos.beat + ") of " + metered[pos.section].bars
+      : "(" + pos.bar + " : " + pos.beat + ")";
+    beatDisplay.textContent = "m" + pos.measure + ":" + pos.beat;
 
     if (isLD) updateWordHighlight(readingBeat);
     else updateHighlightLegacy(beat, readingBeat);
+    updateChordHighlight(readingBeat);
 
     if (autoScroll) scrollToCurrentLine(readingBeat);
   }
@@ -461,6 +703,8 @@ import { activeIndex } from "../highlight.js";
   var scrollTarget = 0;
   var scrolling = false;
   function animateScroll() {
+    // Manual mode lets the reader scroll: stop pulling toward the last target.
+    if (!autoScroll) { scrolling = false; return; }
     var current = window.scrollY;
     var diff = scrollTarget - current;
     if (Math.abs(diff) < 1) { scrolling = false; return; }
@@ -470,10 +714,13 @@ import { activeIndex } from "../highlight.js";
 
   function scrollToCurrentLine(beat) {
     var target = null;
-    if (isLD) {
+    // While a chord row plays and nothing has been sung since, follow the row.
+    var follow = chordLayout ? followTarget(chordLayout, chordInput, beat) : null;
+    if (follow && "row" in follow) target = rowEls[follow.row] || null;
+    if (!target && isLD) {
       var wi = activeIndex(wordElements, beat, function (w) { return w.startBeat; });
       if (wi >= 0) target = wordElements[wi].lineEl;
-    } else {
+    } else if (!target) {
       var li = activeIndex(lyricElements, beat, function (l) { return l.beat; });
       if (li >= 0) target = lyricElements[li].el;
     }
@@ -488,31 +735,163 @@ import { activeIndex } from "../highlight.js";
     }
   }
 
+  // ── Channels in the drawer ──
+  // One drawer section per channel the song offers: a show/hide switch for
+  // the optional ones and a size, remembered per screen. A new channel (tab,
+  // staff, …) adds an entry here with the CSS variable its rows use. `also`
+  // sets variables that follow the size (section labels belong to the lyrics).
+  var CHANNELS = [
+    {
+      // Not a channel: always shown, so it has a size but no switch.
+      channel: "header", label: "Header", cssVar: "--header-size", also: [],
+      min: 0.8, max: 3, step: 0.05, size: 1.2,
+      fixed: true,
+      isOn: function () { return true; },
+    },
+    {
+      channel: "lyrics", label: "Lyrics", cssVar: "--lyric-size", also: [{ cssVar: "--section-size", scale: 0.5 }],
+      min: 0.75, max: 3, step: 0.125, size: 1.5,
+      isOn: function () { return lyricsOn; },
+      setOn: setLyricsOn,
+    },
+    {
+      channel: "chords", label: "Chords", cssVar: "--chord-size", also: [],
+      min: 0.5, max: 2.25, step: 0.0625, size: 0.9,
+      available: function () { return !!chordData; },
+      isOn: function () { return chordsOn; },
+      setOn: setChordsOn,
+    },
+  ];
+
+  function sizeKey(c) { return "clickbait.size." + c.channel; }
+
+  var currentSizes = {};
+
+  function savedSize(c) {
+    if (urlOptions.sizes[c.channel] !== undefined) return Math.min(c.max, Math.max(c.min, urlOptions.sizes[c.channel]));
+    var saved = null;
+    try { saved = localStorage.getItem(sizeKey(c)); } catch (e) { /* private window */ }
+    var v = saved === null ? NaN : parseFloat(saved);
+    // Clamped, so a size saved under an older, wider range still fits.
+    return isNaN(v) ? c.size : Math.min(c.max, Math.max(c.min, v));
+  }
+
+  function applySize(c, v) {
+    var root = document.documentElement;
+    currentSizes[c.channel] = v;
+    root.style.setProperty(c.cssVar, v + "rem");
+    c.also.forEach(function (a) { root.style.setProperty(a.cssVar, v * a.scale + "rem"); });
+  }
+
+  /**
+   * The drawer's channel part: a checkbox per channel the song offers, then a
+   * settings section for each channel that's on.
+   */
+  function renderDrawerChannels() {
+    if (!drawerChannels) return;
+    drawerChannels.innerHTML = "";
+    var offered = CHANNELS.filter(function (c) { return !c.available || c.available(); });
+    var switchable = offered.filter(function (c) { return !c.fixed; });
+
+    var list = document.createElement("section");
+    list.className = "drawer-section";
+    var listHead = document.createElement("h2");
+    listHead.textContent = "Channels";
+    list.appendChild(listHead);
+    switchable.forEach(function (c) {
+      var label = document.createElement("label");
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = c.isOn();
+      box.disabled = !c.setOn;
+      if (c.setOn) {
+        box.addEventListener("change", function () {
+          c.setOn(box.checked);
+          renderDrawerChannels();
+        });
+      }
+      label.appendChild(document.createTextNode(c.label));
+      label.appendChild(box);
+      list.appendChild(label);
+    });
+    drawerChannels.appendChild(list);
+
+    offered.forEach(function (c) {
+      if (!c.isOn()) return;
+      var section = document.createElement("section");
+      section.className = "drawer-section";
+      var h = document.createElement("h2");
+      h.textContent = c.label;
+      section.appendChild(h);
+      var sizeLabel = document.createElement("label");
+      var slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = String(c.min);
+      slider.max = String(c.max);
+      slider.step = String(c.step);
+      slider.value = String(savedSize(c));
+      slider.addEventListener("input", function () {
+        applySize(c, parseFloat(slider.value));
+        try { localStorage.setItem(sizeKey(c), slider.value); } catch (e) { /* private window */ }
+        writeUrl();
+      });
+      sizeLabel.appendChild(document.createTextNode("Size"));
+      sizeLabel.appendChild(slider);
+      section.appendChild(sizeLabel);
+      drawerChannels.appendChild(section);
+    });
+  }
+
+  // ── Drawer ──
+  function setDrawerOpen(open) {
+    drawer.classList.toggle("open", open);
+    drawer.setAttribute("aria-hidden", open ? "false" : "true");
+    drawerBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    drawerScrim.hidden = !open;
+  }
+
   // ── Controls ──
   function setupControls() {
     offsetSlider.addEventListener("input", function () {
       offsetBeats = parseFloat(this.value);
       offsetValue.textContent = offsetBeats;
       if (rawBeat >= 0) onBeatUpdate(rawBeat);
+      writeUrl();
     });
-    scrollModeBtn.classList.add("active");
+    if (urlOptions.offset !== undefined) {
+      offsetSlider.value = String(urlOptions.offset);
+      offsetBeats = parseFloat(offsetSlider.value);
+      offsetValue.textContent = offsetBeats;
+    }
+    function showScrollMode() {
+      scrollModeBtn.classList.toggle("active", autoScroll);
+      scrollModeBtn.textContent = autoScroll ? "Auto" : "Manual";
+    }
+    autoScroll = urlOptions.scroll !== "manual";
+    showScrollMode();
     scrollModeBtn.addEventListener("click", function () {
       autoScroll = !autoScroll;
-      this.classList.toggle("active", autoScroll);
-      this.textContent = autoScroll ? "Auto" : "Manual";
+      showScrollMode();
+      writeUrl();
     });
-    sizeSlider.addEventListener("input", function () {
-      var s = parseFloat(this.value);
-      var root = document.documentElement;
-      root.style.setProperty("--lyric-size", s + "rem");
-      root.style.setProperty("--chord-size", (s * 0.6) + "rem");
-      root.style.setProperty("--section-size", (s * 0.5) + "rem");
-    });
+    if (urlOptions.theme === "light") {
+      document.body.classList.add("light");
+      darkModeBtn.textContent = "☀️";
+    }
+    CHANNELS.forEach(function (c) { applySize(c, savedSize(c)); });
+    renderDrawerChannels();
+    drawerBtn.addEventListener("click", function () { setDrawerOpen(!drawer.classList.contains("open")); });
+    document.getElementById("drawer-close").addEventListener("click", function () { setDrawerOpen(false); });
+    drawerScrim.addEventListener("click", function () { setDrawerOpen(false); });
     darkModeBtn.addEventListener("click", function () {
       document.body.classList.toggle("light");
       this.textContent = document.body.classList.contains("light") ? "☀️" : "🌙";
+      writeUrl();
     });
+    // The picker's Custom choice opens the page with the settings out.
+    if (new URLSearchParams(location.search).get("settings") === "open") setDrawerOpen(true);
     document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") setDrawerOpen(false);
       if (e.key === "ArrowUp") { offsetSlider.value = parseFloat(offsetSlider.value) + 0.5; offsetSlider.dispatchEvent(new Event("input")); }
       if (e.key === "ArrowDown") { offsetSlider.value = parseFloat(offsetSlider.value) - 0.5; offsetSlider.dispatchEvent(new Event("input")); }
     });

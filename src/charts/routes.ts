@@ -113,7 +113,7 @@ export function createChartRoutes(opts: ChartRoutesOptions) {
 
     if (url.pathname === "/charts/chords") {
       if (!cur.charts?.chords) json(res, 404, { error: "the song has no chord file" });
-      else json(res, 200, { slug: cur.slug, chords: cur.charts.chords });
+      else json(res, 200, { slug: cur.slug, sections: cur.charts.sections, chords: cur.charts.chords });
       return true;
     }
 

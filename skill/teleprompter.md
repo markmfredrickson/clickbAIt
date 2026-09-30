@@ -65,14 +65,18 @@ The config sends: TIME, BEAT, TEMPO, PLAY, STOP, PAUSE, REPEAT, LAST_MARKER, LAS
 
 ## Browser client
 
-- **`/`** — QR join page (scannable phone-to-phone, "Open Lyrics" button)
-- **`/lyrics`** — Teleprompter view with karaoke-style highlighting
+- **`/`** — join page: one QR code to the picker, and the picker's choices for the laptop
+- **`/pick`** — the picker: each person chooses what their screen shows (Lyrics, Lyrics + chords, Chords only, E-ink, Custom)
+- **`/prompt`** — the teleprompter (`/lyrics` still works). Its options live in the URL, so a setup is a link: `/prompt?channels=lyrics,chords&lyrics=2&chords=0.9&offset=1&scroll=manual&theme=light`. Changing a setting in the drawer rewrites the URL.
+- **`/control`** — the bail bar, for whoever runs the show; not offered on the picker
 - **`/songs`** — JSON list of available song slugs
 
 Features:
-- Auto-scroll via `requestAnimationFrame` easing (not browser smooth scroll — Brave compat)
-- Beat offset slider (±8 beats) for scroll lookahead
-- Red/green transport indicator (play/stop)
+- Header shows only what matters during playback: song, section, and `(bar : beat) of <bars in the section>`. The footer shows the song bar (`m45:2`), as REAPER counts measures.
+- Channels (lyrics, chords) are switched and sized in the ⚙ drawer. Chords sit over the words they're played on; chords with nothing sung under them form bar rows. With lyrics off, chords become a chart, one labeled row per section.
+- Auto-scroll via `requestAnimationFrame` easing (not browser smooth scroll — Brave compat); Manual lets the reader scroll freely
+- Beat offset slider (0–16 beats) for scroll lookahead
+- Red/green transport indicator (play/stop), in the drawer
 - Dark/light mode
 - Print-friendly CSS (`@media print`) for static fallback
 - Graceful degradation: full lyrics visible if WebSocket dies

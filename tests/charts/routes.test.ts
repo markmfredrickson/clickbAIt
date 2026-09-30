@@ -139,9 +139,9 @@ describe("chords", () => {
     expect(body.channels.map((c: { id: string }) => c.id)).toEqual(["sections", "lyrics", "chords", "rhythm-guitar", "bass"]);
   });
 
-  it("serves the placed chords", async () => {
+  it("serves the chords with the sections they fall in", async () => {
     current = { ...current!, charts: { ...CHARTS, chords: CHORDS } };
-    expect(await get("/charts/chords")).toEqual({ status: 200, body: { slug: "test-song", chords: CHORDS } });
+    expect(await get("/charts/chords")).toEqual({ status: 200, body: { slug: "test-song", sections: SECTIONS, chords: CHORDS } });
   });
 
   it("is a 404 for a song with no chord file", async () => {

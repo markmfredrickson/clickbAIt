@@ -101,6 +101,18 @@ Starting points — the band's chart wins. Flag each with a one-line prompt (*"~
 
 — speaks "Chorus 1 … 1 2, 1 2 3, 1".
 
+## Chords
+
+A song's chords live in a `.lab` file, `<slug>.chords.lab`: one `start end label` line per chord, in seconds into the source recording. Labels are Harte (`A:maj7`, `E:maj/3`, `N`) or plain names (`Amaj7`, `E/G#`, `N.C.`). The build places them on the beat grid through the beat map and clips, and they become the `chords` channel.
+
+```json
+"chords": { "file": "dirty-work-duo.chords.lab", "key": "played" }
+```
+
+`key` is required on a transposed song: `"source"` for a file in the recording's key (a chord detector's output; the build transposes it and spells it for `transpose.to`), `"played"` for one already in the band's key.
+
+To start one from a chord sheet (chord names over the lyrics, with `[Section]` headers), run `npm run chords-draft -- <manifest> <sheet.txt>`. It places each chord in the bar its word is sung in and splits bars evenly, which is only a rough draft: chord sheets are imprecise about where changes fall. The `.lab` is authored from then on. Nudge it against the stems in Sonic Visualiser or Audacity (both open `.lab` as a label layer) or in a text editor. The draft never replaces an existing file.
+
 ## Full schema
 
 Generated from `src/manifest.ts` (zod → JSON Schema). The source file is authoritative; read it for exact constraints and inline comments.
@@ -716,6 +728,26 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
         ],
         "additionalProperties": false
       }
+    },
+    "chords": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "type": "string",
+          "enum": [
+            "source",
+            "played"
+          ]
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [

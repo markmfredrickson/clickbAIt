@@ -359,3 +359,40 @@ describe("SongManifestSchema — scores and charts", () => {
     expect(() => SongManifestSchema.parse(withScore([], [chart({ id: "lyrics" })]))).toThrow(/lyrics/);
   });
 });
+
+describe("SongManifestSchema — chords", () => {
+  it("accepts a chord file", () => {
+    const m = validManifest() as any;
+    m.chords = { file: "song.chords.lab" };
+    expect(SongManifestSchema.parse(m).chords).toEqual({ file: "song.chords.lab" });
+  });
+
+  it("accepts the key a transposed song's chord file is in", () => {
+    for (const key of ["source", "played"]) {
+      const m = validManifest() as any;
+      m.transpose = { from: "Db", to: "A" };
+      m.chords = { file: "song.chords.lab", key };
+      expect(SongManifestSchema.parse(m).chords?.key).toBe(key);
+    }
+  });
+
+  it("requires the key when the song is transposed", () => {
+    const m = validManifest() as any;
+    m.transpose = { from: "Db", to: "A" };
+    m.chords = { file: "song.chords.lab" };
+    expect(() => SongManifestSchema.parse(m)).toThrow(/chords\.key/);
+  });
+
+  it("rejects any other key", () => {
+    const m = validManifest() as any;
+    m.chords = { file: "song.chords.lab", key: "A" };
+    expect(() => SongManifestSchema.parse(m)).toThrow();
+  });
+
+  it("keeps the chords channel name away from charts", () => {
+    const m = validManifest() as any;
+    m.scores = [{ id: "ug", file: "song.gp5", sections: [] }];
+    m.charts = [{ id: "chords", kind: "tab", instrument: "guitar", score: "ug", track: 0 }];
+    expect(() => SongManifestSchema.parse(m)).toThrow(/chords.*is a built-in channel name/);
+  });
+});

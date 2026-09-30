@@ -9,7 +9,7 @@
 
 import type { ChartSpec } from "../manifest.js";
 
-export type ChannelKind = "sections" | "lyrics" | ChartSpec["kind"];
+export type ChannelKind = "sections" | "lyrics" | "chords" | ChartSpec["kind"];
 
 export interface ChannelInfo {
   id: string;
@@ -18,10 +18,15 @@ export interface ChannelInfo {
   instrument?: string;
 }
 
-export function songChannels(song: { hasLyrics: boolean; charts: readonly ChartSpec[] }): ChannelInfo[] {
+export function songChannels(song: {
+  hasLyrics: boolean;
+  hasChords?: boolean;
+  charts: readonly ChartSpec[];
+}): ChannelInfo[] {
   return [
     { id: "sections", kind: "sections" },
     ...(song.hasLyrics ? [{ id: "lyrics", kind: "lyrics" as const }] : []),
+    ...(song.hasChords ? [{ id: "chords", kind: "chords" as const }] : []),
     ...song.charts.map((c) => ({ id: c.id, kind: c.kind, instrument: c.instrument })),
   ];
 }

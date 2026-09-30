@@ -327,11 +327,27 @@ const ChartSpecSchema = z
   })
   .strict();
 
+/**
+ * The song's chords: a `.lab` file of chord segments in source-recording
+ * seconds (see src/charts/lab.ts), placed on the beat grid at build. A
+ * transposed song must say which key the file is in: `source`, the
+ * recording's key, as a chord detector run on the audio writes it (the build
+ * transposes it), or `played`, already in the band's key.
+ */
+const ChordsSpec = z
+  .object({
+    /** Relative to the song folder. */
+    file: z.string().min(1),
+    key: z.enum(["source", "played"]).optional(),
+  })
+  .strict();
+
 export type ScoreSpec = z.infer<typeof ScoreSpecSchema>;
+export type ChordsSpec = z.infer<typeof ChordsSpec>;
 export type ChartSpec = z.infer<typeof ChartSpecSchema>;
 
 /** Channel ids the display provides itself; a chart can't use them. */
-export const BUILT_IN_CHANNELS = ["sections", "lyrics"] as const;
+export const BUILT_IN_CHANNELS = ["sections", "lyrics", "chords"] as const;
 
 /** 1 → "1st", 2 → "2nd", 11 → "11th": for naming a section occurrence. */
 export function ordinal(n: number): string {
@@ -488,6 +504,9 @@ export const SongManifestSchema = z
 
     /** Chart channels, each one track of a score (tab, staff, drums). See ChartSpecSchema. */
     charts: z.array(ChartSpecSchema).optional(),
+
+    /** Chord file for the `chords` channel. See ChordsSpec. */
+    chords: ChordsSpec.optional(),
   })
   .strict()
   // Cross-field: any source's curveRef must name an existing source key.
@@ -504,6 +523,13 @@ export const SongManifestSchema = z
       }
     }
     checkCharts(m, ctx);
+    if (m.chords && m.transpose !== undefined && !m.chords.key) {
+      ctx.addIssue({
+        code: "custom",
+        message: "chords.key is needed on a transposed song: \"source\" if the chord file is in the recording's key, \"played\" if it is in the band's",
+        path: ["chords", "key"],
+      });
+    }
     // Every bundle variant's mute keys must name stems the manifest has.
     const stemKeys = new Set(Object.keys(m.sources.stems?.files ?? {}));
     m.bundle?.variants?.forEach((v, vi) => {

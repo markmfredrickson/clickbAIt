@@ -14,6 +14,12 @@ describe("songChannels", () => {
     ]);
   });
 
+  it("lists chords after lyrics when the song has a chord sheet", () => {
+    expect(songChannels({ hasLyrics: true, hasChords: true, charts: CHARTS }).map((c) => c.id)).toEqual([
+      "sections", "lyrics", "chords", "lead-guitar", "rhythm-guitar", "bass", "drums",
+    ]);
+  });
+
   it("leaves lyrics out of an instrumental", () => {
     expect(songChannels({ hasLyrics: false, charts: [] }).map((c) => c.id)).toEqual(["sections"]);
   });

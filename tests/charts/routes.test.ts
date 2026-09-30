@@ -129,3 +129,22 @@ describe("GET /charts/source/<id>", () => {
     expect((await fetch(`${base}/charts/source/..%2F..%2Fetc%2Fpasswd`)).status).toBe(404);
   });
 });
+
+describe("chords", () => {
+  const CHORDS = [{ chord: "A", beat: 0 }, { chord: "D", beat: 8 }];
+
+  it("lists the chords channel after lyrics when the charts file has chords", async () => {
+    current = { ...current!, charts: { ...CHARTS, chords: CHORDS } };
+    const { body } = await get("/charts/channels");
+    expect(body.channels.map((c: { id: string }) => c.id)).toEqual(["sections", "lyrics", "chords", "rhythm-guitar", "bass"]);
+  });
+
+  it("serves the placed chords", async () => {
+    current = { ...current!, charts: { ...CHARTS, chords: CHORDS } };
+    expect(await get("/charts/chords")).toEqual({ status: 200, body: { slug: "test-song", chords: CHORDS } });
+  });
+
+  it("is a 404 for a song with no chord file", async () => {
+    expect((await get("/charts/chords")).status).toBe(404);
+  });
+});

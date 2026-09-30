@@ -61,6 +61,9 @@ function q(s: string): string {
 /** Score files a chart can come from: Guitar Pro, MusicXML, alphaTex. */
 export const SCORE_GLOBS = ["*.gp", "*.gp3", "*.gp4", "*.gp5", "*.gpx", "*.musicxml", "*.mxl", "*.atex"];
 
+/** Chord files (manifest `chords`), named `<slug>.chords.lab` so the build sees edits. */
+export const CHORD_FILE_GLOB = "*.chords.lab";
+
 /**
  * Build the per-song wireit unit (the parsed package.json object). Callers
  * JSON.stringify it. Task commands are CWD-relative to the song folder; paths
@@ -185,9 +188,9 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   // slow `align` into every build. Same standalone philosophy as `beats`.
   const build = {
     command: `npx tsx ${rel}/src/build/generate.ts ${manifest}`,
-    // Score files are chart sources (manifest `charts`); the build maps them
-    // into <slug>.charts.json.
-    files: [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`, ...SCORE_GLOBS],
+    // Score files and chord files are chart sources (manifest `charts`,
+    // `chords`); the build maps them into <slug>.charts.json.
+    files: [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`, ...SCORE_GLOBS, CHORD_FILE_GLOB],
     output: ["*.RPP", "*.lyrics-display.json", "*.charts.json", "cues/**"],
     dependencies: ["smooth"],
   };

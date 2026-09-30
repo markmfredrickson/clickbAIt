@@ -11,8 +11,12 @@
 
 import { songSlug } from "../core/dsongl/index.js";
 import type { Song } from "../core/dsongl/types.js";
-import type { ChartSpec, ScoreSpec } from "../manifest.js";
+import type { ChartSpec, ChordsSpec, ScoreSpec } from "../manifest.js";
+import { transposeSteps, type TransposeSpec } from "../build/transpose.js";
 import { mapScore, songSections, type MappedBar, type SongSection } from "./bar-map.js";
+import { chordName, transposeChord } from "./chord-label.js";
+import { chordBeats, type ChordTiming } from "./chord-timeline.js";
+import { parseLab } from "./lab.js";
 import { readScoreInfo, type ScoreInfo } from "./score-info.js";
 
 export interface BuiltChart extends ChartSpec {
@@ -28,6 +32,14 @@ export interface ChartsFile {
   slug: string;
   sections: SongSection[];
   charts: BuiltChart[];
+  /** The song's chords on the timeline, when the manifest has a chord file. */
+  chords?: ChartChord[];
+}
+
+export interface ChartChord {
+  /** As a chart shows it, in the key the band plays: "F#m7", "E/G#", "N.C.". */
+  chord: string;
+  beat: number;
 }
 
 /** The parts of a manifest the charts file needs. */
@@ -38,9 +50,15 @@ export interface ChartsSong {
   sections: { name: string; bars: number; timeSignature?: [number, number] }[];
   scores?: ScoreSpec[];
   charts?: ChartSpec[];
+  chords?: ChordsSpec;
+  transpose?: TransposeSpec;
 }
 
-export function buildChartsFile(song: ChartsSong, readFile: (name: string) => Uint8Array): ChartsFile {
+export function buildChartsFile(
+  song: ChartsSong,
+  readFile: (name: string) => Uint8Array,
+  opts: { timing?: ChordTiming } = {},
+): ChartsFile {
   const sections = songSections(song.sections, song.timeSignature);
   const errors: string[] = [];
 
@@ -76,6 +94,14 @@ export function buildChartsFile(song: ChartsSong, readFile: (name: string) => Ui
     }
     charts.push({ ...chart, source: spec.file, trackName: track.name, bars: score.bars });
   }
+
+  let chords: ChartChord[] | undefined;
+  if (song.chords) {
+    const where = `chords (${song.chords.file})`;
+    const placed = readChords(song, song.chords, readFile, opts.timing);
+    errors.push(...placed.errors.map((e) => `${where}: ${e}`));
+    chords = placed.chords;
+  }
   if (errors.length > 0) {
     throw new Error(`charts for "${song.title}" have ${errors.length} problem(s):\n  ${errors.join("\n  ")}`);
   }
@@ -84,5 +110,46 @@ export function buildChartsFile(song: ChartsSong, readFile: (name: string) => Ui
     slug: songSlug({ title: song.title, artist: song.artist } as Song),
     sections,
     charts,
+    ...(chords ? { chords } : {}),
   };
+}
+
+/**
+ * The chord file's chords on the timeline: each label read (and transposed,
+ * for a file in the recording's key), then its start placed through the
+ * recording's timing.
+ */
+function readChords(
+  song: ChartsSong,
+  spec: ChordsSpec,
+  readFile: (name: string) => Uint8Array,
+  timing: ChordTiming | undefined,
+): { chords: ChartChord[]; errors: string[] } {
+  if (!timing) return { chords: [], errors: ["needs the recording's timing to place its chords"] };
+  let text: string;
+  try {
+    text = new TextDecoder().decode(readFile(spec.file));
+  } catch (err) {
+    return { chords: [], errors: [(err as Error).message] };
+  }
+  const { segments, errors } = parseLab(text);
+
+  const steps = spec.key === "source" && song.transpose !== undefined ? transposeSteps(song.transpose) : 0;
+  const toKey = typeof song.transpose === "object" ? song.transpose.to : undefined;
+  if (steps !== 0 && !toKey) {
+    return { chords: [], errors: [...errors, "set transpose.to, the key to spell the transposed chords in"] };
+  }
+  const names = segments.map((seg) => {
+    try {
+      return steps !== 0 ? transposeChord(seg.label, steps, toKey!) : chordName(seg.label);
+    } catch (err) {
+      errors.push(`line ${seg.line}: ${(err as Error).message}`);
+      return null;
+    }
+  });
+  const chords = chordBeats(segments, timing).flatMap(({ segment, beat }) => {
+    const chord = names[segment];
+    return chord === null ? [] : [{ chord, beat }];
+  });
+  return { chords, errors };
 }

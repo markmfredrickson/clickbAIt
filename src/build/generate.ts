@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 
 import { execSync } from "node:child_process";
 import { resolve, dirname, join, relative } from "node:path";
 import { SongManifestSchema, sectionStarts, resolveBeatMap } from "../manifest.js";
-import { beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
+import { beatMapCurve, beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
 import { chordWav } from "./tone.js";
 import { RigSchema } from "../rig.js";
@@ -247,11 +247,20 @@ if (manifest.lyrics.alignment) {
 }
 
 // Chart channels, when the manifest has any: which score bar plays in each of
-// our bars. Fails the build with every problem listed rather than guessing.
-if (manifest.charts?.length) {
-  const chartsFile = buildChartsFile(manifest, (name) => new Uint8Array(readFileSync(join(dir, name))));
+// our bars, and the chord file's chords on the beat grid. Fails the build with
+// every problem listed rather than guessing.
+if (manifest.charts?.length || manifest.chords) {
+  const chartsFile = buildChartsFile(manifest, (name) => new Uint8Array(readFileSync(join(dir, name))), {
+    timing: {
+      curve: beatMapCurve(manifest.sources.recording.beatMap, manifest.bpm),
+      clips: manifest.sources.stems?.clips,
+      offset: beatsOffset,
+      bpm: manifest.bpm,
+    },
+  });
   writeFileSync(join(outDir, `${slug}.charts.json`), JSON.stringify(chartsFile, null, 2));
   lyricsMsg += `; ${chartsFile.charts.length} chart(s)`;
+  if (chartsFile.chords) lyricsMsg += `; ${chartsFile.chords.length} chord(s)`;
 }
 
 // Scaffold the per-song build unit — a package.json wireit recipe — but ONLY if

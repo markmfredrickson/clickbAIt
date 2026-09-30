@@ -28,6 +28,7 @@
     "lyrics:txt": "npx tsx src/authoring/lyrics-text-cli.ts",
     "init-song": "npx tsx src/build/init-song.ts",
     "init-manifest": "npx tsx src/authoring/init-manifest-cli.ts",
+    "chords-draft": "npx tsx src/authoring/chords-draft-cli.ts",
     "generate": "npx tsx src/build/generate.ts",
     "build:songs": "npx tsx scripts/build-songs.ts",
     "realign-all": "npx tsx scripts/realign-all.ts",

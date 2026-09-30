@@ -3,6 +3,7 @@
  *
  *   GET /charts/channels                          the channels the song offers
  *   GET /charts/rows?channels=a,b[&barsPerRow=n]  rows for those channels
+ *   GET /charts/chords                            the song's chords on the timeline
  *   GET /charts/source/<chart-id>                 the score file behind a chart
  *
  * Rows are built on each request from the song's lyrics display and its
@@ -70,7 +71,11 @@ function rowInput(cur: ChartsCurrent): RowInput {
 }
 
 function channelsOf(cur: ChartsCurrent) {
-  return songChannels({ hasLyrics: cur.display.words.length > 0, charts: cur.charts?.charts ?? [] });
+  return songChannels({
+    hasLyrics: cur.display.words.length > 0,
+    hasChords: cur.charts?.chords !== undefined,
+    charts: cur.charts?.charts ?? [],
+  });
 }
 
 /** Returns a handler that answers /charts/* and returns false for anything else. */
@@ -103,6 +108,12 @@ export function createChartRoutes(opts: ChartRoutesOptions) {
       } catch (err) {
         json(res, 500, { error: (err as Error).message });
       }
+      return true;
+    }
+
+    if (url.pathname === "/charts/chords") {
+      if (!cur.charts?.chords) json(res, 404, { error: "the song has no chord file" });
+      else json(res, 200, { slug: cur.slug, chords: cur.charts.chords });
       return true;
     }
 

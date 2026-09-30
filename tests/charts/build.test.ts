@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildChartsFile } from "../../src/charts/build.js";
 import type { ChartSpec, ScoreSpec } from "../../src/manifest.js";
+import type { ChordTiming } from "../../src/charts/chord-timeline.js";
+import { beatMapCurve } from "../../src/core/beat-map.js";
 
 // The 4-bar fixture score: Intro (bars 1–2) and Verse (bars 3–4) markers,
 // tracks Guitar, Bass, Drums.
@@ -74,5 +76,61 @@ describe("buildChartsFile", () => {
   it("skips a score no chart uses", () => {
     const unused: ScoreSpec = { ...fixture, id: "unused", file: "missing.gp5" };
     expect(() => buildChartsFile(song([fixture, unused], [guitar]), files)).not.toThrow();
+  });
+});
+
+describe("buildChartsFile — chords", () => {
+  // 60 bpm, one beat per second, so the .lab's seconds are beats.
+  const timing: ChordTiming = {
+    curve: beatMapCurve([{ startBeat: 0, times: Array.from({ length: 30 }, (_, i) => i) }], 60),
+    offset: 0,
+    bpm: 60,
+  };
+  const withChords = (extra: object = {}) => ({ ...song([], []), chords: { file: "song.chords.lab" }, ...extra });
+  const labFiles = (lab: string) => (name: string) => {
+    if (name === "song.chords.lab") return new TextEncoder().encode(lab);
+    return files(name);
+  };
+
+  it("places the .lab's chords on the beat grid, with no score charts needed", () => {
+    const out = buildChartsFile(withChords(), labFiles("0 2 A:maj\n2 4 D:maj7\n4 8 F#m7\n"), { timing });
+    expect(out.charts).toEqual([]);
+    expect(out.chords).toEqual([{ chord: "A", beat: 0 }, { chord: "Dmaj7", beat: 2 }, { chord: "F#m7", beat: 4 }]);
+  });
+
+  it("transposes a .lab in the recording's key to the key the band plays", () => {
+    const transposed = withChords({ transpose: { from: "Db", to: "A" }, chords: { file: "song.chords.lab", key: "source" } });
+    const out = buildChartsFile(transposed, labFiles("0 2 Gb:maj\n2 4 Bb:min7\n4 6 Ab:7/3\n"), { timing });
+    expect(out.chords!.map((c) => c.chord)).toEqual(["D", "F#m7", "E7/G#"]);
+  });
+
+  it("leaves a .lab already in the played key alone", () => {
+    const played = withChords({ transpose: { from: "Db", to: "A" }, chords: { file: "song.chords.lab", key: "played" } });
+    expect(buildChartsFile(played, labFiles("0 2 D\n"), { timing }).chords!.map((c) => c.chord)).toEqual(["D"]);
+  });
+
+  it("needs the target key to spell transposed chords", () => {
+    const bySteps = withChords({ transpose: -4, chords: { file: "song.chords.lab", key: "source" } });
+    expect(() => buildChartsFile(bySteps, labFiles("0 2 Gb\n"), { timing })).toThrow(/transpose\.to/);
+  });
+
+  it("leaves chords out of a song with no chord file", () => {
+    expect(buildChartsFile(song([fixture], [guitar]), files).chords).toBeUndefined();
+  });
+
+  it("reports .lab problems with the file and line, alongside score problems", () => {
+    let message = "";
+    try {
+      buildChartsFile({ ...withChords(), scores: [fixture], charts: [{ ...guitar, track: 9 }] }, labFiles("0 2 A\n2 3 X\n2.5 4 D\n"), { timing });
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toMatch(/guitar.*track 9/);
+    expect(message).toMatch(/chords \(song\.chords\.lab\): line 2: chord "X" is unknown/);
+    expect(message).toMatch(/chords \(song\.chords\.lab\): line 3: starts at 2\.5, inside/);
+  });
+
+  it("needs the recording's timing to place a .lab", () => {
+    expect(() => buildChartsFile(withChords(), labFiles("0 2 A\n"))).toThrow(/song\.chords\.lab.*timing/);
   });
 });

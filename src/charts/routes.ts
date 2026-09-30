@@ -56,7 +56,8 @@ function displaySections(display: LyricsDisplay): SongSection[] {
     const bars = s.bars ?? (next !== undefined ? (next - s.startBeat) / beatsPerBar : 1);
     const occurrence = (seen.get(s.name) ?? 0) + 1;
     seen.set(s.name, occurrence);
-    const placed = { name: s.name, bars, occurrence, firstBar, startBeat: s.startBeat, beatsPerBar };
+    const barBeats = s.barBeats ?? Array.from({ length: Math.ceil(bars) }, () => beatsPerBar);
+    const placed = { name: s.name, bars, occurrence, firstBar, startBeat: s.startBeat, beatsPerBar, barBeats };
     firstBar += bars;
     return placed;
   });

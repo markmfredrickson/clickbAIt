@@ -6,6 +6,10 @@ export interface Section {
   beat: number;           // absolute beat position
   durationBeats: number;
   timeSignature: [number, number];
+  /** The meter of the section's last bar, which a count-in into the next
+   *  section counts in. Differs from `timeSignature` only when the section
+   *  holds bars in a meter of their own (manifest `meters`). */
+  endTimeSignature: [number, number];
   bpm: number;
   cue?: boolean;          // if true, buildRpp auto-places a TTS cue before this section
 }
@@ -52,7 +56,7 @@ function walkChildren(children: Node[], ctx: Ctx, out: Section[], isSequence: bo
       const dur = child.duration ? durationBeats(child.duration, ts) : 0;
 
       if (child.name) {
-        out.push({ name: child.name, beat, durationBeats: dur, timeSignature: ts, bpm, cue: child.cue });
+        out.push({ name: child.name, beat, durationBeats: dur, timeSignature: ts, endTimeSignature: endMeter(child, ts), bpm, cue: child.cue });
       }
 
       if (child.children) {
@@ -71,4 +75,15 @@ function walkChildren(children: Node[], ctx: Ctx, out: Section[], isSequence: bo
       cursor += childDuration(child, ctx.timeSignature);
     }
   }
+}
+
+/**
+ * The meter a span ends in: that of the last bar of its sequence of bar
+ * runs, when it has one (see manifestToSong), else its own.
+ */
+function endMeter(node: Node, ts: [number, number]): [number, number] {
+  if (node.kind !== "span") return ts;
+  const runs = node.children?.find((c) => c.kind === "sequence");
+  const last = runs?.children?.filter((c) => c.kind === "span").at(-1);
+  return (last?.kind === "span" && last.timeSignature) || ts;
 }

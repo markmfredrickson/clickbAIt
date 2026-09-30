@@ -25,7 +25,7 @@ export function draftLab(
   if (errors.length > 0) return { errors };
 
   const last = song.sections[song.sections.length - 1];
-  const songEnd = last ? last.startBeat + last.bars * last.beatsPerBar : 0;
+  const songEnd = last ? last.startBeat + last.barBeats.reduce((sum, b) => sum + b, 0) : 0;
   const segments = chords.flatMap((c, i) => {
     const start = sourceTime(c.beat, timing);
     if (start === null) {

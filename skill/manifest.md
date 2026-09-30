@@ -59,7 +59,8 @@ Sections are an ordered list starting at bar 1, running back-to-back. **Only `ba
 - **`name`** (spoken if `cue`), **`bars`** (length — the only placement field).
 - **`cue: true`** — auto-announce the section name (spoken 2 bars before, count-in 1 bar before).
 - **`lines`** — the lyric lines belonging to this section, in sung order. Nesting makes membership explicit (a pickup line sung before the downbeat still groups with its section). Across all sections, `lines` in order is the flat lyric fed to the aligner, so the order must match. A line is normally just `text` (+ `tag`, e.g. `"Lead Vocal"`); `b`/`t` are rare manual overrides for when alignment fails. Instrumental sections omit `lines`.
-- **`timeSignature`** — per-section meter override (e.g. a 6/8 bridge or a 2/4 pickup bar).
+- **`timeSignature`** — the whole section's meter, when it isn't the song's (e.g. a 6/8 bridge).
+- **`meters`** — bars with a meter of their own, by bar number within the section: `[{ "bar": 2, "timeSignature": [2, 4] }]`, with `count` for several bars in a row. The rest keep the section's meter. A meter change is not a reason to split a section: an 8-bar verse with a 2/4 bar is one section with `meters`, not "Verse", "Verse (2/4)" and "Verse (continued)".
 - **`smStride`** — stretch-marker stride: `4` in 4/4 pins only downbeats (loose/rubato feel); `0` emits no markers (audio plays 1:1). **`stretchMarkers`** — verbatim hand-tuned `(item, source)` pairs for a captured loose intro.
 - **`cues`** — manual spoken cues at `{ "at": <beat-relative-to-section-start>, "label": "..." }` (`at` may be negative — a pickup before the downbeat).
 
@@ -93,7 +94,7 @@ Starting points — the band's chart wins. Flag each with a one-line prompt (*"~
 - **Cues land on the beat by perceptual center.** The generate step positions each spoken cue so the *felt* beat of the word — its vowel/sonorant onset, not the acoustic start — lands on the beat (count numbers hit on the beat; a section-name pickup resolves onto the "1"). Automatic; you just place the cue. Spell tricky labels phonetically for Piper TTS (e.g. `"F sharp"`).
 - Use `cue: true` for section announcements; use manual `cues` only for ad-hoc band cues and count-ins.
 
-**Exception — time changes at the lead-in.** Auto count-ins assume the bar before a section matches that section's meter, so they mis-count across ANY time-signature change at the boundary (a 2/4+3/4 turnaround into a chorus, or a lone 2/4 bar before a 4/4 section). When the bar(s) immediately before a section change meter, do NOT set `cue: true` on it. Hand-place manual cues relative to its downbeat: announce the name ~2 bars out, count each real bar in its own meter, land "1" at `at: 0`. Example for a 2/4-then-3/4 turnaround:
+**Exception — time changes at the lead-in.** An auto count-in counts only the one bar before a section, in that bar's meter, so it can't count a lead-in whose meter changes across more than one bar (a 2/4+3/4 turnaround into a chorus). When the bar(s) immediately before a section change meter, do NOT set `cue: true` on it. Hand-place manual cues relative to its downbeat: announce the name ~2 bars out, count each real bar in its own meter, land "1" at `at: 0`. Example for a 2/4-then-3/4 turnaround:
 
 ```json
 "cues": [{"at":-8,"label":"Chorus 1"},{"at":-5,"label":"1"},{"at":-4,"label":"2"},{"at":-3,"label":"1"},{"at":-2,"label":"2"},{"at":-1,"label":"3"},{"at":0,"label":"1"}]
@@ -471,6 +472,44 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
                 "maximum": 9007199254740991
               }
             ]
+          },
+          "meters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bar": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "count": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "timeSignature": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "bar",
+                "timeSignature"
+              ],
+              "additionalProperties": false
+            }
           },
           "smStride": {
             "type": "integer",

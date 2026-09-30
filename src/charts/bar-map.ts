@@ -8,7 +8,7 @@
  * manifest schema; what's left to check here needs the score itself.
  */
 
-import { ordinal, sectionStarts, type ScoreSpec } from "../manifest.js";
+import { barBeats, ordinal, sectionStarts, type PlaceableSection, type ScoreSpec } from "../manifest.js";
 import type { ScoreInfo } from "./score-info.js";
 
 /** A section placed on the song's timeline. */
@@ -20,7 +20,10 @@ export interface SongSection {
   /** 1-based song bar the section starts on. */
   firstBar: number;
   startBeat: number;
+  /** The section's meter (most of its bars). */
   beatsPerBar: number;
+  /** Each bar's length in beats (see manifest `meters`). */
+  barBeats: number[];
 }
 
 export interface MappedBar {
@@ -35,7 +38,7 @@ export interface MappedBar {
 }
 
 export function songSections(
-  sections: readonly { name: string; bars: number; timeSignature?: readonly [number, number] }[],
+  sections: readonly (PlaceableSection & { name: string })[],
   timeSignature: readonly [number, number],
 ): SongSection[] {
   const starts = sectionStarts(sections, timeSignature);
@@ -51,6 +54,7 @@ export function songSections(
       firstBar,
       startBeat: starts[i],
       beatsPerBar: s.timeSignature?.[0] ?? timeSignature[0],
+      barBeats: barBeats(s, timeSignature),
     };
     firstBar += s.bars;
     return placed;
@@ -77,15 +81,34 @@ export function mapScore(
       );
     }
     const length = link ? link.bars[1] - link.bars[0] + 1 : 0;
+    let beat = s.startBeat;
     for (let i = 0; i < s.bars; i++) {
+      const beats = s.barBeats[i] ?? s.beatsPerBar;
       bars.push({
         songBar: s.firstBar + i,
         section: si,
-        startBeat: s.startBeat + i * s.beatsPerBar,
-        beats: s.beatsPerBar,
+        startBeat: beat,
+        beats,
         scoreBar: link ? link.bars[0] + (i % length) : null,
       });
+      beat += beats;
     }
   });
   return { bars, errors };
+}
+
+/** The bar holding `beat` (`bar` 1-based within its section), or null outside the song. */
+export function songBarAt(
+  sections: readonly { startBeat: number; barBeats: readonly number[] }[],
+  beat: number,
+): { section: number; bar: number; startBeat: number; beats: number } | null {
+  for (let section = 0; section < sections.length; section++) {
+    let start = sections[section].startBeat;
+    for (let i = 0; i < sections[section].barBeats.length; i++) {
+      const beats = sections[section].barBeats[i];
+      if (beat >= start - 1e-9 && beat < start + beats - 1e-9) return { section, bar: i + 1, startBeat: start, beats };
+      start += beats;
+    }
+  }
+  return null;
 }

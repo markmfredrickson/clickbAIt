@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SongManifestSchema, sectionStarts, type SongManifest } from "../src/manifest.js";
+import { SongManifestSchema, sectionStarts, barBeats, type SongManifest } from "../src/manifest.js";
 
 /** A fresh, fully-valid manifest object each test can mutate in isolation. */
 function validManifest(): unknown {
@@ -420,5 +420,61 @@ describe("SongManifestSchema — barsPerRow", () => {
       s.sections[0].barsPerRow = bad;
       expect(() => SongManifestSchema.parse(s)).toThrow();
     }
+  });
+});
+
+describe("SongManifestSchema — meters", () => {
+  const withMeters = (meters: unknown, bars = 8) => {
+    const m = validManifest() as any;
+    m.sections[0] = { name: "Verse 1", bars, meters };
+    return m;
+  };
+
+  it("accepts bars with their own time signature, one bar or a run of them", () => {
+    const m = withMeters([{ bar: 2, timeSignature: [2, 4] }, { bar: 5, count: 2, timeSignature: [3, 4] }]);
+    expect(SongManifestSchema.parse(m).sections[0].meters).toEqual([
+      { bar: 2, timeSignature: [2, 4] },
+      { bar: 5, count: 2, timeSignature: [3, 4] },
+    ]);
+  });
+
+  it("rejects a bar outside the section", () => {
+    expect(() => SongManifestSchema.parse(withMeters([{ bar: 9, timeSignature: [2, 4] }]))).toThrow(/bar 9/);
+    expect(() => SongManifestSchema.parse(withMeters([{ bar: 0, timeSignature: [2, 4] }]))).toThrow();
+    expect(() => SongManifestSchema.parse(withMeters([{ bar: 7, count: 3, timeSignature: [2, 4] }]))).toThrow(/bar 9/);
+  });
+
+  it("rejects a bar given two meters", () => {
+    const m = withMeters([
+      { bar: 2, count: 3, timeSignature: [2, 4] },
+      { bar: 4, timeSignature: [3, 4] },
+    ]);
+    expect(() => SongManifestSchema.parse(m)).toThrow(/bar 4.*twice/);
+  });
+});
+
+describe("barBeats", () => {
+  it("is each bar's length in the section's meter, or the song's", () => {
+    expect(barBeats({ bars: 3 }, [4, 4])).toEqual([4, 4, 4]);
+    expect(barBeats({ bars: 2, timeSignature: [6, 8] }, [4, 4])).toEqual([6, 6]);
+  });
+
+  it("gives listed bars their own meter", () => {
+    const section = { bars: 8, meters: [{ bar: 2, timeSignature: [2, 4] as [number, number] }] };
+    expect(barBeats(section, [4, 4])).toEqual([4, 2, 4, 4, 4, 4, 4, 4]);
+    const run = { bars: 4, meters: [{ bar: 3, count: 2, timeSignature: [3, 4] as [number, number] }] };
+    expect(barBeats(run, [4, 4])).toEqual([4, 4, 3, 3]);
+  });
+
+  it("ends a fractional section on a part bar", () => {
+    expect(barBeats({ bars: 2.5 }, [4, 4])).toEqual([4, 4, 2]);
+  });
+});
+
+describe("sectionStarts — meters", () => {
+  it("adds up the real bar lengths", () => {
+    // 8 bars of 4/4 with bar 2 in 2/4 is 30 beats.
+    const starts = sectionStarts([{ bars: 8, meters: [{ bar: 2, timeSignature: [2, 4] }] }, { bars: 4 }], [4, 4]);
+    expect(starts).toEqual([0, 30, 46]);
   });
 });

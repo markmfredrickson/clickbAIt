@@ -12,7 +12,7 @@
  * the CLI that calls it.
  */
 
-import { sectionStarts, type SongManifest, type Clip } from "../manifest.js";
+import { barBeats, sectionStarts, type SongManifest, type Clip } from "../manifest.js";
 import { Curve } from "../core/curve.js";
 import { beatMapCurve, beatMapToBeats } from "../core/beat-map.js";
 import { downbeatFrame } from "../core/timing-frame.js";
@@ -155,6 +155,7 @@ export function buildLyricsDisplay(
     name: s.name,
     startBeat: starts[i],
     bars: s.bars,
+    ...(s.meters?.length ? { barBeats: barBeats(s, manifest.timeSignature) } : {}),
     ...(s.cue !== undefined ? { cue: s.cue } : {}),
   }));
 
@@ -167,14 +168,27 @@ export function buildLyricsDisplay(
   const meterMap: MeterSegment[] = [];
   let measure = 1;
   let beatsAcc = 0;
-  for (const s of manifest.sections) {
-    const beatsPerBar = s.timeSignature?.[0] ?? defaultBpb;
+  const meterAt = (beatsPerBar: number) => {
     const last = meterMap[meterMap.length - 1];
     if (!last || last.beatsPerBar !== beatsPerBar) {
       meterMap.push({ fromMeasure: measure, beatsPerBar, beatsBefore: beatsAcc });
     }
-    measure += s.bars;
-    beatsAcc += s.bars * beatsPerBar;
+  };
+  for (const s of manifest.sections) {
+    const beatsPerBar = s.timeSignature?.[0] ?? defaultBpb;
+    if (!s.meters?.length) {
+      meterAt(beatsPerBar);
+      measure += s.bars;
+      beatsAcc += s.bars * beatsPerBar;
+      continue;
+    }
+    // Bars in a meter of their own: walk the section bar by bar.
+    barBeats(s, manifest.timeSignature).forEach((length, i) => {
+      const own = s.meters!.find((m) => i + 1 >= m.bar && i + 1 < m.bar + (m.count ?? 1));
+      meterAt(own ? own.timeSignature[0] : beatsPerBar);
+      measure += 1;
+      beatsAcc += length;
+    });
   }
   const meterChanges = meterMap.length > 1;
 

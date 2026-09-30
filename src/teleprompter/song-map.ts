@@ -5,7 +5,7 @@
  * the proportions are worked out once, here.
  */
 
-import type { MeteredSection } from "./position.js";
+import { sectionLength, type MeteredSection } from "./position.js";
 
 export interface MapSegment {
   /** Where the section starts, as a fraction of the song. */
@@ -23,7 +23,7 @@ export interface SongProgress {
   inSong: number;
 }
 
-const length = (s: MeteredSection) => s.bars * s.beatsPerBar;
+const length = sectionLength;
 
 export function songMap(sections: readonly MeteredSection[]): MapSegment[] {
   const total = sections.reduce((sum, s) => sum + length(s), 0);

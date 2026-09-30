@@ -80,6 +80,25 @@ describe("buildRows: chords", () => {
   });
 });
 
+describe("buildRows: chord rows with bars in their own meter", () => {
+  const doc = buildRows({
+    slug: "s",
+    title: "S",
+    song: { timeSignature: [4, 4], sections: [{ name: "Verse", bars: 6, meters: [{ bar: 2, timeSignature: [2, 4] }] }] },
+    chords: [{ chord: "A", beat: 0 }],
+  });
+  const rows = (doc.channels[0] as { rows: any[] }).rows;
+
+  it("follows the real bar lengths", () => {
+    expect(doc.sections[0].end).toBe(22);
+    expect(rows.map((r) => [r.start, r.end])).toEqual([
+      [0, 14],
+      [14, 22],
+    ]);
+    expect(rows[0].bars.map((b: any) => b.end - b.start)).toEqual([4, 2, 4, 4]);
+  });
+});
+
 describe("buildRows: lyrics", () => {
   // Two lines; words are placeholders. The second line's last word is
   // followed by nothing, so its hold is clamped.

@@ -53,3 +53,34 @@ describe("sectionMeters", () => {
     expect(sectionMeters({ timeSignature: [4, 4], display: { sections } }).map((s) => s.beatsPerBar)).toEqual([4, 4]);
   });
 });
+
+describe("songPosition — bars in their own meter", () => {
+  // Verse: 4 bars with bar 2 in 2/4 (14 beats), then Chorus in 4/4.
+  const sections = [
+    { startBeat: 0, bars: 4, beatsPerBar: 4, barBeats: [4, 2, 4, 4] },
+    { startBeat: 14, bars: 2, beatsPerBar: 4 },
+  ];
+  const at = (beat: number) => songPosition(sections, beat, 4);
+
+  it("counts each bar in its own length", () => {
+    expect(at(4.5)).toEqual({ section: 0, bar: 2, beat: 1, measure: 2 });
+    expect(at(5)).toEqual({ section: 0, bar: 2, beat: 2, measure: 2 });
+    expect(at(6)).toEqual({ section: 0, bar: 3, beat: 1, measure: 3 });
+    expect(at(13)).toEqual({ section: 0, bar: 4, beat: 4, measure: 4 });
+  });
+
+  it("keeps the song's bar count right after it", () => {
+    expect(at(14)).toEqual({ section: 1, bar: 1, beat: 1, measure: 5 });
+  });
+
+  it("is passed along by sectionMeters", () => {
+    const display = {
+      timeSignature: [4, 4] as [number, number],
+      display: { sections: [{ startBeat: 0, bars: 4, barBeats: [4, 2, 4, 4] }, { startBeat: 14, bars: 2 }] },
+    };
+    expect(sectionMeters(display)).toEqual([
+      { startBeat: 0, bars: 4, beatsPerBar: 4, barBeats: [4, 2, 4, 4] },
+      { startBeat: 14, bars: 2, beatsPerBar: 4 },
+    ]);
+  });
+});

@@ -17,7 +17,8 @@
  * section index at most, never a label to draw.
  */
 
-import { songSections } from "../charts/bar-map.js";
+import { songSections, type SongSection } from "../charts/bar-map.js";
+import type { PlaceableSection } from "../manifest.js";
 import type { ChartChord } from "../charts/build.js";
 import type { GrooveChart } from "../charts/grooves.js";
 import type { DisplayLine, LyricWord } from "./lyrics-display.js";
@@ -31,6 +32,8 @@ export interface RowSection extends Span {
   name: string;
   bars: number;
   beatsPerBar: number;
+  /** Each bar's length, when some bars have a meter of their own. */
+  barBeats?: number[];
 }
 
 export interface Word extends Span {
@@ -94,7 +97,7 @@ export interface RowInput {
   song: {
     timeSignature: readonly [number, number];
     barsPerRow?: number;
-    sections: readonly { name: string; bars: number; timeSignature?: readonly [number, number]; barsPerRow?: number }[];
+    sections: readonly (PlaceableSection & { name: string; barsPerRow?: number })[];
   };
   lyrics?: { words: readonly LyricWord[]; lines: readonly DisplayLine[] };
   chords?: readonly ChartChord[];
@@ -114,12 +117,13 @@ const HOLD_GRACE = 0.5;
 
 export function buildRows(input: RowInput): RowDocument {
   const placed = songSections(input.song.sections, input.song.timeSignature);
-  const sections: RowSection[] = placed.map((s) => ({
+  const sections: RowSection[] = placed.map((s, i) => ({
     name: s.name,
     start: s.startBeat,
-    end: s.startBeat + s.bars * s.beatsPerBar,
+    end: s.startBeat + s.barBeats.reduce((sum, b) => sum + b, 0),
     bars: s.bars,
     beatsPerBar: s.beatsPerBar,
+    ...(input.song.sections[i].meters?.length ? { barBeats: s.barBeats } : {}),
   }));
   const songEnd = sections.length ? sections[sections.length - 1].end : 0;
   const channels: RowChannel[] = [];
@@ -128,7 +132,7 @@ export function buildRows(input: RowInput): RowDocument {
 
   if (input.chords) {
     const perRow = input.song.sections.map((s) => s.barsPerRow ?? input.song.barsPerRow ?? BARS_PER_ROW);
-    channels.push({ id: "chords", kind: "chords", rows: chordRows(sections, perRow, input.chords, songEnd) });
+    channels.push({ id: "chords", kind: "chords", rows: chordRows(placed, perRow, input.chords, songEnd) });
   }
 
   for (const chart of input.charts ?? []) {
@@ -169,15 +173,15 @@ function lyricRows(lyrics: NonNullable<RowInput["lyrics"]>): LyricRow[] {
   return rows;
 }
 
-function chordRows(sections: RowSection[], perRow: number[], chords: readonly ChartChord[], songEnd: number): ChordRow[] {
+function chordRows(sections: SongSection[], perRow: number[], chords: readonly ChartChord[], songEnd: number): ChordRow[] {
   const rows: ChordRow[] = [];
   sections.forEach((s, section) => {
     const n = Math.max(1, perRow[section]);
-    for (let first = 0; first < s.bars; first += n) {
+    const starts = [s.startBeat];
+    for (const b of s.barBeats) starts.push(starts[starts.length - 1] + b);
+    for (let first = 0; first < s.barBeats.length; first += n) {
       const bars: Span[] = [];
-      for (let b = first; b < Math.min(s.bars, first + n); b++) {
-        bars.push({ start: s.start + b * s.beatsPerBar, end: s.start + (b + 1) * s.beatsPerBar });
-      }
+      for (let b = first; b < Math.min(s.barBeats.length, first + n); b++) bars.push({ start: starts[b], end: starts[b + 1] });
       rows.push({ section, start: bars[0].start, end: bars[bars.length - 1].end, bars, items: [] });
     }
   });

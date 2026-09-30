@@ -339,7 +339,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   for (let idx = 0; idx < sections.length; idx++) {
     const sec = sections[idx];
     if (!sec.cue) continue;
-    const beatsPerBar = (idx > 0 ? sections[idx - 1].timeSignature : song.timeSignature)[0];
+    const beatsPerBar = (idx > 0 ? sections[idx - 1].endTimeSignature : song.timeSignature)[0];
     const barStartBeat = sec.beat - beatsPerBar;
     if (barStartBeat < 0) continue;
 

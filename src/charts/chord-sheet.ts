@@ -30,7 +30,7 @@
  * is an error, as is a chord that would land at or before the one before it.
  */
 
-import type { SongSection } from "./bar-map.js";
+import { songBarAt, type SongSection } from "./bar-map.js";
 
 export type SheetLine =
   | { kind: "header"; line: number; name: string }
@@ -115,8 +115,12 @@ export function placeChords(
     for (const s of sections) if (s.startBeat <= beat + 1e-9) found = s;
     return found;
   };
-  const beatsPerBar = (beat: number) => sectionAt(beat)?.beatsPerBar ?? 4;
+  // Bars have their own lengths (a 2/4 bar in a 4/4 verse); past the song's
+  // end, the last section's meter carries on.
+  const beatsPerBar = (beat: number) => songBarAt(sections, beat)?.beats ?? sectionAt(beat)?.beatsPerBar ?? 4;
   const barStart = (beat: number) => {
+    const bar = songBarAt(sections, beat);
+    if (bar) return bar.startBeat;
     const s = sectionAt(beat);
     if (!s) return beat;
     return s.startBeat + Math.floor((beat - s.startBeat) / s.beatsPerBar + 1e-9) * s.beatsPerBar;

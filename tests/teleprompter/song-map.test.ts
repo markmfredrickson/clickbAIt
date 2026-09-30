@@ -36,3 +36,17 @@ describe("songProgress", () => {
     expect(songProgress(SECTIONS, 30)).toEqual({ section: 2, inSection: 1, inSong: 1 });
   });
 });
+
+describe("songMap — bars in their own meter", () => {
+  it("sizes a section by its real bar lengths", () => {
+    const sections = [
+      { startBeat: 0, bars: 4, beatsPerBar: 4, barBeats: [4, 2, 4, 4] },
+      { startBeat: 14, bars: 2, beatsPerBar: 3 },
+    ];
+    expect(songMap(sections)).toEqual([
+      { start: 0, width: 14 / 20 },
+      { start: 14 / 20, width: 6 / 20 },
+    ]);
+    expect(songProgress(sections, 7).inSection).toBe(0.5);
+  });
+});

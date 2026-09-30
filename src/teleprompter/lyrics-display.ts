@@ -65,6 +65,9 @@ export interface DisplaySection {
   /** Length in bars of the section's own meter, from the manifest. Absent in
    *  files built before it was added. */
   bars?: number;
+  /** Each bar's length in beats, when the section has bars in a meter of
+   *  their own (manifest `meters`); else every bar is the section's meter. */
+  barBeats?: number[];
   cue?: boolean;
 }
 

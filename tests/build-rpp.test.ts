@@ -162,6 +162,19 @@ describe("buildRpp", () => {
     expect(rpp).not.toContain(`${defaultOpts.countDir}/5.wav`);
   });
 
+  it("counts in the meter of the previous section's LAST bar", () => {
+    // The Turnaround is 4/4 but ends on a 3/4 bar, so the Chorus counts 3.
+    const s = song("Test", 120, { timeSignature: [4, 4] },
+      seq(
+        span("Turnaround", { beats: 7 }, [seq({ kind: "span", duration: bars(1) }, { kind: "span", duration: bars(1), timeSignature: [3, 4] })]),
+        span("Chorus", bars(2), { cue: true }),
+      ),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).toContain(`${defaultOpts.countDir}/3.wav`);
+    expect(rpp).not.toContain(`${defaultOpts.countDir}/4.wav`);
+  });
+
   it("handles 5/4 time signature for counts", () => {
     const s = song("Test", 120, { timeSignature: [5, 4] },
       seq(

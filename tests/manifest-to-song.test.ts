@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { SongManifestSchema } from "../src/manifest.js";
 import { manifestToSong, stemOffset } from "../src/build/manifest-to-song.js";
+import { extractSections } from "../src/build/sections.js";
+import { linearize } from "../src/build/linearize.js";
 
 function mkTimes(n: number, spacing = 0.5): number[] {
   return Array.from({ length: n }, (_, i) => i * spacing);
@@ -149,5 +151,52 @@ describe("manifestToSong cue marks", () => {
     const hit = song.children[0].children[0];
     expect(hit.name).toBe("Hit");
     expect(hit.children[0]).toMatchObject({ type: "cue", value: "one", offset: 0 });
+  });
+});
+
+describe("manifestToSong — bars with their own meter", () => {
+  const manifest = SongManifestSchema.parse({
+    schema: "clickbait/song@1",
+    title: "T",
+    bpm: 120,
+    timeSignature: [4, 4],
+    sources: { recording: { kind: "audio", file: "source.m4a", beatMap: [{ startBeat: 0, times: mkTimes(80) }] } },
+    songCurve: "constantBpm",
+    sections: [
+      // 8 bars with bar 2 in 2/4 (30 beats), then a 2-bar turnaround of 2/4 + 3/4.
+      { name: "Verse", bars: 8, meters: [{ bar: 2, timeSignature: [2, 4] }] },
+      { name: "Turnaround", bars: 2, meters: [{ bar: 1, timeSignature: [2, 4] }, { bar: 2, timeSignature: [3, 4] }] },
+      { name: "Chorus", bars: 2, cue: true },
+    ],
+    lyrics: {},
+  });
+  const s = manifestToSong(manifest, "/songs/x");
+
+  it("keeps one section per manifest section, with its real length", () => {
+    const sections = extractSections(s);
+    expect(sections.map((x) => [x.name, x.beat, x.durationBeats])).toEqual([
+      ["Verse", 0, 30],
+      ["Turnaround", 30, 5],
+      ["Chorus", 35, 8],
+    ]);
+  });
+
+  it("changes meter at the listed bars and back after them", () => {
+    // The RPP merges changes on one beat, the later winning, so compare that.
+    const at = new Map<number, string>();
+    for (const e of linearize(s)) if (e.type === "timesig") at.set(e.beat, e.value);
+    expect([...at]).toEqual([
+      [0, "4/4"],
+      [4, "2/4"],
+      [6, "4/4"],
+      [30, "2/4"],
+      [32, "3/4"],
+      [35, "4/4"],
+    ]);
+  });
+
+  it("tells the count-in the meter of a section's last bar", () => {
+    const sections = extractSections(s);
+    expect(sections.map((x) => x.endTimeSignature)).toEqual([[4, 4], [3, 4], [4, 4]]);
   });
 });

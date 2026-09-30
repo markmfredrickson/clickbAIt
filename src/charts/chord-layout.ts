@@ -18,7 +18,7 @@
  */
 
 export interface LayoutInput {
-  sections: readonly { name: string; startBeat: number; bars: number; beatsPerBar: number }[];
+  sections: readonly { name: string; startBeat: number; bars: number; beatsPerBar: number; barBeats?: readonly number[] }[];
   words: readonly { startBeat: number }[];
   lines: readonly { words: readonly [number, number]; sectionIndex?: number }[];
   chords: readonly { chord: string; beat: number }[];
@@ -55,12 +55,16 @@ export function layoutChords(input: LayoutInput): ChordLayout {
     for (const s of sections) if (s.startBeat <= beat + EPS) found = s;
     return found;
   };
+  // Bars have their own lengths when a file lists them (a 2/4 bar in a 4/4 verse).
+  const withBars = sections.every((s) => s.barBeats) ? (sections as readonly { startBeat: number; barBeats: readonly number[] }[]) : null;
   const barStart = (beat: number) => {
+    const bar = withBars && songBarAt(withBars, beat);
+    if (bar) return bar.startBeat;
     const s = sectionAt(beat);
     if (!s) return beat;
     return s.startBeat + Math.floor((beat - s.startBeat) / s.beatsPerBar + EPS) * s.beatsPerBar;
   };
-  const beatsPerBar = (beat: number) => sectionAt(beat)?.beatsPerBar ?? 4;
+  const beatsPerBar = (beat: number) => (withBars && songBarAt(withBars, beat)?.beats) || (sectionAt(beat)?.beatsPerBar ?? 4);
   const lyricSections = new Set(lines.map((l) => l.sectionIndex));
 
   // Runs of consecutive chords with nothing sung under them.
@@ -164,4 +168,19 @@ export function rowLines<T>(bars: readonly T[]): T[][] {
   const lines: T[][] = [];
   for (let i = 0; i < bars.length; i += BARS_PER_LINE) lines.push(bars.slice(i, i + BARS_PER_LINE));
   return lines;
+}
+
+/** The bar holding `beat` when sections list their bar lengths, else null. */
+function songBarAt(
+  sections: readonly { startBeat: number; barBeats: readonly number[] }[],
+  beat: number,
+): { startBeat: number; beats: number } | null {
+  for (const s of sections) {
+    let start = s.startBeat;
+    for (const beats of s.barBeats) {
+      if (beat >= start - EPS && beat < start + beats - EPS) return { startBeat: start, beats };
+      start += beats;
+    }
+  }
+  return null;
 }

@@ -132,6 +132,27 @@ describe("buildLyricsDisplay", () => {
     ]);
   });
 
+  it("gives a section with bars in their own meter its bar lengths, and maps the meter bar by bar", () => {
+    const align = mkAlign([["A", 1000, 1100]]);
+    const m = mkManifest({
+      sections: [
+        { name: "Verse", bars: 4, meters: [{ bar: 2, timeSignature: [2, 4] }] },
+        { name: "Chorus", bars: 2 },
+      ],
+    });
+    const out = buildLyricsDisplay(m, align);
+    expect(out.display.sections).toEqual([
+      { name: "Verse", startBeat: 0, bars: 4, barBeats: [4, 2, 4, 4] },
+      { name: "Chorus", startBeat: 14, bars: 2 },
+    ]);
+    // REAPER measures: 1 is 4/4, 2 is 2/4, 3 on are 4/4 again.
+    expect(out.meterMap).toEqual([
+      { fromMeasure: 1, beatsPerBar: 4, beatsBefore: 0 },
+      { fromMeasure: 2, beatsPerBar: 2, beatsBefore: 4 },
+      { fromMeasure: 3, beatsPerBar: 4, beatsBefore: 6 },
+    ]);
+  });
+
   it("records each line's section index, so repeated section names stay distinct", () => {
     // Two sections named "Verse": the name alone can't say which a line is in.
     const align = mkAlign([["ONE", 1000, 1100], ["TWO", 2000, 2100], ["THREE", 40000, 40100]]);

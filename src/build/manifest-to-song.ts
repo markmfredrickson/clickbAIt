@@ -15,10 +15,10 @@
  */
 
 import { resolve } from "node:path";
-import { song, seq, span, audio, bars, cue } from "../core/dsongl/index.js";
+import { song, seq, span, audio, bars, beats, cue } from "../core/dsongl/index.js";
 import type { Song, Node } from "../core/dsongl/index.js";
 import type { SongManifest } from "../manifest.js";
-import { sectionStarts } from "../manifest.js";
+import { barBeats, sectionStarts } from "../manifest.js";
 import { beatMapToBeats, beatMapCurve } from "../core/beat-map.js";
 import { Curve } from "../core/curve.js";
 import { stemPlayback, transposeSteps, transposeNote } from "./transpose.js";
@@ -70,7 +70,26 @@ export function manifestToSong(
       const notes = transposeTone(m.tone);
       return { ...cue(toneSlug(notes), m.at), tone: notes, toneBars: m.bars ?? 1 };
     });
-    return marks.length > 0 ? span(s.name, bars(s.bars), opts, marks) : span(s.name, bars(s.bars), opts);
+    if (!s.meters?.length) {
+      return marks.length > 0 ? span(s.name, bars(s.bars), opts, marks) : span(s.name, bars(s.bars), opts);
+    }
+    // Bars with a meter of their own: the section holds its bars as unnamed
+    // spans end to end, one per run of a meter, so the meter changes at the
+    // right bars while the section stays one section (one region, one cue).
+    const lengths = barBeats(s, manifest.timeSignature);
+    const meterOf = (bar: number) =>
+      s.meters!.find((m) => bar >= m.bar && bar < m.bar + (m.count ?? 1))?.timeSignature;
+    const runs: Node[] = [];
+    for (let bar = 1; bar <= lengths.length; ) {
+      const ts = meterOf(bar);
+      let n = 1;
+      while (bar + n <= lengths.length && meterOf(bar + n) === ts) n++;
+      const length = lengths.slice(bar - 1, bar - 1 + n).reduce((sum, b) => sum + b, 0);
+      runs.push({ kind: "span", duration: beats(length), ...(ts ? { timeSignature: ts } : {}) });
+      bar += n;
+    }
+    const total = lengths.reduce((sum, b) => sum + b, 0);
+    return span(s.name, beats(total), opts, [seq(...runs), ...marks]);
   });
 
   // Stems -> audio tracks. All share the recording's beat-map: the offset (the

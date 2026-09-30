@@ -145,6 +145,15 @@ const LyricLine = z
   })
   .strict();
 
+/** A bar (or `count` bars in a row) of a section in a meter of its own. */
+const BarMeter = z
+  .object({
+    bar: PosInt,
+    count: PosInt.optional(),
+    timeSignature: TimeSignature,
+  })
+  .strict();
+
 /**
  * A section. Sections are an ORDERED list starting at measure 1, beat 1 in
  * REAPER; each one's start beat is INFERRED from the lengths of the sections
@@ -170,6 +179,9 @@ const Section = z
     /** Meter for this section, if it differs from the song default (e.g. a 6/8
      *  bridge). Omitted = inherit the song's timeSignature. */
     timeSignature: TimeSignature.optional(),
+    /** Bars with a meter of their own (a 2/4 bar in a 4/4 verse), by bar number
+     *  within the section, 1-based. The rest keep the section's meter. */
+    meters: z.array(BarMeter).optional(),
     /** Stretch-marker stride for this section: emit a marker every Nth beat
      *  instead of every beat. Use for loose/rubato passages (e.g. a triplet-feel
      *  solo) where per-beat markers fight the performance — `smStride: 4` in 4/4
@@ -227,7 +239,25 @@ const Section = z
       .optional(),
     lines: z.array(LyricLine).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((s, ctx) => {
+    // Each listed bar must be in the section, and have one meter.
+    const count = Math.ceil(s.bars);
+    const given = new Set<number>();
+    (s.meters ?? []).forEach((m, i) => {
+      for (let bar = m.bar; bar < m.bar + (m.count ?? 1); bar++) {
+        if (bar > count) {
+          ctx.addIssue({ code: "custom", path: ["meters", i], message: `bar ${bar} is past the end of ${s.name} (${count} bars)` });
+          return;
+        }
+        if (given.has(bar)) {
+          ctx.addIssue({ code: "custom", path: ["meters", i], message: `bar ${bar} of ${s.name} is given a meter twice` });
+          return;
+        }
+        given.add(bar);
+      }
+    });
+  });
 
 /**
  * Transposition for the whole show track: bare semitones, or a spec object
@@ -570,16 +600,36 @@ export function resolveBeatMap(
   return BeatMapSchema.parse(raw);
 }
 
-/** A section as far as placement is concerned: length in bars, optional meter. */
-type PlaceableSection = { bars: number; timeSignature?: readonly [number, number] };
+/** A section as far as placement is concerned: length in bars, optional meters. */
+export type PlaceableSection = {
+  bars: number;
+  timeSignature?: readonly [number, number];
+  meters?: readonly { bar: number; count?: number; timeSignature: readonly [number, number] }[];
+};
+
+/**
+ * The length in beats of each bar of a section: its own meter where `meters`
+ * lists the bar, else the section's meter, else the song's. A fractional
+ * section (8.5 bars) ends on a part bar.
+ */
+export function barBeats(section: PlaceableSection, defaultTimeSignature: readonly [number, number]): number[] {
+  const base = section.timeSignature?.[0] ?? defaultTimeSignature[0];
+  const whole = Math.floor(section.bars);
+  const out: number[] = Array.from({ length: Math.ceil(section.bars) }, () => base);
+  for (const m of section.meters ?? []) {
+    for (let bar = m.bar; bar < m.bar + (m.count ?? 1) && bar <= out.length; bar++) out[bar - 1] = m.timeSignature[0];
+  }
+  if (whole < out.length) out[whole] *= section.bars - whole;
+  return out;
+}
 
 /**
  * The absolute start beat of each section, inferred from order + length.
  *
  * Sections begin at measure 1 beat 1 and run back-to-back, so section `i`
- * starts where all sections before it end: the running sum of `bars ×
- * beats-per-bar`, honoring any per-section meter override (else the song
- * default). This is the single definition of "where a section starts" — every
+ * starts where all sections before it end: the running sum of its bars' lengths
+ * (see `barBeats`: bars listed in `meters`, else the section's meter, else the
+ * song's). This is the single definition of "where a section starts" — every
  * consumer that needs an absolute section beat derives it here rather than
  * carrying a redundant authored value. `result[i]` is section `i`'s start;
  * `result[sections.length]` (one past the end) is the song-end beat.
@@ -592,8 +642,7 @@ export function sectionStarts(
   let beat = 0;
   for (const s of sections) {
     starts.push(beat);
-    const beatsPerBar = s.timeSignature?.[0] ?? defaultTimeSignature[0];
-    beat += s.bars * beatsPerBar;
+    beat += barBeats(s, defaultTimeSignature).reduce((sum, b) => sum + b, 0);
   }
   starts.push(beat); // one past the last section = song end
   return starts;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapScore, songSections } from "../../src/charts/bar-map.js";
+import { mapScore, songSections, songBarAt } from "../../src/charts/bar-map.js";
 import type { ScoreInfo } from "../../src/charts/score-info.js";
 import type { ScoreSpec } from "../../src/manifest.js";
 
@@ -88,5 +88,33 @@ describe("mapScore", () => {
     const sections = songSections([{ name: "Pickup", bars: 1, timeSignature: [2, 4] }, { name: "Verse", bars: 2 }], [4, 4]);
     const { bars } = mapScore(score([{ section: "Verse", bars: [2, 3] }]), sections, { ...SCORE, bars: 3 });
     expect(bars.map((b) => [b.songBar, b.startBeat, b.beats])).toEqual([[1, 0, 2], [2, 2, 4], [3, 6, 4]]);
+  });
+});
+
+describe("bars in their own meter", () => {
+  // Verse: 4 bars with bar 2 in 2/4 (14 beats), then a 2-bar Chorus.
+  const sections = songSections(
+    [{ name: "Verse", bars: 4, meters: [{ bar: 2, timeSignature: [2, 4] }] }, { name: "Chorus", bars: 2 }],
+    [4, 4],
+  );
+
+  it("gives each section its bar lengths", () => {
+    expect(sections.map((s) => [s.startBeat, s.barBeats])).toEqual([
+      [0, [4, 2, 4, 4]],
+      [14, [4, 4]],
+    ]);
+  });
+
+  it("maps each song bar with its own length", () => {
+    const { bars } = mapScore(score([{ section: "Verse", bars: [1, 4] }]), sections, { ...SCORE, bars: 4 });
+    expect(bars.slice(0, 4).map((b) => [b.songBar, b.startBeat, b.beats])).toEqual([[1, 0, 4], [2, 4, 2], [3, 6, 4], [4, 10, 4]]);
+  });
+
+  it("finds the bar holding a beat", () => {
+    expect(songBarAt(sections, 5)).toEqual({ section: 0, bar: 2, startBeat: 4, beats: 2 });
+    expect(songBarAt(sections, 6)).toEqual({ section: 0, bar: 3, startBeat: 6, beats: 4 });
+    expect(songBarAt(sections, 15)).toEqual({ section: 1, bar: 1, startBeat: 14, beats: 4 });
+    expect(songBarAt(sections, 30)).toBeNull();
+    expect(songBarAt(sections, -1)).toBeNull();
   });
 });

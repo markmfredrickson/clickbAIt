@@ -49,3 +49,19 @@ describe("join and picker pages", () => {
     expect((await page("/lyrics")).text).toBe(prompt.text);
   });
 });
+
+describe("notation files", () => {
+  it("serves alphaTab and its music font, for drawing notation", async () => {
+    const js = await fetch(base + "/vendor/alphatab/alphaTab.min.js");
+    expect(js.status).toBe(200);
+    expect(js.headers.get("content-type")).toMatch(/javascript/);
+    const font = await fetch(base + "/vendor/alphatab/font/Bravura.woff2");
+    expect(font.status).toBe(200);
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+  });
+
+  it("serves nothing else from the package", async () => {
+    expect((await fetch(base + "/vendor/alphatab/alphaTab.d.ts")).status).toBe(404);
+    expect((await fetch(base + "/vendor/alphatab/..%2Fpackage.json")).status).toBe(404);
+  });
+});

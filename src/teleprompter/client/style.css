@@ -364,6 +364,79 @@ body {
   padding-right: 0.3em;
 }
 
+/* ── Drum chart: a line of groove letters per section ── */
+.drum-chart {
+  font-size: var(--drum-size, 1.2rem);
+  margin-bottom: 1.5rem;
+}
+
+.drum-section {
+  margin-bottom: 0.9rem;
+}
+
+/* One line per section: drawn grooves and letters in a row, centered on the staff. */
+.drum-runs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em 1.2em;
+}
+
+.drum-run {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Letters and counts are the chart's main text, so they read larger than the
+   staff; the Drums size scales both together. */
+.drum-label {
+  font-size: 1.5em;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.drum-run.now .drum-label {
+  color: var(--accent);
+}
+
+/* Which pass of a repeat is playing, under its count, out of the line's flow. */
+.drum-label {
+  position: relative;
+}
+
+.drum-pass {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  font-size: 0.55em;
+  white-space: nowrap;
+}
+
+/* A drawn groove with its letter before it and its count after. */
+.drum-body {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+/* Notation is drawn in the page's text color on a clear background. alphaTab
+   skips a container with no width, so each gets a minimum. */
+.drum-notation {
+  zoom: var(--drum-zoom, 1);
+  border-radius: 4px;
+  min-width: 4rem;
+}
+
+.notation-credit {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.drum-run.now .drum-notation {
+  outline: 3px solid var(--accent);
+}
+
 /* ── Status bar ── */
 #status-bar {
   position: fixed;

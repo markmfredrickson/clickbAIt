@@ -30,6 +30,15 @@ describe("readScoreInfo", () => {
     ]);
   });
 
+  it("gives identical bars the same signature and different bars different ones", () => {
+    const [guitar, , drums] = info.signatures;
+    expect(guitar[0]).toBe(guitar[1]);
+    expect(guitar[2]).not.toBe(guitar[0]);
+    // Drums: a kick-snare bar, then three bars of rest.
+    expect(new Set(drums.slice(1)).size).toBe(1);
+    expect(drums[0]).not.toBe(drums[1]);
+  });
+
   it("rejects a file it can't read, naming the file", () => {
     expect(() => readScoreInfo(new TextEncoder().encode("not a score"), "junk.gp5")).toThrow(/junk\.gp5/);
   });

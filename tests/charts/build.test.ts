@@ -73,6 +73,14 @@ describe("buildChartsFile", () => {
     expect(reads).toBe(1);
   });
 
+  it("writes a drum chart as groove letters: the fixture's drums play a beat, then rest", () => {
+    const drums: ChartSpec = { id: "drums", kind: "drums", instrument: "drums", score: "fixture", track: 2 };
+    const out = buildChartsFile(song([fixture], [guitar, drums]), files);
+    const grooves = out.charts[1].grooves!;
+    expect(grooves.sections.map((sec) => sec.runs.map((r) => `${r.letter}×${r.count}`))).toEqual([["A×1", "B×1"], ["B×2"], ["B×2"]]);
+    expect(out.charts[0].grooves).toBeUndefined();
+  });
+
   it("skips a score no chart uses", () => {
     const unused: ScoreSpec = { ...fixture, id: "unused", file: "missing.gp5" };
     expect(() => buildChartsFile(song([fixture, unused], [guitar]), files)).not.toThrow();

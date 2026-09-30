@@ -148,3 +148,16 @@ describe("chords", () => {
     expect((await get("/charts/chords")).status).toBe(404);
   });
 });
+
+describe("GET /charts/chart/<id>", () => {
+  it("serves one chart from the charts file", async () => {
+    const { status, body } = await get("/charts/chart/bass");
+    expect(status).toBe(200);
+    expect(body.slug).toBe("test-song");
+    expect(body.chart).toMatchObject({ id: "bass", track: 3, source: "song.gp5" });
+  });
+
+  it("is a 404 for a chart the song doesn't have", async () => {
+    expect((await get("/charts/chart/keys")).status).toBe(404);
+  });
+});

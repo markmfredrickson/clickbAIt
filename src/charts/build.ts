@@ -15,6 +15,7 @@ import type { ChartSpec, ChordsSpec, ScoreSpec } from "../manifest.js";
 import { transposeSteps, type TransposeSpec } from "../build/transpose.js";
 import { mapScore, songSections, type MappedBar, type SongSection } from "./bar-map.js";
 import { chordName, transposeChord } from "./chord-label.js";
+import { grooveChart, type GrooveChart } from "./grooves.js";
 import { chordBeats, type ChordTiming } from "./chord-timeline.js";
 import { parseLab } from "./lab.js";
 import { readScoreInfo, type ScoreInfo } from "./score-info.js";
@@ -25,6 +26,8 @@ export interface BuiltChart extends ChartSpec {
   /** The score track's own name, for labeling. */
   trackName: string;
   bars: MappedBar[];
+  /** Drum charts: the part as groove letters, section by section. */
+  grooves?: GrooveChart;
 }
 
 export interface ChartsFile {
@@ -92,7 +95,8 @@ export function buildChartsFile(
       );
       continue;
     }
-    charts.push({ ...chart, source: spec.file, trackName: track.name, bars: score.bars });
+    const grooves = chart.kind === "drums" ? grooveChart(score.bars, score.info.signatures[chart.track] ?? [], sections) : undefined;
+    charts.push({ ...chart, source: spec.file, trackName: track.name, bars: score.bars, ...(grooves ? { grooves } : {}) });
   }
 
   let chords: ChartChord[] | undefined;

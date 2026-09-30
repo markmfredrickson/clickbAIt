@@ -17,6 +17,28 @@ export interface ScoreInfo {
   tracks: { name: string; kind: ScoreTrackKind }[];
   /** Section markers, in bar order. `bar` is 1-based. */
   markers: { bar: number; text: string }[];
+  /**
+   * Per track, one signature per bar: equal exactly when the bars play the
+   * same thing (every beat's length, rests, and notes). Used to find a
+   * part's repeated bars.
+   */
+  signatures: string[][];
+}
+
+function barSignature(bar: alphaTab.model.Bar): string {
+  return bar.voices
+    .map((v) =>
+      v.beats
+        .map((b) => {
+          const notes = b.notes
+            .map((n) => (n.isPercussion ? `p${n.percussionArticulation}` : String(n.realValue)))
+            .sort()
+            .join(",");
+          return `${b.duration}${".".repeat(b.dots)}${b.tupletNumerator > 0 ? "t" + b.tupletNumerator : ""}${b.isRest ? "r" : ""}[${notes}]`;
+        })
+        .join(" "),
+    )
+    .join(" | ");
 }
 
 function loadScore(bytes: Uint8Array, fileName: string): alphaTab.model.Score {
@@ -46,5 +68,6 @@ export function readScoreInfo(bytes: Uint8Array, fileName: string): ScoreInfo {
     markers: score.masterBars
       .filter((mb) => mb.section)
       .map((mb) => ({ bar: mb.index + 1, text: mb.section!.text || mb.section!.marker })),
+    signatures: score.tracks.map((t) => t.staves[0].bars.map(barSignature)),
   };
 }

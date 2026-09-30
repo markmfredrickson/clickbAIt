@@ -19,6 +19,8 @@ import { layoutChords, currentChord, followTarget, barGrid, rowLines, BARS_PER_L
 import { songPosition, sectionMeters } from "../position.js";
 import { parseDisplayOptions, displayQuery } from "../display-options.js";
 import { songMap, songProgress } from "../song-map.js";
+import { runAt } from "../../charts/grooves.js";
+import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
 
 (function () {
   "use strict";
@@ -41,11 +43,18 @@ import { songMap, songProgress } from "../song-map.js";
   // viewer turns them on (a drummer's screen can leave them off).
   // The page's options come from its URL first (so a setup is a link), then
   // from what this screen remembers. Changing one writes it back to the URL.
-  const SIZED = ["header", "lyrics", "chords"];
+  const SIZED = ["header", "lyrics", "chords", "drums"];
   const urlOptions = parseDisplayOptions(location.search, SIZED);
   let chordData = null;    // { sections, chords } or null when the song has none
   let chordsOn = channelWanted("chords", false);
   let lyricsOn = channelWanted("lyrics", true);
+  // Drums: the song's drum chart (groove letters), from /charts/chart/<id>.
+  let drumChart = null;    // the built chart, or null when the song has none
+  let drumsOn = channelWanted("drums", false);
+  let drumRuns = [];       // section index -> run index -> { el, label, run }
+  let drumSectionEls = []; // section index -> its element in the drum chart
+  let lastRun = null;
+  let drumGeneration = 0;  // bumped per render, so a late score load is dropped
   let chordLayout = null;  // from layoutChords, while chords are shown
   let chordInput = null;   // the layout's input, kept for followTarget
   let chordEls = [];       // chord index -> its element
@@ -148,6 +157,7 @@ import { songMap, songProgress } from "../song-map.js";
       if (!res.ok) { renderWaiting(); return; }
       song = await res.json();
       await loadChords();
+      await loadDrums();
       renderSong();
       renderDrawerChannels();
     } catch (e) {
@@ -209,7 +219,7 @@ import { songMap, songProgress } from "../song-map.js";
   /** Rewrite the URL to match the page, so copying it copies the setup. */
   function writeUrl() {
     var options = {
-      channels: [lyricsOn ? "lyrics" : null, chordsOn ? "chords" : null].filter(Boolean),
+      channels: [lyricsOn ? "lyrics" : null, chordsOn ? "chords" : null, drumsOn ? "drums" : null].filter(Boolean),
       sizes: {},
       offset: offsetBeats !== 0 ? offsetBeats : undefined,
       scroll: autoScroll ? undefined : "manual",
@@ -235,6 +245,11 @@ import { songMap, songProgress } from "../song-map.js";
     channelChanged("chords", on);
   }
 
+  function setDrumsOn(on) {
+    drumsOn = on;
+    channelChanged("drums", on);
+  }
+
   function setLyricsOn(on) {
     lyricsOn = on;
     channelChanged("lyrics", on);
@@ -247,6 +262,129 @@ import { songMap, songProgress } from "../song-map.js";
     var beat = rawBeat;
     renderSong();
     if (beat >= 0) onBeatUpdate(beat);
+  }
+
+  /** The song's first drum chart, if it has one. */
+  async function loadDrums() {
+    drumChart = null;
+    try {
+      var res = await fetch("/charts/channels");
+      if (!res.ok) return;
+      var drums = (await res.json()).channels.filter(function (c) { return c.kind === "drums"; })[0];
+      if (!drums) return;
+      var one = await fetch("/charts/chart/" + encodeURIComponent(drums.id));
+      if (one.ok) drumChart = (await one.json()).chart;
+    } catch (e) { /* no relay charts: no drums */ }
+  }
+
+  /** Whether a run shows its groove's notation (its first time in the section). */
+  function drawsNotation(run) {
+    return run.first && run.letter !== null;
+  }
+
+  /** The run's letter: "(A)" over notation, "A" alone, "–" for no score bar. */
+  function runLetter(run) {
+    return run.letter === null ? "–" : drawsNotation(run) ? "(" + run.letter + ")" : run.letter;
+  }
+
+  /**
+   * Show a run's count ("×4"), after its notation or after its letter. While
+   * it plays, which pass this is ("3/4") hangs under the count, taking no room
+   * in the line, so the line doesn't reflow as the highlight moves.
+   */
+  function showRun(ref, pass) {
+    var count = ref.run.count > 1 ? "×" + ref.run.count : "";
+    var el = ref.count || ref.label;
+    el.textContent = ref.count ? count : runLetter(ref.run) + (count ? " " + count : "");
+    if (pass && ref.run.count > 1) {
+      var tag = document.createElement("span");
+      tag.className = "drum-pass";
+      tag.textContent = pass + "/" + ref.run.count;
+      el.appendChild(tag);
+    }
+  }
+
+  /**
+   * The drum chart: a line per section of groove letters, with each groove's
+   * notation drawn where it's first played.
+   */
+  function renderDrumChart() {
+    drumRuns = [];
+    drumSectionEls = [];
+    lastRun = null;
+    var generation = ++drumGeneration;
+    var chart = document.createElement("div");
+    chart.className = "drum-chart";
+    var toDraw = [];
+    drumChart.grooves.sections.forEach(function (sec) {
+      var secEl = document.createElement("div");
+      secEl.className = "drum-section";
+      var nameEl = document.createElement("div");
+      nameEl.className = "section-name";
+      var bars = metered[sec.section] ? metered[sec.section].bars : 0;
+      nameEl.textContent = (sectionNames[sec.section] || "") + (bars ? " · " + bars + (bars === 1 ? " bar" : " bars") : "");
+      secEl.appendChild(nameEl);
+      if (!lyricsOn && metered[sec.section]) sectionElements.push({ el: nameEl, beat: metered[sec.section].startBeat });
+      var runsEl = document.createElement("div");
+      runsEl.className = "drum-runs";
+      drumRuns[sec.section] = sec.runs.map(function (run) {
+        var runEl = document.createElement("div");
+        runEl.className = "drum-run" + (run.first ? " first" : "");
+        var label = document.createElement("span");
+        label.className = "drum-label";
+        runEl.appendChild(label);
+        var ref = { el: runEl, label: label, count: null, run: run };
+        if (drawsNotation(run)) {
+          // In line: the letter, the groove, and its count after it: (B) [groove] ×8.
+          label.textContent = runLetter(run);
+          var body = document.createElement("div");
+          body.className = "drum-body";
+          body.appendChild(label);
+          var groove = drumChart.grooves.grooves.filter(function (g) { return g.letter === run.letter; })[0];
+          var notation = document.createElement("div");
+          notation.className = "drum-notation";
+          body.appendChild(notation);
+          ref.count = document.createElement("span");
+          ref.count.className = "drum-label drum-count";
+          body.appendChild(ref.count);
+          runEl.appendChild(body);
+          if (groove) toDraw.push({ el: notation, bar: groove.scoreBar });
+        }
+        showRun(ref, 0);
+        runsEl.appendChild(runEl);
+        return ref;
+      });
+      secEl.appendChild(runsEl);
+      chart.appendChild(secEl);
+      drumSectionEls[sec.section] = secEl;
+    });
+    container.appendChild(chart);
+
+    // Notation draws once alphaTab and the score have loaded.
+    Promise.all([loadAlphaTab(), loadScore("/charts/source/" + encodeURIComponent(drumChart.id))])
+      .then(function (loaded) {
+        if (generation !== drumGeneration) return;
+        // Ink in the page's text color, so notation reads in either theme.
+        var ink = getComputedStyle(document.body).color;
+        toDraw.forEach(function (d) { renderBar(loaded[0], d.el, loaded[1], drumChart.track, d.bar, ink); });
+      })
+      .catch(function (e) { statusEl.textContent = "Notation: " + e.message; });
+  }
+
+  /** Light the drum run playing, with which pass of it this is ("3/8"). */
+  function updateDrumHighlight(beat) {
+    if (!drumChart || !drumRuns.length) return;
+    var at = runAt(drumChart.grooves, beat);
+    var ref = at ? drumRuns[at.section] && drumRuns[at.section][at.run] : null;
+    if (lastRun && lastRun !== ref) {
+      lastRun.el.classList.remove("now");
+      showRun(lastRun, 0);
+    }
+    if (ref) {
+      ref.el.classList.add("now");
+      showRun(ref, at.bar);
+    }
+    lastRun = ref;
   }
 
   function updateChordHighlight(readingBeat) {
@@ -471,6 +609,7 @@ import { songMap, songProgress } from "../song-map.js";
     }
 
     container.classList.toggle("chords-on", !!chordLayout);
+    if (isLD && drumsOn && drumChart) renderDrumChart();
     if (isLD) renderLyricsDisplay();
     else renderLegacy();
 
@@ -489,6 +628,8 @@ import { songMap, songProgress } from "../song-map.js";
     const lines = lyricsOn ? song.display.lines : [];
     const sections = song.display.sections || [];
     if (!lyricsOn && !chordLayout) {
+      // The drum chart already lists every section.
+      if (drumsOn && drumChart) return;
       // Neither lyrics nor chords: just the song's sections, to follow along.
       sections.forEach(function (s) {
         var nameEl = document.createElement("div");
@@ -670,6 +811,7 @@ import { songMap, songProgress } from "../song-map.js";
     if (isLD) updateWordHighlight(readingBeat);
     else updateHighlightLegacy(beat, readingBeat);
     updateChordHighlight(readingBeat);
+    updateDrumHighlight(beat);
 
     if (autoScroll) scrollToCurrentLine(readingBeat);
   }
@@ -732,6 +874,11 @@ import { songMap, songProgress } from "../song-map.js";
     // While a chord row plays and nothing has been sung since, follow the row.
     var follow = chordLayout ? followTarget(chordLayout, chordInput, beat) : null;
     if (follow && "row" in follow) target = rowEls[follow.row] || null;
+    // A drum chart without lyrics follows its current section.
+    if (!target && drumsOn && !lyricsOn && drumChart && drumSectionEls.length) {
+      var dr = runAt(drumChart.grooves, beat);
+      if (dr) target = drumSectionEls[dr.section] || null;
+    }
     if (!target && isLD) {
       var wi = activeIndex(wordElements, beat, function (w) { return w.startBeat; });
       if (wi >= 0) target = wordElements[wi].lineEl;
@@ -770,6 +917,13 @@ import { songMap, songProgress } from "../song-map.js";
       setOn: setLyricsOn,
     },
     {
+      channel: "drums", label: "Drums", cssVar: "--drum-size", also: [{ cssVar: "--drum-zoom", scale: 1 / 1.2, unitless: true }],
+      min: 0.6, max: 2.5, step: 0.05, size: 1.2,
+      available: function () { return !!drumChart; },
+      isOn: function () { return drumsOn; },
+      setOn: setDrumsOn,
+    },
+    {
       channel: "chords", label: "Chords", cssVar: "--chord-size", also: [],
       min: 0.5, max: 2.25, step: 0.0625, size: 0.9,
       available: function () { return !!chordData; },
@@ -795,7 +949,7 @@ import { songMap, songProgress } from "../song-map.js";
     var root = document.documentElement;
     currentSizes[c.channel] = v;
     root.style.setProperty(c.cssVar, v + "rem");
-    c.also.forEach(function (a) { root.style.setProperty(a.cssVar, v * a.scale + "rem"); });
+    c.also.forEach(function (a) { root.style.setProperty(a.cssVar, v * a.scale + (a.unitless ? "" : "rem")); });
   }
 
   /**
@@ -902,6 +1056,12 @@ import { songMap, songProgress } from "../song-map.js";
       document.body.classList.toggle("light");
       this.textContent = document.body.classList.contains("light") ? "☀️" : "🌙";
       writeUrl();
+      // Notation is drawn in the theme's ink, so redraw it in the new one.
+      if (drumsOn && drumChart) {
+        var beat = rawBeat;
+        renderSong();
+        if (beat >= 0) onBeatUpdate(beat);
+      }
     });
     // The picker's Custom choice opens the page with the settings out.
     if (new URLSearchParams(location.search).get("settings") === "open") setDrawerOpen(true);

@@ -9,6 +9,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, extname, dirname } from "node:path";
 import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -63,6 +64,18 @@ export interface RelayOptions {
   /** Where rendered e-ink pages are cached (default: a folder in the OS temp dir). */
   einkCacheDir?: string;
 }
+
+// alphaTab draws notation in the browser. The relay serves its script and
+// the Bravura music font, and only those files, from the installed package.
+const ALPHATAB_DIR = dirname(createRequire(import.meta.url).resolve("@coderline/alphatab"));
+const ALPHATAB_FILES: Record<string, string> = {
+  "alphaTab.min.js": "application/javascript",
+  "font/Bravura.woff2": "font/woff2",
+  "font/Bravura.woff": "font/woff",
+  "font/Bravura.otf": "font/otf",
+  "font/Bravura.svg": "image/svg+xml",
+  "font/Bravura.eot": "application/vnd.ms-fontobject",
+};
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({
@@ -476,6 +489,19 @@ export function startRelay(opts: RelayOptions) {
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(currentSong));
+      return;
+    }
+
+    if (url.startsWith("/vendor/alphatab/")) {
+      const name = url.slice("/vendor/alphatab/".length).split("?")[0];
+      const type = ALPHATAB_FILES[name];
+      if (!type) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": "max-age=86400" });
+      res.end(await readFile(join(ALPHATAB_DIR, name)));
       return;
     }
 

@@ -24,6 +24,7 @@ import { buildLyricsDisplay } from "./lyrics-display.js";
 import { buildChartsFile } from "../charts/build.js";
 import { buildRows } from "../teleprompter/build-rows.js";
 import { drawNotation } from "../charts/notation-svg.js";
+import { parseNotes, type Note } from "../teleprompter/card.js";
 import { songRecipe } from "./song-recipe.js";
 import { extractSections } from "./sections.js";
 import { cueOnset } from "./cue-onset.js";
@@ -267,6 +268,16 @@ if (manifest.charts?.length || manifest.chords) {
   if (chartsFile.chords) lyricsMsg += `; ${chartsFile.chords.length} chord(s)`;
 }
 
+// The song's notes, for the card before it; a bad notes file fails the build.
+let notes: Note[] | undefined;
+if (manifest.notes) {
+  const parsed = parseNotes(readFileSync(join(dir, manifest.notes.file), "utf8"));
+  if (parsed.errors.length) {
+    throw new Error(`${manifest.notes.file} has ${parsed.errors.length} problem(s):\n  ${parsed.errors.join("\n  ")}`);
+  }
+  notes = parsed.notes;
+}
+
 // The row document: every channel laid out as rows, for the displays' panes.
 const rows = buildRows({
   slug,
@@ -275,6 +286,9 @@ const rows = buildRows({
   ...(display ? { lyrics: { words: display.words, lines: display.display.lines } } : {}),
   ...(chartsFile?.chords ? { chords: chartsFile.chords } : {}),
   ...(chartsFile ? { charts: chartsFile.charts } : {}),
+  // The card before the song shows while the position sits where the song's timeline starts.
+  startBeat: -paddingBeats,
+  ...(notes ? { notes } : {}),
 });
 // Charts' notation, drawn now, so every display shows the same drawings.
 if (chartsFile?.charts.length) {

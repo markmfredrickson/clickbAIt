@@ -565,6 +565,11 @@ export const SongManifestSchema = z
     /** Chord file for the `chords` channel. See ChordsSpec. */
     chords: ChordsSpec.optional(),
 
+    /** The song's notes file, shown on the card before the song: setup
+     *  reminders and banter under headings for who they're for (see
+     *  teleprompter/card.ts). Relative to the song folder. */
+    notes: z.object({ file: z.string().min(1) }).strict().optional(),
+
     /** Bars per chord row on the displays (default 4); a section can set its own. */
     barsPerRow: z.number().int().positive().optional(),
   })

@@ -59,6 +59,9 @@ function q(s: string): string {
 }
 
 /** Score files a chart can come from: Guitar Pro, MusicXML, alphaTex. */
+/** A song's notes for the card before it (manifest `notes`). */
+export const NOTES_FILE_GLOB = "*.notes.txt";
+
 export const SCORE_GLOBS = ["*.gp", "*.gp3", "*.gp4", "*.gp5", "*.gpx", "*.musicxml", "*.mxl", "*.atex"];
 
 /** Chord files (manifest `chords`), named `<slug>.chords.lab` so the build sees edits. */
@@ -190,7 +193,7 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     command: `npx tsx ${rel}/src/build/generate.ts ${manifest}`,
     // Score files and chord files are chart sources (manifest `charts`,
     // `chords`); the build maps them into <slug>.charts.json.
-    files: [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`, ...SCORE_GLOBS, CHORD_FILE_GLOB],
+    files: [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`, ...SCORE_GLOBS, CHORD_FILE_GLOB, NOTES_FILE_GLOB],
     output: ["*.RPP", "*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**"],
     dependencies: ["smooth"],
   };

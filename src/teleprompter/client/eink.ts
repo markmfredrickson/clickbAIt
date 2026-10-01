@@ -6,7 +6,9 @@
  * the order of `channels=` (drums above lyrics, say). Each pane is its own
  * set of page images and turns on its own, as its bottom row starts (see
  * panes.ts); a box inverts what's playing in it, and under a figure run a
- * bar fills one step per time through. A strip at the top names the song and section.
+ * bar fills one step per time through. A strip at the top names the song and
+ * section. Before the song, a card covers the panes (the song's notes and
+ * opening figures, see card.ts) while the song is at its start.
  * Tapping a pane turns it by hand (left third back, the rest forward) and
  * holds every pane there until LIVE is tapped.
  *
@@ -22,6 +24,7 @@
 
 import { markAt, passOf, type EinkDeck, type EinkPane } from "../eink/layout.js";
 import { panePageAt } from "../panes.js";
+import { cardShowing } from "../card.js";
 import { needsTapReminder } from "../eink/awake.js";
 
 const params = new URLSearchParams(location.search);
@@ -55,6 +58,7 @@ interface Shown {
 }
 
 let deck: EinkDeck | null = null;
+let cardImg: HTMLImageElement | null = null;
 let shown: Shown[] = [];
 let title = "";
 let sections: { name: string; startBeat: number }[] = [];
@@ -119,9 +123,18 @@ function showSection(): void {
   head.textContent = title + (i >= 0 ? ` : ${sections[i].name}` : "");
 }
 
+/** The card before the song, over the panes while the song is at its start (a beat of -Infinity is none yet). */
+function showCard(): void {
+  if (!cardImg || !deck?.card) return;
+  const on = cardShowing(beat === -Infinity ? null : beat, deck.card.startBeat);
+  const want = on ? "block" : "none";
+  if (cardImg.style.display !== want) cardImg.style.display = want;
+}
+
 function follow(): void {
   if (!deck) return;
   showSection();
+  showCard();
   for (const s of shown) {
     if (!manual) showPage(s, panePageAt(s.pane.pages, beat + lookahead));
     light(s);
@@ -187,7 +200,24 @@ async function loadDeck(): Promise<void> {
     return { pane, imgs: loaded[i], marker, passBar, page: -1 };
   });
   for (const s of shown) showPage(s, 0);
+  cardImg = null;
+  if (next.card) {
+    cardImg = await new Promise<HTMLImageElement | null>((resolve) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => resolve(null);
+      im.src = next.card!.src;
+    });
+    if (gen !== generation) return;
+    if (cardImg) {
+      cardImg.className = "card";
+      Object.assign(cardImg.style, { top: `${HEAD}px`, width: `${next.width}px`, height: `${next.height}px` });
+      stage.appendChild(cardImg);
+    }
+  }
   deck = next;
+  // A new song starts with its card, until its beats come.
+  beat = -Infinity;
   title = song.title ?? deck.slug;
   sections = song.display?.sections ?? [];
   sectionShown = -2;

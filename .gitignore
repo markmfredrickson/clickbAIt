@@ -65,7 +65,6 @@ clickbait-workspace/
 .claude/worktrees/
 
 # Demo recordings (generated)
-demo/output/
 
 # Practice bundles (generated; large, regenerated per-render)
 bundles/

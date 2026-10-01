@@ -9,6 +9,7 @@ import type { FigureRow, RowChannel, RowDocument, ScoreRow } from "../rows.js";
 import type { Mark } from "../eink/layout.js";
 import { channelView, fitRows, placeDrawing, type ChannelView } from "./pane-view.js";
 import { drawingKey } from "../drawings.js";
+import { cardView, fitCard, type CardSong } from "./card-view.js";
 
 interface Drawn {
   channel: RowChannel;
@@ -100,4 +101,15 @@ function show(i: number, page: { first: number; last: number }, height: number, 
   return marks;
 }
 
-(window as unknown as { einkPage: unknown }).einkPage = { setup, measure, show };
+/** Put the card before the song on the stage, `height` px tall, for a screenshot. */
+function card(doc: RowDocument, song: CardSong, shown: string[], role: string | undefined, height: number): void {
+  const s = stage();
+  s.innerHTML = "";
+  s.className = "card-page";
+  s.style.height = `${height}px`;
+  const c = cardView(doc, song, shown, role);
+  s.appendChild(c);
+  fitCard(c);
+}
+
+(window as unknown as { einkPage: unknown }).einkPage = { setup, measure, show, card };

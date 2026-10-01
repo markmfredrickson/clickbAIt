@@ -5,8 +5,8 @@
  *
  *   lyrics   a line of words
  *   chords   a line of bars, each as wide as its beats, chords on a grid
- *   figures  a line of runs: "(A) [staff] ×8" or "(A [staff] B [staff]) ×3"
- *            the first time a section plays them, the letters after that
+ *   figures  a line of snippets: "(A) [staff] ×8" the first time a section
+ *            plays one, the letter after that
  *   score    a line of drawn bars, a box over each to light while it plays
  *
  * Every row and item element is returned in order, so a display can light
@@ -16,7 +16,7 @@
 
 import type { ChordRow, FigureItem, FigureRow, LyricRow, RowChannel, ScoreRow } from "../rows.js";
 import { barGrid } from "../bar-grid.js";
-import { scoreSegments } from "../drawings.js";
+import { barSegments, scoreSegments } from "../drawings.js";
 
 export interface RowView {
   el: HTMLElement;
@@ -140,28 +140,21 @@ const letterText = (letter: string | null) => letter ?? "–";
 function figureRow(row: FigureRow, notation: NotationTarget[]): RowView {
   const line = el("div", "row figure-row");
   const items = row.items.map((run) => {
-    const runEl = el("div", "figure-run" + (run.draw.some(Boolean) ? " first" : ""));
-    const drawn = run.draw.some(Boolean);
+    const drawn = run.draw && run.letter !== null;
+    const runEl = el("div", "figure-run" + (drawn ? " first" : ""));
     if (!drawn) {
-      // Letters only: "A ×8", or a phrase "(A B) ×3".
-      const text = run.letters.map(letterText).join(" ");
-      runEl.appendChild(el("span", "figure-label", run.letters.length > 1 ? `(${text})` : text));
+      // The letter alone: "A ×8".
+      runEl.appendChild(el("span", "figure-label", letterText(run.letter)));
     } else {
-      // In line: each letter with its notation where it's drawn, and the count
-      // after: "(B) [bar] ×8", or "(A [bar] B [bar]) ×3" for a phrase.
+      // In line: the letter, the snippet's bars, and its count after: "(A) [bars] ×8".
       const body = el("div", "figure-body");
-      const single = run.letters.length === 1;
-      if (!single) body.appendChild(el("span", "figure-label paren", "("));
-      run.letters.forEach((letter, j) => {
-        body.appendChild(el("span", "figure-label", single ? `(${letterText(letter)})` : letterText(letter)));
-        const scoreBar = run.scoreBars[j];
-        if (run.draw[j] && scoreBar !== null) {
-          const staff = el("div", "notation");
-          body.appendChild(staff);
-          notation.push({ el: staff, start: scoreBar, count: 1, boxes: [] });
-        }
-      });
-      if (!single) body.appendChild(el("span", "figure-label paren", ")"));
+      body.appendChild(el("span", "figure-label", `(${letterText(run.letter)})`));
+      for (const seg of barSegments(run.scoreBars)) {
+        if (seg.start === null) continue;
+        const staff = el("div", "notation");
+        body.appendChild(staff);
+        notation.push({ el: staff, start: seg.start, count: seg.count, boxes: [] });
+      }
       runEl.appendChild(body);
     }
     runEl.appendChild(el("span", "figure-label figure-count"));
@@ -209,10 +202,15 @@ export function showPass(runEl: HTMLElement, run: FigureItem, pass: number): voi
  * notation multiplies by), so nothing runs off the side of the screen.
  */
 export function fitRows(view: ChannelView): void {
-  for (const row of view.rows) {
-    const room = row.el.clientWidth;
-    if (!room) continue;
-    row.el.querySelectorAll<HTMLElement>(".figure-run, .score-seg").forEach((part) => {
+  for (const row of view.rows) fitRow(row.el);
+}
+
+/** fitRows for one row's element (the card's figures are rows on their own). */
+export function fitRow(rowEl: HTMLElement): void {
+  {
+    const room = rowEl.clientWidth;
+    if (!room) return;
+    rowEl.querySelectorAll<HTMLElement>(".figure-run, .score-seg").forEach((part) => {
       if (!part.querySelector(".notation")) return;
       part.style.setProperty("--fit", "1");
       const width = part.scrollWidth;

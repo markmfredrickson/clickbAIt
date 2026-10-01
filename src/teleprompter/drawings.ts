@@ -28,14 +28,17 @@ export const drawingKey = (start: number, count: number) => `${start}+${count}`;
  * score has nothing for are a piece of their own, with nothing to draw.
  */
 export function scoreSegments(items: readonly ScoreBar[]): { first: number; count: number; start: number | null }[] {
+  return barSegments(items.map((b) => b.scoreBar));
+}
+
+/** Score bars as pieces to draw: runs of consecutive bars, and stretches with none. */
+export function barSegments(scoreBars: readonly (number | null)[]): { first: number; count: number; start: number | null }[] {
   const out: { first: number; count: number; start: number | null }[] = [];
-  items.forEach((bar, i) => {
+  scoreBars.forEach((bar, i) => {
     const last = out[out.length - 1];
-    const runsOn =
-      last &&
-      (last.start === null ? bar.scoreBar === null : bar.scoreBar !== null && bar.scoreBar === last.start + last.count);
+    const runsOn = last && (last.start === null ? bar === null : bar !== null && bar === last.start + last.count);
     if (runsOn) last.count++;
-    else out.push({ first: i, count: 1, start: bar.scoreBar });
+    else out.push({ first: i, count: 1, start: bar });
   });
   return out;
 }
@@ -48,11 +51,13 @@ export function notationRanges(doc: RowDocument): { id: string; source: string; 
     const add = (start: number, count: number) => seen.set(drawingKey(start, count), { start, count });
     for (const row of c.rows) {
       if (row.type === "figures") {
-        for (const run of row.items) run.scoreBars.forEach((b, j) => b !== null && run.draw[j] && add(b, 1));
+        for (const run of row.items) if (run.draw) for (const seg of barSegments(run.scoreBars)) if (seg.start !== null) add(seg.start, seg.count);
       } else {
         for (const seg of scoreSegments(row.items)) if (seg.start !== null) add(seg.start, seg.count);
       }
     }
+    // The card's reminder of the part's snippets.
+    for (const f of doc.card?.figures?.[c.id] ?? []) for (const seg of barSegments(f.scoreBars)) if (seg.start !== null) add(seg.start, seg.count);
     const ranges = [...seen.values()].sort((a, b) => a.start - b.start || a.count - b.count);
     return [{ id: c.id, source: c.source, track: c.track, chart: c.chart, ranges }];
   });

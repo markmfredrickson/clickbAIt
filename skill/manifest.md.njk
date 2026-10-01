@@ -116,6 +116,23 @@ To start one from a chord sheet (chord names over the lyrics, with `[Section]` h
 
 Displays show chords in rows of 4 bars. Set `"barsPerRow"` on the song to change that, or on a section to change it there (e.g. `3` for a 6-bar section). A row never runs past the end of its section.
 
+## Notes for the card before the song
+
+`"notes": { "file": "<song>.notes.txt" }` names a text file shown on the displays' card before the song, while it's at its start (it goes once playback moves into the count-in). Headings say who each part is for:
+
+```
+[all]
+Count in 1-2-3-4, drums start alone
+
+[guitar]
+Modeler: patch 123
+
+[banter]
+A word about the song.
+```
+
+`[all]` is for everyone; an instrument name (`[guitar]`, `[bass]`, `[drums]`, `[vocals]`) is for screens showing that part, or asking for it with `?role=guitar`; `[banter]` is for screens showing the lyrics or the vocal part. Text before the first heading fails the build. The card also reminds each part what it plays: a chart-style part's figures, each letter with its bar (rests left out), or a score-style part's opening row.
+
 ## Charts from a score file
 
 A Guitar Pro, MusicXML or alphaTex file gives the displays notation for each part. `scores` maps the file's bars onto our sections (the file's own markers are only a check), and each entry in `charts` shows one track of it:
@@ -129,7 +146,7 @@ A Guitar Pro, MusicXML or alphaTex file gives the displays notation for each par
 ```
 
 - **`kind`** — how bars are drawn: `tab` (tab with the rhythm under it), `staff` (standard notation), `staff-tab` (both), `drums`.
-- **`style`** — what's drawn: `chart` names each distinct bar with a letter and groups repeats into phrases of up to 4 bars (`(A B) ×4`), drawing a bar the first time each section plays it; `score` draws every bar, in rows of `barsPerRow`. Defaults to `score` for the `vocals` instrument, `chart` otherwise.
+- **`style`** — what's drawn: `chart` writes the part as snippets, short passages of up to 4 bars each named with a letter, so a section reads `A×8 B`; the build picks the snippets that keep the bars drawn plus the symbols read lowest (a back-to-back repeat is one symbol, a bar in two snippets is drawn twice, a snippet must come back at least twice), and a section draws a snippet the first time it plays it. `score` draws every bar, in rows of `barsPerRow`. Defaults to `score` for the `vocals` instrument, `chart` otherwise.
 - **`scoreSections`** — chart style only: sections (by name, every occurrence) to draw bar by bar anyway, such as a solo. A section of two or more bars in which no bar repeats is drawn that way without being listed.
 - **`instrument`** — groups charts, so a display can ask for `guitar` and get every guitar chart.
 

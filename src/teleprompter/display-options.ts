@@ -24,6 +24,8 @@ export interface DisplayOptions {
   offset?: number;
   scroll?: "auto" | "manual";
   theme?: "dark" | "light";
+  /** The player's part ("guitar"), for the notes on the card before a song. */
+  role?: string;
 }
 
 export function parseDisplayOptions(query: string, sizedChannels: readonly string[]): DisplayOptions {
@@ -43,6 +45,8 @@ export function parseDisplayOptions(query: string, sizedChannels: readonly strin
   if (scroll === "auto" || scroll === "manual") options.scroll = scroll;
   const theme = q.get("theme");
   if (theme === "dark" || theme === "light") options.theme = theme;
+  const role = q.get("role")?.trim().toLowerCase();
+  if (role) options.role = role;
   return options;
 }
 
@@ -57,6 +61,7 @@ export function displayQuery(options: DisplayOptions, sizedChannels: readonly st
   if (options.offset !== undefined) parts.push(`offset=${options.offset}`);
   if (options.scroll) parts.push(`scroll=${options.scroll}`);
   if (options.theme) parts.push(`theme=${options.theme}`);
+  if (options.role) parts.push(`role=${encodeURIComponent(options.role)}`);
   return parts.length ? "?" + parts.join("&") : "";
 }
 

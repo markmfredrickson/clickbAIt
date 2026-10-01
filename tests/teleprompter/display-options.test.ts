@@ -25,6 +25,11 @@ describe("parseDisplayOptions", () => {
     expect(parseDisplayOptions("?lyrics.rows=51", SIZED).rows).toEqual({});
   });
 
+  it("reads the role a screen's player has, for the notes they see", () => {
+    expect(parseDisplayOptions("?role=Guitar", SIZED).role).toBe("guitar");
+    expect(displayQuery({ sizes: {}, rows: {}, role: "guitar" }, SIZED)).toBe("?role=guitar");
+  });
+
   it("reads the offset, scroll mode and theme", () => {
     expect(parseDisplayOptions("?offset=1.5&scroll=manual&theme=light", SIZED)).toMatchObject({
       offset: 1.5,

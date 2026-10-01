@@ -33,7 +33,7 @@ describe.skipIf(!hasChrome)("renderPanes (headless Chrome)", () => {
   const size = { width: 500, height: 700, dpr: 2 };
 
   it("stacks the panes in order and fits them on the screen", async () => {
-    const panes = await renderPanes(song(), size, outDir, { rows: { chords: 2 } });
+    const { panes } = await renderPanes(song(), size, outDir, { rows: { chords: 2 } });
     expect(panes.map((p) => p.id)).toEqual(["lyrics", "chords"]);
     expect(panes[0].top).toBe(0);
     expect(panes[1].top).toBe(panes[0].height);
@@ -41,7 +41,9 @@ describe.skipIf(!hasChrome)("renderPanes (headless Chrome)", () => {
   }, 60_000);
 
   it("lights each line of lyrics and each bar of chords, inside its pane", async () => {
-    const [lyrics, chords] = await renderPanes(song(), size, outDir, { rows: { lyrics: 4, chords: 2 } });
+    const {
+      panes: [lyrics, chords],
+    } = await renderPanes(song(), size, outDir, { rows: { lyrics: 4, chords: 2 } });
     // Pages overlap by a row, so each line after the first page's appears twice.
     const lines = lyrics.pages.flatMap((p) => p.marks.map((m) => m.start));
     expect(new Set(lines).size).toBe(30);
@@ -53,12 +55,24 @@ describe.skipIf(!hasChrome)("renderPanes (headless Chrome)", () => {
   }, 60_000);
 
   it("writes each page at the pane's size in device pixels", async () => {
-    const panes = await renderPanes(song(), size, outDir, { rows: { chords: 2 } });
+    const { panes } = await renderPanes(song(), size, outDir, { rows: { chords: 2 } });
     for (const pane of panes) {
       const png = readFileSync(join(outDir, pane.pages[0].file));
       // IHDR width/height live at bytes 16–23.
       expect(png.readUInt32BE(16)).toBe(size.width * size.dpr);
       expect(png.readUInt32BE(20)).toBe(pane.height * size.dpr);
     }
+  }, 60_000);
+
+  it("draws the card before the song as a page of its own, the full screen", async () => {
+    const doc = { ...song(), card: { startBeat: -8, notes: [{ for: "all", text: "Count in 1-2-3-4" }], figures: {}, opening: {} } };
+    const { card } = await renderPanes(doc, size, outDir, { card: { song: { title: "Render Test", key: "A", bpm: 120 } } });
+    expect(card).toBe("card.png");
+    const png = readFileSync(join(outDir, card!));
+    expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([size.width * size.dpr, size.height * size.dpr]);
+  }, 60_000);
+
+  it("draws no card when the rows have none", async () => {
+    expect((await renderPanes(song(), size, outDir, { card: { song: { title: "Render Test" } } })).card).toBeNull();
   }, 60_000);
 });

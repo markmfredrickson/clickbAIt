@@ -22,6 +22,8 @@ import { channelName, channelTitle, itemsAt, resolveChannels, type ChannelPositi
 import { panePages, panePageAt, type PanePage } from "../panes.js";
 import { channelView, fitRows, placeDrawing, showPass, type ChannelView } from "./pane-view.js";
 import { drawingKey } from "../drawings.js";
+import { cardShowing } from "../card.js";
+import { cardView, fitCard } from "./card-view.js";
 
 /** The song as the page gets it: the lyrics display, and in a bundle, its rows and mixes. */
 type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
@@ -42,6 +44,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   let autoScroll = true;
   let offsetBeats = 0;
   let rawBeat = -1;      // most recent beat from OSC (no offset applied)
+  let heard: number | null = null; // the last beat heard for this song, or null before any
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   // The page's options come from its URL first (so a setup is a link), then
@@ -75,6 +78,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   // ── DOM refs ──
   const titleEl = byId("song-title");
   const container = byId("panes");
+  const cardEl = byId("card");
   const statusEl = byId("connection-status");
   const beatDisplay = byId("beat-display");
   const nowSectionEl = byId("now-section");
@@ -442,12 +446,36 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     // New song: clear the beat position, so the page doesn't linger at the
     // previous song's place until the next OSC beat arrives.
     rawBeat = -1;
+    heard = null;
+    if (doc && doc.card) showCard(true);
     window.scrollTo(0, 0);
   }
+
+  /** The card before the song, for what this screen shows; the beat decides when it's up. */
+  function renderCard() {
+    cardEl.innerHTML = "";
+    if (!doc || !doc.card || !song) { showCard(false); return; }
+    cardEl.appendChild(cardView(doc, song, order, urlOptions.role));
+    showCard(heard === null || cardShowing(heard, doc.card.startBeat));
+    if (!cardEl.hidden) fitCard(cardEl);
+  }
+
+  function showCard(on: boolean) {
+    cardEl.hidden = !on;
+    placeCard();
+  }
+
+  // Over the panes, under the header, whatever its height (a bundle's
+  // playback line makes it taller, and the header's size can change).
+  function placeCard() {
+    if (!cardEl.hidden) cardEl.style.top = byId("header").offsetHeight + "px";
+  }
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(placeCard).observe(byId("header"));
 
   function renderPanes() {
     container.innerHTML = "";
     panes = [];
+    renderCard();
     if (!doc) {
       container.innerHTML = '<div class="waiting-message">No rows for this song yet. Rebuild it to show it here.</div>';
       return;
@@ -561,6 +589,11 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   // ── Beat update ──
   function onBeatUpdate(beat: number) {
     rawBeat = beat;
+    heard = beat;
+    if (doc && doc.card) {
+      const on = cardShowing(beat, doc.card.startBeat);
+      if (on === cardEl.hidden) showCard(on);
+    }
     if (!song || !metered.length) return;
     const readingBeat = beat + offsetBeats;
     // What's playing now (not the reading position): section, bar and beat.

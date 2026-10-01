@@ -18,7 +18,6 @@ export default defineConfig({
       "**/node_modules/**",
       "**/.claude/worktrees/**",
       "**/sandbox/**",
-      "**/demo/**",
     ],
   },
 });

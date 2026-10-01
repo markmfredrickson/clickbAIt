@@ -179,10 +179,10 @@ describe("buildRows: chart-style parts (figures)", () => {
     ]);
   });
 
-  it("keeps each run whole, with its start, end, phrase length and the score bars to draw", () => {
-    expect(kit.rows[2].items.map((r: any) => [r.letters, r.count, r.start, r.end, r.phraseBeats, r.scoreBars, r.draw])).toEqual([
-      [["A"], 7, 28, 56, 4, [1], [true]],
-      [[null], 1, 56, 60, 4, [null], [false]],
+  it("keeps each run whole, with its start, end, snippet length and the score bars to draw", () => {
+    expect(kit.rows[2].items.map((r: any) => [r.letter, r.count, r.start, r.end, r.phraseBeats, r.scoreBars, r.draw])).toEqual([
+      ["A", 7, 28, 56, 4, [1], true],
+      [null, 1, 56, 60, 4, [null], false],
     ]);
   });
 });
@@ -397,5 +397,56 @@ describe("resolveChannels", () => {
 
   it("lists a channel once, and leaves out names the song doesn't have", () => {
     expect(resolveChannels(doc, ["lead-guitar", "guitar", "keys"])).toEqual(["lead-guitar", "rhythm-guitar"]);
+  });
+});
+
+describe("buildRows: the card", () => {
+  // Verse rests, then the Break and Chorus play: score bars 1 (rest), 2, 3…
+  const sections = songSections(SONG.sections, SONG.timeSignature);
+  const bars: MappedBar[] = [];
+  let beat = 0;
+  SONG.sections.forEach((sec, section) => {
+    for (let i = 0; i < sec.bars; i++) {
+      const beats = sec.timeSignature?.[0] ?? 4;
+      bars.push({ songBar: bars.length + 1, section, startBeat: beat, beats, scoreBar: section === 0 ? 1 : section === 1 ? 2 + i : 4 + i });
+      beat += beats;
+    }
+  });
+  const sigs = ["4r[]", ...Array.from({ length: 12 }, (_, i) => `4[${i}]`)];
+  const figures = figureChart(bars, sigs, sections);
+  const notes = [{ for: "all", text: "everyone" }];
+  const doc = buildRows(
+    base({
+      startBeat: -8,
+      notes,
+      charts: [
+        { id: "lead", kind: "tab", instrument: "guitar", source: "s", track: 1, style: "chart", bars, figures, restBars: [1] },
+        { id: "vocals", kind: "staff", instrument: "vocals", source: "s", track: 0, style: "score", bars, restBars: [1] },
+      ],
+    }),
+  );
+
+  it("carries where the song's timeline starts and the song's notes", () => {
+    expect([doc.card?.startBeat, doc.card?.notes]).toEqual([-8, notes]);
+  });
+
+  it("lists a chart-style part's snippets, each letter with its score bars, leaving out rests", () => {
+    // The lead rests through the Verse (A), then plays B… in the Break and Chorus.
+    expect(doc.card?.figures.lead?.slice(0, 3)).toEqual([
+      { letter: "B", scoreBars: [2] },
+      { letter: "C", scoreBars: [3] },
+      { letter: "D", scoreBars: [4] },
+    ]);
+    expect(doc.card?.figures.lead?.some((f) => f.letter === "A")).toBe(false);
+  });
+
+  it("marks a score-style part's opening instead: its first row with a bar that plays", () => {
+    // The Verse rests (rows 0 and 1, 4 + 2 bars); the Break is row 2.
+    expect(doc.card?.opening.vocals).toEqual({ row: 2, item: 0 });
+    expect(doc.card?.figures.vocals).toBeUndefined();
+  });
+
+  it("has no card without notes or a start to place it", () => {
+    expect(buildRows(base()).card).toBeUndefined();
   });
 });

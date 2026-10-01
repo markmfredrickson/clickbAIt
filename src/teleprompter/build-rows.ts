@@ -12,6 +12,7 @@ import type { MappedBar } from "../charts/bar-map.js";
 import type { DisplayLine, LyricWord } from "./lyrics-display.js";
 import { sectionMeters } from "./position.js";
 import type { ChartKind, ChordRow, FigureRow, LyricRow, RowChannel, RowDocument, RowSection, ScoreRow, Span, Word } from "./rows.js";
+import type { Note } from "./card.js";
 
 export interface RowInput {
   slug: string;
@@ -36,7 +37,12 @@ export interface RowInput {
     figures?: FigureChart;
     /** Chart style: sections drawn bar by bar anyway, by index. */
     sectionsAsScore?: number[];
+    /** Score bars with nothing but rests, so a part's opening figure skips them. */
+    restBars?: number[];
   }[];
+  /** For the card before the song: where its timeline starts, and its notes. */
+  startBeat?: number;
+  notes?: readonly Note[];
 }
 
 export const BARS_PER_ROW = 4;
@@ -80,7 +86,26 @@ export function buildRows(input: RowInput): RowDocument {
     }
   }
 
-  return { schema: "clickbait/rows@1", slug: input.slug, title: input.title, sections, channels };
+  const doc: RowDocument = { schema: "clickbait/rows@1", slug: input.slug, title: input.title, sections, channels };
+  if (input.notes?.length || input.startBeat !== undefined) {
+    const figures: Record<string, { letter: string; scoreBars: number[] }[]> = {};
+    const opening: Record<string, { row: number; item: number }> = {};
+    for (const chart of input.charts ?? []) {
+      const channel = channels.find((c) => c.id === chart.id);
+      if (!channel) continue;
+      const rests = new Set(chart.restBars ?? []);
+      if (channel.kind === "figures" && chart.figures) {
+        // Its snippets that play something (a rest is nothing to remember).
+        const list = chart.figures.snippets.filter((s) => !s.rest).map((s) => ({ letter: s.letter, scoreBars: s.scoreBars }));
+        if (list.length) figures[chart.id] = list;
+      } else {
+        const at = openingFigure(channel, rests);
+        if (at) opening[chart.id] = at;
+      }
+    }
+    doc.card = { startBeat: input.startBeat ?? 0, notes: [...(input.notes ?? [])], figures, opening };
+  }
+  return doc;
 }
 
 function lyricRows(lyrics: NonNullable<RowInput["lyrics"]>): LyricRow[] {
@@ -153,7 +178,7 @@ function figureRows(sections: RowSection[], chart: FigureChart): FigureRow[] {
     items: runs.map((run) => {
       const phraseBeats = run.barBeats.reduce((sum, b) => sum + b, 0);
       return {
-        letters: run.letters,
+        letter: run.letter,
         scoreBars: run.scoreBars,
         barBeats: run.barBeats,
         draw: run.draw,
@@ -213,4 +238,23 @@ export function rowsFromDisplay(
     ...(charts?.chords ? { chords: charts.chords } : {}),
     ...(charts?.charts ? { charts: charts.charts } : {}),
   });
+}
+
+/**
+ * A chart channel's opening figure, for the card: its first figure run, or
+ * score bar, with a bar that plays something (not only rests).
+ */
+function openingFigure(channel: RowChannel, rests: ReadonlySet<number>): { row: number; item: number } | null {
+  if (channel.kind !== "figures" && channel.kind !== "score") return null;
+  const plays = (bar: number | null) => bar !== null && !rests.has(bar);
+  const rows: (FigureRow | ScoreRow)[] = channel.rows;
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    const item =
+      row.type === "figures"
+        ? row.items.findIndex((run) => run.scoreBars.some(plays))
+        : row.items.findIndex((bar) => plays(bar.scoreBar));
+    if (item >= 0) return { row: r, item };
+  }
+  return null;
 }

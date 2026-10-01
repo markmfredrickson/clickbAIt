@@ -20,6 +20,7 @@ import { clientDir } from "../build-client.js";
 import { ALPHATAB_DIR, ALPHATAB_FILES, FONT } from "../alphatab-files.js";
 import { notationCss } from "../../charts/notation-svg.js";
 import type { EinkPane, Mark } from "./layout.js";
+import type { CardSong } from "../client/card-view.js";
 
 export interface RenderSize {
   /** CSS px. */
@@ -34,6 +35,15 @@ export interface RenderSize {
 export interface RenderOptions {
   /** Rows per pane, by channel id; a pane not listed takes its kind's default. */
   rows?: Record<string, number>;
+  /** The card before the song: the song's facts, and the screen's role for its notes. */
+  card?: { song: CardSong; role?: string };
+}
+
+/** A rendered deck, before the relay gives its images their URLs. */
+export interface Rendered {
+  panes: RenderedPane[];
+  /** The card's image, when the rows have a card. */
+  card: string | null;
 }
 
 /** A rendered pane, before the relay gives its pages their URLs. */
@@ -99,6 +109,13 @@ function pageHtml(size: Required<RenderSize>): string {
     .score-bar.blank { position: static; display: inline-block; min-width: 3em; text-align: center; font-size: 1.5em; color: #666; }
     .notation { min-width: 4rem; zoom: calc(${((f * 0.75 * 1.1) / 19.2).toFixed(3)} * var(--fit, 1)); }
     .notation:empty { display: none; }
+    .card-page { box-sizing: border-box; padding: ${pad * 2}px; }
+    .card-title { font-size: 1.5em; font-weight: 700; }
+    .card-facts { color: #444; margin-bottom: ${pad * 2}px; }
+    .card-note { margin: ${pad}px 0; white-space: pre-wrap; }
+    .card-note.banter .card-note-text { font-style: italic; }
+    .card-note-for, .card-figure-for { font-size: 0.55em; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .card-figure { margin-top: ${pad * 2}px; font-size: 0.75em; }
   </style></head><body><div id="work"></div><div id="stage"></div><script src="/eink-page.js"></script></body></html>`;
 }
 
@@ -106,7 +123,7 @@ function pageHtml(size: Required<RenderSize>): string {
  * Render `doc`'s channels (in order, one pane each) into
  * `outDir/<pane>-<page>.png` and return where the panes and their marks are.
  */
-export async function renderPanes(doc: RowDocument, size: RenderSize, outDir: string, opts: RenderOptions = {}): Promise<RenderedPane[]> {
+export async function renderPanes(doc: RowDocument, size: RenderSize, outDir: string, opts: RenderOptions = {}): Promise<Rendered> {
   const full: Required<RenderSize> = { ...size, fontPx: size.fontPx ?? Math.round(size.height / 22) };
   const browser = await (await chromium()).launch({ channel: "chrome" });
   try {
@@ -169,7 +186,17 @@ export async function renderPanes(doc: RowDocument, size: RenderSize, outDir: st
       panes.push({ id: channel.id, kind: channel.kind, title: channelTitle(channel), top: full.height - left, height, pages: out });
       left -= height;
     }
-    return panes;
+    // The card before the song, a page of its own.
+    let card: string | null = null;
+    if (doc.card && opts.card) {
+      await page.evaluate(
+        ([d, song, shown, role, h]: [RowDocument, CardSong, string[], string | undefined, number]) => (window as any).einkPage.card(d, song, shown, role, h),
+        [doc, opts.card.song, doc.channels.map((c) => c.id), opts.card.role, full.height] as [RowDocument, CardSong, string[], string | undefined, number],
+      );
+      card = "card.png";
+      await page.locator("#stage").screenshot({ path: join(outDir, card) });
+    }
+    return { panes, card };
   } finally {
     await browser.close();
   }

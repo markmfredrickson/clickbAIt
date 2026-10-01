@@ -504,3 +504,17 @@ describe("sectionStarts — meters", () => {
     expect(starts).toEqual([0, 30, 46]);
   });
 });
+
+describe("SongManifestSchema — notes", () => {
+  it("names the song's notes file", () => {
+    const m = validManifest() as any;
+    m.notes = { file: "song.notes.txt" };
+    expect(SongManifestSchema.parse(m).notes).toEqual({ file: "song.notes.txt" });
+  });
+
+  it("rejects anything else", () => {
+    const m = validManifest() as any;
+    m.notes = { file: "" };
+    expect(() => SongManifestSchema.parse(m)).toThrow();
+  });
+});

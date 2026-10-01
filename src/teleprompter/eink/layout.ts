@@ -52,6 +52,8 @@ export interface EinkDeck {
   width: number;
   height: number;
   panes: EinkPane[];
+  /** The card before the song: its image, shown while the song is at its start. */
+  card?: { src: string; startBeat: number };
 }
 
 /** The mark playing at `beat`, or -1. A mark that has started wins over one ending. */

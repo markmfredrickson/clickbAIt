@@ -40,7 +40,7 @@ Served at `/song.json`. Contains everything the browser needs:
 | Address | Type | Purpose |
 |---------|------|---------|
 | `/time` | float | Transport position in seconds (from REAPER) |
-| `/beat` | float | Direct beat position (from demo/custom) |
+| `/beat` | float | Direct beat position (from a custom sender) |
 | `/play` | float | 1.0=playing, 0.0=stopped |
 | `/lastregion/name` | string | Region name — triggers song switch via slug match |
 
@@ -75,9 +75,10 @@ The config sends: TIME, BEAT, TEMPO, PLAY, STOP, PAUSE, REPEAT, LAST_MARKER, LAS
 Features:
 - Header shows only what matters during playback: song, section, and `(bar : beat) of <bars in the section>`. The footer shows the song bar (`m45:2`), as REAPER counts measures.
 - Each channel (lyrics, chords, and each part charted from a score file) is a pane, stacked in the order of `channels=`. The ⚙ drawer turns channels on and off, moves them up and down, and sets each one's size and rows. Panes don't line up with each other; each follows the beat on its own.
-- A pane shows its set number of rows and turns them all at once as its bottom row starts, so that row moves to the top, still lit. Lyric rows are sung lines, chord rows are `barsPerRow` bars (manifest; 4 by default), a chart-style part's rows are a section's runs of figures (`(A B) ×4`), and a score-style part's rows are `barsPerRow` drawn bars. Section names appear only in the header.
+- A pane shows its set number of rows and turns them all at once as its bottom row starts, so that row moves to the top, still lit. Lyric rows are sung lines, chord rows are `barsPerRow` bars (manifest; 4 by default), a chart-style part's rows are a section written as snippets (`A×8 B`), and a score-style part's rows are `barsPerRow` drawn bars. Section names appear only in the header.
 - What the panes show comes from the build's `<slug>.rows.json` (served at `/rows.json`); a song built before rows files gets its rows laid out from its lyrics display.
 - Manual scroll lets the reader scroll each pane freely
+- Before a song, a card covers the panes while it's at its start (it goes once playback moves into the count-in): the song, key and tempo, its notes for this screen (manifest `notes`; `?role=guitar` asks for a part's notes), and a reminder of what each shown part plays (a chart's figures by letter, a score's opening row)
 - Beat offset slider (0–16 beats) for scroll lookahead
 - Red/green transport indicator (play/stop), in the drawer
 - Dark/light mode
@@ -95,9 +96,6 @@ npx tsx scripts/teleprompter.ts --songs-dir songs/<artist-slug>/<song-slug>
 
 # Several folders (searched in order; first slug match wins)
 npx tsx scripts/teleprompter.ts --songs-dir songs/<artist-a>/<song-a> --songs-dir songs/<artist-b>/<song-b>
-
-# Demo mode (simulated REAPER with loops)
-npx tsx scripts/teleprompter-demo.ts
 ```
 
 ## Security

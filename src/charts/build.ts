@@ -33,6 +33,8 @@ export interface BuiltChart extends ChartSpec {
   /** Chart style: the sections drawn bar by bar anyway, by index (the manifest's
    *  scoreSections, and those no bar repeats in). */
   sectionsAsScore?: number[];
+  /** Score bars where this track plays nothing but rests (1-based). */
+  restBars: number[];
 }
 
 export interface ChartsFile {
@@ -101,17 +103,23 @@ export function buildChartsFile(
       continue;
     }
     const style = chartStyle(chart);
-    const figures = style === "chart" ? figureChart(score.bars, score.info.signatures[chart.track] ?? [], sections) : undefined;
-    // Sections the manifest names (every occurrence), and those no bar repeats in.
-    const sectionsAsScore = figures
-      ? [...new Set([...sections.flatMap((s, i) => (chart.scoreSections?.includes(s.name) ? [i] : [])), ...unrepeatedSections(figures)])].sort((a, b) => a - b)
-      : undefined;
+    const signatures = score.info.signatures[chart.track] ?? [];
+    // A bar's signature lists each beat's notes in brackets; a rest bar has none.
+    const restBars = signatures.flatMap((sig, i) => (/\[[^\]]/.test(sig) ? [] : [i + 1]));
+    // A chart's sections drawn as scores: those the manifest names (every
+    // occurrence), and those no bar repeats in. Its snippets come from the rest.
+    const sectionsAsScore =
+      style === "chart"
+        ? [...new Set([...sections.flatMap((s, i) => (chart.scoreSections?.includes(s.name) ? [i] : [])), ...unrepeatedSections(score.bars, signatures, sections)])].sort((a, b) => a - b)
+        : undefined;
+    const figures = style === "chart" ? figureChart(score.bars, signatures, sections, { asScore: sectionsAsScore }) : undefined;
     charts.push({
       ...chart,
       style,
       source: spec.file,
       trackName: track.name,
       bars: score.bars,
+      restBars,
       ...(figures ? { figures, sectionsAsScore } : {}),
     });
   }

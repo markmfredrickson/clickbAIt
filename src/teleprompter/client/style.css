@@ -259,6 +259,57 @@ body {
 
 #speed-slider { width: 70px; }
 
+/* ── The card before a song, over the panes until the pre-roll ── */
+#card {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 1rem;
+}
+
+#card[hidden] {
+  display: none;
+}
+
+.card-title {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.card-facts {
+  color: var(--text-dim);
+  margin-bottom: 1rem;
+}
+
+.card-note {
+  font-size: 1.3rem;
+  margin: 0.6rem 0;
+  white-space: pre-wrap;
+}
+
+.card-note.banter .card-note-text {
+  font-style: italic;
+}
+
+.card-note-for,
+.card-figure-for {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.card-figure {
+  margin-top: 1rem;
+  font-size: 1.2rem;
+  --notation-zoom: 1.1;
+}
+
 /* ── Panes: one per channel, stacked in the viewer's order ── */
 /* A pane shows a set number of its rows and turns them all at once (the
    client sets its height and scroll). Manual scroll lets the reader scroll it. */
@@ -590,4 +641,9 @@ body.show-stopped::before  { content: "Track stopped";                 backgroun
 
 .channel-row .move button:disabled {
   opacity: 0.3;
+}
+
+/* The card's figures read at full strength, not dimmed like a row not playing. */
+.card .row {
+  color: var(--text);
 }

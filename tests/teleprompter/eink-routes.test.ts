@@ -37,15 +37,20 @@ let base: string;
 let current: EinkCurrent | null;
 let renders: number;
 let rendered: { channels: string[]; rows: unknown }[];
+let cards: unknown[];
 
 /** Stands in for headless Chrome: one page per pane, one mark, a placeholder PNG. */
 const fakeRender: EinkRenderer = async (doc, _size, outDir, opts) => {
   renders++;
   rendered.push({ channels: doc.channels.map((c) => c.id), rows: opts.rows });
-  return doc.channels.map((c, i) => {
+  const panes = doc.channels.map((c, i) => {
     writeFileSync(join(outDir, `${i}-0.png`), "png");
     return { id: c.id, kind: c.kind, title: c.id, top: i * 100, height: 100, pages: [{ start: 0, file: `${i}-0.png`, marks: [{ start: 1, end: 2, x: 0, y: 10, w: 50, h: 20 }] }] };
   });
+  cards.push(opts.card);
+  if (!doc.card) return { panes, card: null };
+  writeFileSync(join(outDir, "card.png"), "png");
+  return { panes, card: "card.png" };
 };
 
 beforeEach(async () => {
@@ -53,6 +58,7 @@ beforeEach(async () => {
   current = { slug: "test-song", song: SONG, version: "1", rows: ROWS };
   renders = 0;
   rendered = [];
+  cards = [];
   const handle = createEinkRoutes({ current: () => current, render: fakeRender, cacheDir });
   server = createServer(async (req, res) => {
     if (!(await handle(req, res))) {
@@ -134,6 +140,24 @@ describe("GET /eink/deck — panes", () => {
     await deck("&channels=chords,lyrics");
     await deck("&channels=lyrics,chords");
     expect(renders).toBe(3);
+  });
+});
+
+describe("GET /eink/deck — the card", () => {
+  it("carries the card's image and when it goes away, for rows that have a card", async () => {
+    current = { ...current!, rows: { ...ROWS, card: { startBeat: -8, notes: [], figures: {}, opening: {} } } };
+    const d = await (await deck()).json();
+    expect(d.card).toMatchObject({ startBeat: -8 });
+    expect((await fetch(base + d.card.src)).status).toBe(200);
+  });
+
+  it("tells the renderer the song's facts and the screen's role", async () => {
+    await deck("&role=Guitar");
+    expect(cards).toEqual([{ song: { title: "Test Song", bpm: 120 }, role: "guitar" }]);
+  });
+
+  it("has no card for rows without one", async () => {
+    expect((await (await deck()).json()).card).toBeUndefined();
   });
 });
 

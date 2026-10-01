@@ -17,7 +17,7 @@ import { join } from "node:path";
 import type { RowDocument } from "../rows.js";
 import { resolveChannels, selectChannels } from "../rows.js";
 import type { EinkDeck } from "./layout.js";
-import type { RenderOptions, RenderSize, RenderedPane } from "./render.js";
+import type { RenderOptions, RenderSize, Rendered } from "./render.js";
 
 /** The relay's current song. `version` changes whenever its files do. */
 export interface EinkCurrent {
@@ -32,10 +32,12 @@ export interface EinkCurrent {
 export interface EinkView {
   channels: string[];
   rows: Record<string, number>;
+  /** The player's part, for the card's notes (`?role=guitar`). */
+  role?: string;
 }
 
 /** Renders `doc`'s channels into `outDir` and returns the panes. */
-export type EinkRenderer = (doc: RowDocument, size: RenderSize, outDir: string, opts: RenderOptions) => Promise<RenderedPane[]>;
+export type EinkRenderer = (doc: RowDocument, size: RenderSize, outDir: string, opts: RenderOptions) => Promise<Rendered>;
 
 export interface EinkRoutesOptions {
   current: () => EinkCurrent | null;
@@ -45,7 +47,7 @@ export interface EinkRoutesOptions {
 }
 
 // Bump when the page design changes, so cached decks are re-rendered.
-const RENDER_VERSION = 13;
+const RENDER_VERSION = 17;
 
 const MAX_ROWS = 50;
 
@@ -89,7 +91,8 @@ export function parseView(q: URLSearchParams, doc: RowDocument): EinkView {
       if (Number.isInteger(n) && n >= 1 && n <= MAX_ROWS) rows[id] = n;
     }
   }
-  return { channels, rows };
+  const role = q.get("role")?.trim().toLowerCase();
+  return role ? { channels, rows, role } : { channels, rows };
 }
 
 /** Returns a handler that answers e-ink requests and returns false for anything else. */
@@ -111,7 +114,9 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         key,
         (async () => {
           mkdirSync(dir, { recursive: true });
-          const panes = await opts.render(shown, size, dir, { rows: view.rows });
+          const ld = cur.song as { title: string; artist?: string; key?: string; bpm?: number };
+          const song = { title: ld.title, artist: ld.artist, key: ld.key, bpm: ld.bpm };
+          const { panes, card } = await opts.render(shown, size, dir, { rows: view.rows, card: { song, ...(view.role ? { role: view.role } : {}) } });
           const deck: EinkDeck = {
             slug: cur.slug,
             key,
@@ -121,6 +126,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
               ...p,
               pages: p.pages.map(({ file, ...page }) => ({ ...page, src: `/eink/pages/${key}/${file}` })),
             })),
+            ...(card && doc.card ? { card: { src: `/eink/pages/${key}/${card}`, startBeat: doc.card.startBeat } } : {}),
           };
           writeFileSync(table, JSON.stringify(deck));
           return deck;
@@ -158,7 +164,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
     }
 
     // Key and file name are matched exactly, so no path can leave the cache.
-    const m = url.pathname.match(/^\/eink\/pages\/([0-9a-f]{16})\/(\d+-\d+)\.png$/);
+    const m = url.pathname.match(/^\/eink\/pages\/([0-9a-f]{16})\/(\d+-\d+|card)\.png$/);
     if (m) {
       const file = join(opts.cacheDir, m[1], `${m[2]}.png`);
       if (!existsSync(file)) {

@@ -8,11 +8,10 @@
 import { spawn } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { basename, dirname, join, normalize } from "node:path";
-import { createRequire } from "node:module";
-import * as esbuild from "esbuild";
 import { Curve } from "../core/curve.js";
 import type { SceneFeatures, SceneSection, SceneTiming } from "./scene-state.js";
 import type { HostSetup } from "./host.js";
+import { P5_MIN, bundlePage } from "./page-assets.js";
 
 export interface RenderOptions {
   /** The scene module (`<slug>.scene.js`). Files beside it are served too. */
@@ -29,22 +28,6 @@ export interface RenderOptions {
 }
 
 const ORIGIN = "http://visuals.local";
-// p5 2.x exports no lib/ path, so find the UMD build from the package entry.
-const P5_MIN = join(dirname(createRequire(import.meta.url).resolve("p5")), "..", "lib", "p5.min.js");
-
-async function hostScript(): Promise<string> {
-  const r = await esbuild.build({
-    entryPoints: [join(import.meta.dirname, "host.ts")],
-    bundle: true,
-    write: false,
-    platform: "browser",
-    format: "iife",
-    target: "es2020",
-    logLevel: "warning",
-  });
-  return r.outputFiles[0].text;
-}
-
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;background:#000;overflow:hidden}</style>
 <script src="/p5.min.js"></script><script src="/host.js"></script></head><body></body></html>`;
@@ -89,7 +72,7 @@ export async function renderScene(o: RenderOptions): Promise<void> {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
 
-    const host = await hostScript();
+    const host = await bundlePage("render-page.ts");
     const sceneDir = dirname(o.scene);
     await page.route(`${ORIGIN}/**`, async (route) => {
       const path = decodeURIComponent(new URL(route.request().url()).pathname);

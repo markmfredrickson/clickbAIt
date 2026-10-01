@@ -12,8 +12,8 @@
  */
 
 import * as alphaTab from "@coderline/alphatab";
-import type { ChartKind } from "../teleprompter/rows.js";
-import { drawingKey, type Drawing } from "../teleprompter/drawings.js";
+import type { ChartKind, RowDocument } from "../teleprompter/rows.js";
+import { drawingKey, notationRanges, type Drawing } from "../teleprompter/drawings.js";
 import { chartSettings, detachRange, showStaves } from "./notation-settings.js";
 
 /** Drawn in this, then swapped for currentColor; nothing in a score uses it. */
@@ -76,9 +76,40 @@ function renderRange(score: alphaTab.model.Score, track: number, chart: ChartKin
   });
 }
 
-/** CSS for drawn notation: the music font, embedded, and the size alphaTab draws its symbols at. */
-export function notationCss(woff2: Uint8Array): string {
+/** The music font as a data URI, for a bundle that opens from disk. */
+export function fontDataUri(woff2: Uint8Array): string {
+  return `data:font/woff2;base64,${Buffer.from(woff2).toString("base64")}`;
+}
+
+/**
+ * CSS for drawn notation: the music font (from `fontUrl`: the relay's copy,
+ * or a bundle's data URI) and the size alphaTab draws its symbols at.
+ */
+export function notationCss(fontUrl: string): string {
   const size = new alphaTab.Settings().display.resources.engravingSettings.musicFontSize;
-  return `@font-face { font-family: "clickbait-notation"; font-display: block; src: url(data:font/woff2;base64,${Buffer.from(woff2).toString("base64")}) format("woff2"); }
+  return `@font-face { font-family: "clickbait-notation"; font-display: block; src: url(${fontUrl}) format("woff2"); }
 .notation .at { font-family: "clickbait-notation"; font-style: normal; font-weight: normal; line-height: 1; font-size: ${size}px; overflow: visible; }`;
+}
+
+/**
+ * Every drawing a row document's chart channels need, by channel id and
+ * drawingKey: what `generate` stores in the rows file, so every display shows
+ * the same notation without running alphaTab itself. `read` gives a score
+ * file's bytes by its path in the document, or null; a chart whose file is
+ * missing is left out, with a warning, and shows its letters only.
+ */
+export async function drawNotation(
+  doc: RowDocument,
+  read: (path: string) => Uint8Array | null,
+): Promise<Record<string, Record<string, Drawing>>> {
+  const out: Record<string, Record<string, Drawing>> = {};
+  for (const chart of notationRanges(doc)) {
+    const bytes = read(chart.source);
+    if (!bytes) {
+      console.warn(`warning: no score file ${chart.source} for chart "${chart.id}"`);
+      continue;
+    }
+    out[chart.id] = await renderRanges(bytes, chart.track, chart.chart, chart.ranges);
+  }
+  return out;
 }

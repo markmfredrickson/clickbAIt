@@ -11,7 +11,7 @@
 
 import { readFileSync, writeFileSync } from "fs";
 import { resolve, dirname, join } from "path";
-import { SongManifestSchema } from "../manifest.js";
+import { SongManifestSchema, resolveBeatMap } from "../manifest.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
 import type { AlignInput } from "./lyrics-timing.js";
 
@@ -23,6 +23,7 @@ if (!manifestPath) {
 
 const dir = dirname(resolve(manifestPath));
 const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
+manifest.sources.recording.beatMap = resolveBeatMap(manifest.sources.recording.beatMap, dir);
 
 const alignRef = manifest.lyrics.alignment;
 if (!alignRef) {

@@ -12,7 +12,7 @@
  * the CLI that calls it.
  */
 
-import { barBeats, sectionStarts, type SongManifest, type Clip } from "../manifest.js";
+import { barBeats, inlineBeatMap, sectionStarts, type SongManifest, type Clip } from "../manifest.js";
 import { Curve } from "../core/curve.js";
 import { beatMapCurve, beatMapToBeats } from "../core/beat-map.js";
 import { downbeatFrame } from "../core/timing-frame.js";
@@ -120,7 +120,7 @@ export function buildLyricsDisplay(
   // BEFORE the downbeat — so anchor t0 there and the bundle emits the same beats
   // as live. Without a render offset (e.g. the standalone lyrics CLI), fall back
   // to preRollBars. See docs/timing-frames.md.
-  const recordingCurve = beatMapCurve(manifest.sources.recording.beatMap, manifest.bpm);
+  const recordingCurve = beatMapCurve(inlineBeatMap(manifest), manifest.bpm);
   const offsetBeats = opts.renderOffsetBeats ?? manifest.preRollBars * manifest.timeSignature[0];
   // Same downbeat-origin conversion the RPP uses for PROJOFFS, so the bundle
   // curve and the live bar grid can't disagree on where beat 0 is.
@@ -136,7 +136,7 @@ export function buildLyricsDisplay(
   let words: LyricWord[];
   let segments: ClipSegment[] | undefined;
   if (clips && clips.length > 0) {
-    const { offset } = beatMapToBeats(manifest.sources.recording.beatMap, manifest.bpm);
+    const { offset } = beatMapToBeats(inlineBeatMap(manifest), manifest.bpm);
     ({ words, segments } = clipAwareWords(align, recordingCurve, clips, offset, manifest.bpm));
   } else {
     words = bridgeTokens(align, recordingCurve, songCurve).map((t) => ({

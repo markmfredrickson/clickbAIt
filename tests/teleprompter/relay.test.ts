@@ -67,7 +67,7 @@ describe("parseOscFloat", () => {
 function buildOscBundle(...messages: { address: string; value: number }[]): Buffer {
   const header = Buffer.from("#bundle\0"); // 8 bytes
   const timetag = Buffer.alloc(8); // 8 bytes of zeros (immediate)
-  const parts = [header, timetag];
+  const parts: Buffer[] = [header, timetag];
 
   for (const msg of messages) {
     const msgBuf = buildOscMessage(msg.address, msg.value);

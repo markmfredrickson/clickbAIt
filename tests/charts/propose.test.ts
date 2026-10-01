@@ -20,6 +20,7 @@ const SECTIONS = [
 // under different names, and no bar for our closing Hit.
 const SCORE: ScoreInfo = {
   bars: 116,
+  signatures: [],
   tracks: [{ name: "Rhythm Guitar", kind: "tab" }],
   markers: [
     { bar: 1, text: "Intro" },

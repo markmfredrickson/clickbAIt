@@ -14,10 +14,10 @@ import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
 import QRCode from "qrcode";
 import { networkInterfaces, tmpdir } from "node:os";
-import { ALPHATAB_DIR, ALPHATAB_FILES } from "./alphatab-files.js";
+import { ALPHATAB_DIR, ALPHATAB_FILES, FONT } from "./alphatab-files.js";
+import { notationCss } from "../charts/notation-svg.js";
 import { createEinkRoutes } from "./eink/routes.js";
 import { renderPanes } from "./eink/render.js";
-import { createChartRoutes } from "../charts/routes.js";
 import { PRESETS, presetHref } from "./display-options.js";
 import type { ChartsFile } from "../charts/build.js";
 import type { RowDocument } from "./rows.js";
@@ -449,31 +449,10 @@ export function startRelay(opts: RelayOptions) {
             song: currentSong,
             version: String(currentCacheEntry?.mtimeMs ?? 0),
             rows: currentRows(),
-            readSource: (path: string) => {
-              try {
-                return new Uint8Array(readFileSync(join(currentSongDir(), path)));
-              } catch {
-                return null;
-              }
-            },
           }
         : null,
     render: renderPanes,
     cacheDir: opts.einkCacheDir ?? join(tmpdir(), "clickbait-eink"),
-  });
-
-  // Chart channels for the current song. The charts file sits beside the
-  // lyrics display and is read per request, so a rebuild shows up at once.
-  const charts = createChartRoutes({
-    current: async () => {
-      if (!currentSong || !isLyricsDisplay(currentSong)) return null;
-      const songDir = currentCacheEntry?.filePath ? dirname(currentCacheEntry.filePath) : songsDirs[0];
-      let file: ChartsFile | null = null;
-      try {
-        file = JSON.parse(await readFile(join(songDir, `${currentSlug}.charts.json`), "utf8")) as ChartsFile;
-      } catch { /* no charts for this song */ }
-      return { slug: currentSlug, display: currentSong, charts: file, songDir };
-    },
   });
 
   // Pre-generate QR codes as SVG — one to follow along, one to take control.
@@ -499,7 +478,6 @@ export function startRelay(opts: RelayOptions) {
     const url = req.url ?? "/";
 
     if (url.startsWith("/eink/") && (await eink(req, res))) return;
-    if (url.startsWith("/charts/") && (await charts(req, res))) return;
 
     if (url.split("?")[0] === "/rows.json") {
       const rows = currentRows();
@@ -524,6 +502,13 @@ export function startRelay(opts: RelayOptions) {
       return;
     }
 
+    // The stylesheet for drawn notation: the music font, served below.
+    if (url.split("?")[0] === "/notation.css") {
+      res.writeHead(200, { "Content-Type": "text/css", "Cache-Control": "max-age=86400" });
+      res.end(notationCss(FONT));
+      return;
+    }
+
     if (url.startsWith("/vendor/alphatab/")) {
       const name = url.slice("/vendor/alphatab/".length).split("?")[0];
       const type = ALPHATAB_FILES[name];
@@ -543,6 +528,7 @@ export function startRelay(opts: RelayOptions) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" href="data:,">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pick a display — clickbAIt: One Simple Track</title>
   <style>
@@ -574,6 +560,7 @@ export function startRelay(opts: RelayOptions) {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" href="data:,">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Join — clickbAIt: One Simple Track</title>
   <style>

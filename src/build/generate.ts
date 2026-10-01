@@ -23,6 +23,7 @@ import { stemTrackName } from "./bundle-variants.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
 import { buildChartsFile } from "../charts/build.js";
 import { buildRows } from "../teleprompter/build-rows.js";
+import { drawNotation } from "../charts/notation-svg.js";
 import { songRecipe } from "./song-recipe.js";
 import { extractSections } from "./sections.js";
 import { cueOnset } from "./cue-onset.js";
@@ -275,6 +276,10 @@ const rows = buildRows({
   ...(chartsFile?.chords ? { chords: chartsFile.chords } : {}),
   ...(chartsFile ? { charts: chartsFile.charts } : {}),
 });
+// Charts' notation, drawn now, so every display shows the same drawings.
+if (chartsFile?.charts.length) {
+  rows.notation = await drawNotation(rows, (path) => (existsSync(join(dir, path)) ? new Uint8Array(readFileSync(join(dir, path))) : null));
+}
 writeFileSync(join(outDir, `${slug}.rows.json`), JSON.stringify(rows, null, 2));
 
 // Scaffold the per-song build unit — a package.json wireit recipe — but ONLY if

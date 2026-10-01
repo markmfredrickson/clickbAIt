@@ -24,6 +24,7 @@ const SECTIONS = songSections(
 
 const SCORE: ScoreInfo = {
   bars: 116,
+  signatures: [],
   tracks: [
     { name: "Vocals", kind: "tab" },
     { name: "Lead Guitar", kind: "tab" },

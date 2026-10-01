@@ -4,7 +4,10 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "paths": {
+      "@clickbait/dsongl": ["./src/core/dsongl/index.ts"]
+    }
   },
-  "include": ["src/**/*", "tests/**/*", "songs/**/*.ts", "scripts/**/*.ts"]
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*.ts"]
 }

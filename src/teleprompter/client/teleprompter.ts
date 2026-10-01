@@ -14,27 +14,35 @@
 
 import { Curve } from "../../core/curve.js";
 import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
-import { songPosition, sectionMeters } from "../position.js";
+import { songPosition, sectionMeters, type MeteredSection } from "../position.js";
+import type { LyricsDisplay } from "../lyrics-display.js";
 import { parseDisplayOptions, displayQuery } from "../display-options.js";
 import { songMap, songProgress } from "../song-map.js";
-import { channelName, channelTitle, itemsAt, type RowChannel, type RowDocument } from "../rows.js";
+import { channelName, channelTitle, itemsAt, resolveChannels, type ChannelPosition, type RowChannel, type RowDocument } from "../rows.js";
 import { panePages, panePageAt, type PanePage } from "../panes.js";
 import { channelView, fitRows, placeDrawing, showPass, type ChannelView } from "./pane-view.js";
 import { drawingKey } from "../drawings.js";
-import { drawNotation } from "./notation.js";
+
+/** The song as the page gets it: the lyrics display, and in a bundle, its rows and mixes. */
+type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
 
 (function () {
   "use strict";
 
+  /** An element the page's markup always has. */
+  function byId<T extends HTMLElement = HTMLElement>(id: string): T {
+    return document.getElementById(id) as T;
+  }
+
   // ── State ──
-  let song = null;         // the lyrics display: header, sections, timing
+  let song: ClientSong | null = null; // the lyrics display: header, sections, timing
   let doc: RowDocument | null = null; // the row document: what the panes show
-  let curve = null;        // Curve built from the display's curve (bundle mode)
-  let ws = null;
+  let curve: Curve | null = null;     // Curve built from the display's curve (bundle mode)
+  let ws: WebSocket | null = null;
   let autoScroll = true;
   let offsetBeats = 0;
   let rawBeat = -1;      // most recent beat from OSC (no offset applied)
-  let reconnectTimer = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   // The page's options come from its URL first (so a setup is a link), then
   // from what this screen remembers. Changing one writes it back to the URL.
@@ -54,50 +62,49 @@ import { drawNotation } from "./notation.js";
   }
   let panes: Pane[] = [];
   let order: string[] = [];  // channel ids shown, top to bottom
-  let generation = 0;        // bumped per render, so a late notation load is dropped
 
   // ── Clock (pub/sub) ──
   const clock = (function () {
-    const subs = new Set();
+    const subs = new Set<(beat: number) => void>();
     return {
-      subscribe: function (cb) { subs.add(cb); return function () { subs.delete(cb); }; },
-      emit: function (beat) { subs.forEach(function (cb: any) { cb(beat); }); },
+      subscribe: function (cb: (beat: number) => void) { subs.add(cb); return function () { subs.delete(cb); }; },
+      emit: function (beat: number) { subs.forEach(function (cb) { cb(beat); }); },
     };
   })();
 
   // ── DOM refs ──
-  const titleEl = document.getElementById("song-title");
-  const container = document.getElementById("panes");
-  const statusEl = document.getElementById("connection-status");
-  const beatDisplay = document.getElementById("beat-display");
-  const nowSectionEl = document.getElementById("now-section");
-  const barBeatEl = document.getElementById("bar-beat");
-  const songMapEl = document.getElementById("song-map");
-  let mapFills = [];  // section index -> its fill element in the song map
+  const titleEl = byId("song-title");
+  const container = byId("panes");
+  const statusEl = byId("connection-status");
+  const beatDisplay = byId("beat-display");
+  const nowSectionEl = byId("now-section");
+  const barBeatEl = byId("bar-beat");
+  const songMapEl = byId("song-map");
+  let mapFills: HTMLElement[] = [];  // section index -> its fill element in the song map
   let ringed = -1;    // bundle: the section the player was sent to, ringed until it plays
 
   // Sections with their meters and names, for the header's Section and Bar:Beat.
-  let metered = [];
-  let sectionNames = [];
+  let metered: MeteredSection[] = [];
+  let sectionNames: string[] = [];
   let countInBeatsPerBar = 4;
-  const offsetSlider = document.getElementById("offset-slider") as HTMLInputElement;
-  const offsetValue = document.getElementById("offset-value");
-  const scrollModeBtn = document.getElementById("scroll-mode-btn");
-  const darkModeBtn = document.getElementById("dark-mode-btn");
-  const bundleControls = document.getElementById("bundle-controls");
-  const loopFrom = document.getElementById("loop-from") as HTMLSelectElement;
-  const loopTo = document.getElementById("loop-to") as HTMLSelectElement;
-  const speedSlider = document.getElementById("speed-slider") as HTMLInputElement;
-  const speedValue = document.getElementById("speed-value");
-  const playBtn = document.getElementById("play-btn");
-  const playTime = document.getElementById("play-time");
-  const drawer = document.getElementById("drawer");
-  const drawerBtn = document.getElementById("drawer-btn");
-  const drawerScrim = document.getElementById("drawer-scrim");
-  const drawerChannels = document.getElementById("drawer-channels");
+  const offsetSlider = byId<HTMLInputElement>("offset-slider");
+  const offsetValue = byId("offset-value");
+  const scrollModeBtn = byId("scroll-mode-btn");
+  const darkModeBtn = byId("dark-mode-btn");
+  const bundleControls = byId("bundle-controls");
+  const loopFrom = byId<HTMLSelectElement>("loop-from");
+  const loopTo = byId<HTMLSelectElement>("loop-to");
+  const speedSlider = byId<HTMLInputElement>("speed-slider");
+  const speedValue = byId("speed-value");
+  const playBtn = byId("play-btn");
+  const playTime = byId("play-time");
+  const drawer = byId("drawer");
+  const drawerBtn = byId("drawer-btn");
+  const drawerScrim = byId("drawer-scrim");
+  const drawerChannels = byId("drawer-channels");
 
   // Bundle-mode section loop: audio-time window we keep playback inside, or null.
-  let loop = null;
+  let loop: { startTime: number; endTime: number } | null = null;
 
   // ── Channels ──
   // What each kind of channel starts with. A size is in rem; `rows` is how
@@ -122,14 +129,7 @@ import { drawNotation } from "./notation.js";
 
   /** The channels a list of names asks for: each name an id or an instrument. */
   function resolve(names: readonly string[]): string[] {
-    const ids: string[] = [];
-    names.forEach(function (name) {
-      doc!.channels.forEach(function (c) {
-        const match = c.id === name || (isChart(c) && c.instrument === name);
-        if (match && ids.indexOf(c.id) < 0) ids.push(c.id);
-      });
-    });
-    return ids;
+    return resolveChannels(doc!, names);
   }
 
   function remembered(key: string): string | null {
@@ -212,9 +212,10 @@ import { drawNotation } from "./notation.js";
 
   async function loadSong() {
     if (typeof (window as any).__SONG_DATA__ === "object" && (window as any).__SONG_DATA__) {
-      song = (window as any).__SONG_DATA__;
+      const inline: ClientSong = (window as any).__SONG_DATA__;
+      song = inline;
       // A practice bundle carries its rows inline; there's no relay to ask.
-      doc = song.rows || null;
+      doc = inline.rows || null;
       renderSong();
       return;
     }
@@ -259,23 +260,24 @@ import { drawNotation } from "./notation.js";
     });
   }
 
-  function updateSongMap(beat) {
+  function updateSongMap(beat: number) {
     const p = songProgress(metered, beat);
     mapFills.forEach(function (fill, i) {
       const done = i < p.section ? 1 : i === p.section ? p.inSection : 0;
       fill.style.width = (done * 100) + "%";
-      fill.parentNode.classList.toggle("past", i < p.section);
-      fill.parentNode.classList.toggle("now", i === p.section);
+      const seg = fill.parentElement!;
+      seg.classList.toggle("past", i < p.section);
+      seg.classList.toggle("now", i === p.section);
       // While a bundle's player is stopped, ring where it will play from:
       // the section it was sent to, else the one it's in.
       const paused = document.body.classList.contains("paused");
-      fill.parentNode.classList.toggle("ring", paused && i === (ringed >= 0 ? ringed : p.section));
+      seg.classList.toggle("ring", paused && i === (ringed >= 0 ? ringed : p.section));
     });
   }
 
   // ── Bundle-mode clock: drive from <audio id="mix-audio"> ──
   function startAudioClock() {
-    const audio = document.getElementById("mix-audio") as HTMLAudioElement;
+    const audio = byId<HTMLAudioElement>("mix-audio");
     if (!audio) {
       statusEl.textContent = "No <audio id=\"mix-audio\"> element found";
       statusEl.className = "disconnected";
@@ -351,7 +353,7 @@ import { drawNotation } from "./notation.js";
       const seg = (e.target as HTMLElement).closest(".map-seg");
       const i = seg ? Array.prototype.indexOf.call(songMapEl.children, seg) : -1;
       if (i < 0 || !curve || !metered[i]) return;
-      const s = song.display.sections[i];
+      const s = song!.display.sections[i];
       ringed = i;
       audio.currentTime = Math.max(0, curve.toTime(s.cueBeat !== undefined ? s.cueBeat : s.startBeat) + 0.03);
       if (audio.paused) clock.emit(curve.toBeat(audio.currentTime));
@@ -360,7 +362,7 @@ import { drawNotation } from "./notation.js";
     // Mix variant (full / minus-<part> / click only): the bundle inlines one
     // <option> per rendered file. Every variant is the same render length, so
     // section loops carry over; playback restarts from the top on a switch.
-    const variantSel = document.getElementById("mix-variant") as HTMLSelectElement;
+    const variantSel = byId<HTMLSelectElement>("mix-variant");
     if (variantSel) {
       variantSel.addEventListener("change", function () {
         const wasPlaying = !audio.paused;
@@ -370,7 +372,7 @@ import { drawNotation } from "./notation.js";
         if (wasPlaying) audio.play().catch(function () {});
       });
     }
-    const sections = (song.display && song.display.sections) || [];
+    const sections = song!.display.sections;
 
     // "from" gets Off + every section; "to" gets every section (instrumentals
     // included — loop a solo, or a contiguous run like Verse → Chorus).
@@ -389,7 +391,7 @@ import { drawNotation } from "./notation.js";
       let to = parseInt(loopTo.value, 10);
       if (isNaN(to) || to < from) { to = from; loopTo.value = String(to); }
       const dur = isFinite(audio.duration) ? audio.duration : Infinity;
-      const b = sectionLoopBounds(sections, from, to, function (beat) { return curve.toTime(beat); }, dur);
+      const b = sectionLoopBounds(sections, from, to, function (beat) { return curve!.toTime(beat); }, dur);
       loop = { startTime: b.startTime, endTime: b.endTime };
       audio.currentTime = b.startTime;
       if (audio.paused) audio.play().catch(function () {});
@@ -398,7 +400,7 @@ import { drawNotation } from "./notation.js";
     loopFrom.addEventListener("change", applyLoop);
     loopTo.addEventListener("change", applyLoop);
 
-    function applySpeed(v) {
+    function applySpeed(v: number) {
       audio.playbackRate = v;
       audio.preservesPitch = true;
       (audio as any).mozPreservesPitch = true;
@@ -411,22 +413,24 @@ import { drawNotation } from "./notation.js";
 
   // ── Render ──
   function renderSong() {
-    if (song.schema !== "clickbait/lyrics-display@1") {
+    if (!song) return;
+    const s = song;
+    if (s.schema !== "clickbait/lyrics-display@1") {
       renderWaiting();
-      titleEl.textContent = song.title || "Song";
+      titleEl.textContent = s.title || "Song";
       container.innerHTML = '<div class="waiting-message">This song was built by an older clickbait. Rebuild it to show it here.</div>';
       return;
     }
-    curve = song.curve ? new Curve(song.curve) : null;
+    curve = s.curve ? new Curve(s.curve) : null;
 
-    titleEl.textContent = song.title;
+    titleEl.textContent = s.title;
     nowSectionEl.textContent = "";
     barBeatEl.textContent = "–";
-    countInBeatsPerBar = (song.timeSignature && song.timeSignature[0]) || 4;
-    metered = sectionMeters(song);
-    sectionNames = song.display.sections.map(function (s) { return s.name; });
+    countInBeatsPerBar = (s.timeSignature && s.timeSignature[0]) || 4;
+    metered = sectionMeters(s);
+    sectionNames = s.display.sections.map(function (x) { return x.name; });
     renderSongMap();
-    document.title = song.title + " — clickbAIt: One Simple Track";
+    document.title = s.title + " — clickbAIt: One Simple Track";
 
     // Sizes and rows in the URL are by channel id, known only now.
     const names = ["header"].concat(doc ? doc.channels.map(function (c) { return c.id; }) : []);
@@ -444,7 +448,6 @@ import { drawNotation } from "./notation.js";
   function renderPanes() {
     container.innerHTML = "";
     panes = [];
-    const gen = ++generation;
     if (!doc) {
       container.innerHTML = '<div class="waiting-message">No rows for this song yet. Rebuild it to show it here.</div>';
       return;
@@ -476,19 +479,13 @@ import { drawNotation } from "./notation.js";
       const perPage = rowsOf(channel);
       const pane: Pane = { channel, view, el, rowsEl, perPage, pages: panePages(channel.rows, perPage), page: -1, litRow: -1, litItem: -1 };
       panes.push(pane);
-      // A bundle carries its notation drawn; live, it draws once alphaTab and
-      // the score load, and the pane is sized again when it does.
-      const drawn = song.notation && song.notation[channel.id];
+      // Notation comes drawn, in the rows (a song built before that shows its letters only).
+      const drawn = doc!.notation && doc!.notation[channel.id];
       if (drawn) {
         view.notation.forEach(function (t) {
           const d = drawn[drawingKey(t.start, t.count)];
           if (d) placeDrawing(t, d, d.svg);
         });
-      } else if (isChart(channel) && view.notation.length && !song.bundle) {
-        const ink = getComputedStyle(document.body).color;
-        drawNotation(view.notation, "/charts/source/" + encodeURIComponent(channel.id), channel.track, channel.chart, ink)
-          .then(function () { if (gen === generation) sizePane(pane); })
-          .catch(function (e) { statusEl.textContent = "Notation: " + e.message; });
       }
       if (typeof ResizeObserver !== "undefined") new ResizeObserver(function () { sizePane(pane); }).observe(rowsEl);
     });
@@ -529,7 +526,7 @@ import { drawNotation } from "./notation.js";
   // The display's precision should track the system's confidence. The moment
   // someone bails, the band is free-running, so the body gets a mode class
   // and the CSS stops pointing at a word that may be wrong.
-  function applyShowState(state) {
+  function applyShowState(state: { mode?: string } | undefined) {
     if (!state || !state.mode) return;
     document.body.classList.remove(
       "show-following", "show-out", "show-vamping", "show-leaving", "show-stopped",
@@ -558,11 +555,11 @@ import { drawNotation } from "./notation.js";
       statusEl.className = "disconnected";
       reconnectTimer = setTimeout(connectWebSocket, 2000);
     };
-    ws.onerror = function () { ws.close(); };
+    ws.onerror = function () { ws!.close(); };
   }
 
   // ── Beat update ──
-  function onBeatUpdate(beat) {
+  function onBeatUpdate(beat: number) {
     rawBeat = beat;
     if (!song || !metered.length) return;
     const readingBeat = beat + offsetBeats;
@@ -588,7 +585,7 @@ import { drawNotation } from "./notation.js";
     });
   }
 
-  function light(p: Pane, at, beat: number) {
+  function light(p: Pane, at: ChannelPosition, beat: number) {
     const rows = p.view.rows;
     if (p.litRow !== at.row) {
       if (p.litRow >= 0 && rows[p.litRow]) rows[p.litRow].el.classList.remove("current");
@@ -608,7 +605,7 @@ import { drawNotation } from "./notation.js";
       if (item) {
         item.classList.add("now");
         const row = p.channel.kind === "figures" ? p.channel.rows[at.row] : null;
-        if (row && row.type === "figures") showPass(item, row.items[at.item], at.pass);
+        if (row && row.type === "figures") showPass(item, row.items[at.item], at.pass ?? 0);
       }
     }
     // Words already sung in the current line stay marked.
@@ -714,7 +711,7 @@ import { drawNotation } from "./notation.js";
     return section;
   }
 
-  function slider(name: string, range, value: number, onInput: (v: number) => void): HTMLElement {
+  function slider(name: string, range: { min: number; max: number; step: number }, value: number, onInput: (v: number) => void): HTMLElement {
     const label = document.createElement("label");
     const input = document.createElement("input");
     input.type = "range";
@@ -793,17 +790,12 @@ import { drawNotation } from "./notation.js";
     }
     applyHeaderSize(headerSize());
     drawerBtn.addEventListener("click", function () { setDrawerOpen(!drawer.classList.contains("open")); });
-    document.getElementById("drawer-close").addEventListener("click", function () { setDrawerOpen(false); });
+    byId("drawer-close").addEventListener("click", function () { setDrawerOpen(false); });
     drawerScrim.addEventListener("click", function () { setDrawerOpen(false); });
     darkModeBtn.addEventListener("click", function () {
       document.body.classList.toggle("light");
       this.textContent = document.body.classList.contains("light") ? "☀️" : "🌙";
       writeUrl();
-      // Notation is drawn in the theme's ink, so redraw it in the new one.
-      if (panes.some(function (p) { return p.view.notation.length > 0; })) {
-        renderPanes();
-        if (rawBeat >= 0) onBeatUpdate(rawBeat);
-      }
     });
     // The picker's Custom choice opens the page with the settings out.
     if (new URLSearchParams(location.search).get("settings") === "open") setDrawerOpen(true);

@@ -625,6 +625,18 @@ export function resolveBeatMap(
   return BeatMapSchema.parse(raw);
 }
 
+/**
+ * The recording's beat map, which must already be inline: a manifest read
+ * from disk may name a beat-map file, which resolveBeatMap reads in first.
+ */
+export function inlineBeatMap(m: SongManifest): BeatMap {
+  const beatMap = m.sources.recording.beatMap;
+  if (!Array.isArray(beatMap)) {
+    throw new Error(`the beat map is still a file reference (${beatMap.file}); read it in with resolveBeatMap first`);
+  }
+  return beatMap;
+}
+
 /** A section as far as placement is concerned: length in bars, optional meters. */
 export type PlaceableSection = {
   bars: number;

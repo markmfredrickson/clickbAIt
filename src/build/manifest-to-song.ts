@@ -18,7 +18,7 @@ import { resolve } from "node:path";
 import { song, seq, span, audio, bars, beats, cue } from "../core/dsongl/index.js";
 import type { Song, Node } from "../core/dsongl/index.js";
 import type { SongManifest } from "../manifest.js";
-import { barBeats, sectionStarts } from "../manifest.js";
+import { barBeats, inlineBeatMap, sectionStarts } from "../manifest.js";
 import { beatMapToBeats, beatMapCurve } from "../core/beat-map.js";
 import { Curve } from "../core/curve.js";
 import { stemPlayback, transposeSteps, transposeNote } from "./transpose.js";
@@ -98,7 +98,7 @@ export function manifestToSong(
   // (passed there as a shared `recordingBeats`, not per node). Plus any
   // group-level source trim.
   const stems = manifest.sources.stems;
-  const beatMap = manifest.sources.recording.beatMap;
+  const beatMap = inlineBeatMap(manifest);
   const { offset } = beatMapToBeats(beatMap, manifest.bpm);
   const audios: Node[] = [];
   // Per-stem transpose (semitones + REAPER shifter mode). Zero-shift stems get

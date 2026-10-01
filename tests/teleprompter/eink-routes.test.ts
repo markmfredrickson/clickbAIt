@@ -27,7 +27,7 @@ const ROWS: RowDocument = {
   channels: [
     { id: "lyrics", kind: "lyrics", rows: [{ start: 1, end: 2.5, items: [{ text: "w", start: 1, end: 2.5 }] }] },
     { id: "chords", kind: "chords", rows: [{ section: 0, start: 0, end: 4, bars: [{ start: 0, end: 4 }], items: [{ chord: "A", start: 0, end: 4 }] }] },
-    { id: "kit", kind: "figures", chart: "drums", instrument: "drums", source: "song.gp5", track: 3, rows: [{ section: 0, start: 0, end: 4, items: [] }] },
+    { id: "kit", kind: "figures", chart: "drums", instrument: "drums", source: "song.gp5", track: 3, rows: [{ type: "figures", section: 0, start: 0, end: 4, items: [] }] },
   ],
 };
 

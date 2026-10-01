@@ -51,16 +51,17 @@ describe("join and picker pages", () => {
 });
 
 describe("notation files", () => {
-  it("serves alphaTab and its music font, for drawing notation", async () => {
-    const js = await fetch(base + "/vendor/alphatab/alphaTab.min.js");
-    expect(js.status).toBe(200);
-    expect(js.headers.get("content-type")).toMatch(/javascript/);
+  it("serves the music font drawn notation needs, and a stylesheet that loads it", async () => {
     const font = await fetch(base + "/vendor/alphatab/font/Bravura.woff2");
     expect(font.status).toBe(200);
     expect(font.headers.get("content-type")).toBe("font/woff2");
+    const css = await fetch(base + "/notation.css");
+    expect(css.headers.get("content-type")).toBe("text/css");
+    expect(await css.text()).toContain("url(/vendor/alphatab/font/Bravura.woff2)");
   });
 
-  it("serves nothing else from the package", async () => {
+  it("serves nothing else from the package: notation is drawn at build, not in the browser", async () => {
+    expect((await fetch(base + "/vendor/alphatab/alphaTab.min.js")).status).toBe(404);
     expect((await fetch(base + "/vendor/alphatab/alphaTab.d.ts")).status).toBe(404);
     expect((await fetch(base + "/vendor/alphatab/..%2Fpackage.json")).status).toBe(404);
   });

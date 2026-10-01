@@ -3,8 +3,8 @@
  * headless Chrome at the device's exact CSS size and pixel ratio.
  *
  * The page is the prompter's own pane-view (client/eink-page.ts) with e-ink
- * styles, served to Chrome from a private origin along with alphaTab and the
- * song's score files, so chart panes get their notation. Panes are fitted top to
+ * styles, served to Chrome from a private origin along with the music font,
+ * so chart panes show the notation the rows carry. Panes are fitted top to
  * bottom: each shows the rows asked for, or fewer if they don't fit, and the
  * last pane, unless told otherwise, as many as fit.
  *
@@ -17,7 +17,8 @@ import { join } from "node:path";
 import { channelTitle, type RowDocument } from "../rows.js";
 import { panePages } from "../panes.js";
 import { clientDir } from "../build-client.js";
-import { ALPHATAB_DIR, ALPHATAB_FILES } from "../alphatab-files.js";
+import { ALPHATAB_DIR, ALPHATAB_FILES, FONT } from "../alphatab-files.js";
+import { notationCss } from "../../charts/notation-svg.js";
 import type { EinkPane, Mark } from "./layout.js";
 
 export interface RenderSize {
@@ -33,8 +34,6 @@ export interface RenderSize {
 export interface RenderOptions {
   /** Rows per pane, by channel id; a pane not listed takes its kind's default. */
   rows?: Record<string, number>;
-  /** A score file's bytes, by its path in the rows document (for notation). */
-  readSource?: (path: string) => Uint8Array | null;
 }
 
 /** A rendered pane, before the relay gives its pages their URLs. */
@@ -72,7 +71,7 @@ function pageHtml(size: Required<RenderSize>): string {
   // Tight margins: e-ink pixels are scarce, and the playing line is marked by
   // inverting it, so no gutter is needed for a marker.
   const pad = Math.round(f * 0.3);
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${notationCss(FONT)}</style><style>
     html, body { margin: 0; background: #fff; color: #000; }
     body { font: ${f}px/1.25 "Helvetica Neue", Arial, sans-serif; }
     #work { position: absolute; left: 0; top: 0; width: ${size.width}px; visibility: hidden; }
@@ -123,27 +122,28 @@ export async function renderPanes(doc: RowDocument, size: RenderSize, outDir: st
       if (path === "/eink-page.js") return send(readFileSync(join(clientDir, "eink-page.js")), "application/javascript");
       const vendor = path.match(/^\/vendor\/alphatab\/(.+)$/);
       if (vendor && ALPHATAB_FILES[vendor[1]]) return send(readFileSync(join(ALPHATAB_DIR, vendor[1])), ALPHATAB_FILES[vendor[1]]);
-      const source = path.match(/^\/charts\/source\/(.+)$/);
-      if (source) {
-        const channel = doc.channels.find((c) => c.id === decodeURIComponent(source[1]));
-        const bytes = channel && (channel.kind === "figures" || channel.kind === "score") ? opts.readSource?.(channel.source) : null;
-        if (bytes) return send(bytes, "application/octet-stream");
-      }
       return route.fulfill({ status: 404, body: "" });
     });
     await page.goto(`${ORIGIN}/`);
     await page.evaluate((d: RowDocument) => (window as any).einkPage.setup(d), doc);
 
+    const measureRows = (i: number, k: number) => {
+      const pages = panePages(doc.channels[i].rows, k);
+      return page.evaluate(([n, p]: [number, typeof pages]) => (window as any).einkPage.measure(n, p), [i, pages] as [number, typeof pages]) as Promise<number>;
+    };
+    // Every pane gets at least one row: what each needs for that is held back
+    // from the panes above it.
+    const oneRow: number[] = [];
+    for (let i = 0; i < doc.channels.length; i++) oneRow.push(Math.ceil(await measureRows(i, 1)) + 3);
+
     const panes: RenderedPane[] = [];
-    let room = full.height;
+    let left = full.height;
     for (let i = 0; i < doc.channels.length; i++) {
       const channel = doc.channels[i];
       const last = i === doc.channels.length - 1;
       const asked = opts.rows?.[channel.id];
-      const measure = (k: number) => {
-        const pages = panePages(channel.rows, k);
-        return page.evaluate(([n, p]: [number, typeof pages]) => (window as any).einkPage.measure(n, p), [i, pages] as [number, typeof pages]) as Promise<number>;
-      };
+      const room = left - oneRow.slice(i + 1).reduce((sum, h) => sum + h, 0);
+      const measure = (k: number) => measureRows(i, k);
       // Rows for this pane: as asked (or its default), fewer if that doesn't
       // fit; the last pane, not told, as many as fit.
       let k = Math.max(1, Math.min(asked ?? DEFAULT_ROWS[channel.kind], channel.rows.length || 1));
@@ -166,8 +166,8 @@ export async function renderPanes(doc: RowDocument, size: RenderSize, outDir: st
         await page.locator("#stage").screenshot({ path: join(outDir, file) });
         out.push({ start: pages[j].start, file, marks });
       }
-      panes.push({ id: channel.id, kind: channel.kind, title: channelTitle(channel), top: full.height - room, height, pages: out });
-      room -= height;
+      panes.push({ id: channel.id, kind: channel.kind, title: channelTitle(channel), top: full.height - left, height, pages: out });
+      left -= height;
     }
     return panes;
   } finally {

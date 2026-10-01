@@ -24,6 +24,7 @@
  * side is build-rows.ts.
  */
 
+import type { Drawing } from "./drawings.js";
 
 export interface Span {
   start: number;
@@ -120,6 +121,24 @@ export interface RowDocument {
   title: string;
   sections: RowSection[];
   channels: RowChannel[];
+  /** Chart channels' notation, drawn at build: by channel id, then drawingKey. */
+  notation?: Record<string, Record<string, Drawing>>;
+}
+
+/**
+ * The channel ids a list of names asks for, in that order: each name is a
+ * channel's id or an instrument, which stands for every chart of it
+ * ("guitar"). Names the song doesn't have are left out.
+ */
+export function resolveChannels(doc: RowDocument, names: readonly string[]): string[] {
+  const ids: string[] = [];
+  for (const name of names) {
+    for (const c of doc.channels) {
+      const chart = c.kind === "figures" || c.kind === "score";
+      if ((c.id === name || (chart && c.instrument === name)) && !ids.includes(c.id)) ids.push(c.id);
+    }
+  }
+  return ids;
 }
 
 /** The document with only the channels `ids` names, in that order. */

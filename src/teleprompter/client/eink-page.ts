@@ -1,14 +1,14 @@
 /**
  * The e-ink renderer's page, run in headless Chrome by eink/render.ts: it
- * draws every pane's rows with the prompter's own pane-view (staffs
- * included), then shows one page of one pane at a time for a screenshot and
- * reports where its marks landed.
+ * draws every pane's rows with the prompter's own pane-view (and the
+ * notation the rows carry), then shows one page of one pane at a time for a
+ * screenshot and reports where its marks landed.
  */
 
 import type { FigureRow, RowChannel, RowDocument, ScoreRow } from "../rows.js";
 import type { Mark } from "../eink/layout.js";
-import { channelView, fitRows, type ChannelView } from "./pane-view.js";
-import { drawNotation } from "./notation.js";
+import { channelView, fitRows, placeDrawing, type ChannelView } from "./pane-view.js";
+import { drawingKey } from "../drawings.js";
 
 interface Drawn {
   channel: RowChannel;
@@ -20,7 +20,7 @@ let drawn: Drawn[] = [];
 const work = () => document.getElementById("work")!;
 const stage = () => document.getElementById("stage")!;
 
-/** Draw each channel's rows, and wait for any staffs. */
+/** Draw each channel's rows, with the notation the rows carry. */
 async function setup(doc: RowDocument): Promise<void> {
   work().innerHTML = "";
   drawn = doc.channels.map((channel) => {
@@ -31,14 +31,15 @@ async function setup(doc: RowDocument): Promise<void> {
     work().appendChild(pane);
     return { channel, view };
   });
-  await Promise.all(
-    drawn
-      .filter((d) => d.view.notation.length)
-      .map((d) => {
-        const c = d.channel as Extract<RowChannel, { kind: "figures" | "score" }>;
-        return drawNotation(d.view.notation, `/charts/source/${encodeURIComponent(c.id)}`, c.track, c.chart, "rgb(0, 0, 0)");
-      }),
-  );
+  for (const d of drawn) {
+    const drawings = doc.notation?.[d.channel.id] ?? {};
+    for (const t of d.view.notation) {
+      const drawing = drawings[drawingKey(t.start, t.count)];
+      if (drawing) placeDrawing(t, drawing, drawing.svg);
+    }
+  }
+  // The music font must be in before anything is measured.
+  await document.fonts.ready;
   // Notation wider than the screen is scaled down to fit.
   for (const d of drawn) fitRows(d.view);
 }

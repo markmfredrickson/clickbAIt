@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { notationCss, renderRanges } from "../../src/charts/notation-svg.js";
+import { drawNotation, fontDataUri, notationCss, renderRanges } from "../../src/charts/notation-svg.js";
+import type { RowDocument } from "../../src/teleprompter/rows.js";
 
 const SCORE = new Uint8Array(readFileSync(join(import.meta.dirname, "../fixtures/charts/three-tracks.atex")));
 const GUITAR = 0;
@@ -45,9 +46,35 @@ describe("renderRanges", () => {
 });
 
 describe("notationCss", () => {
-  it("embeds the music font, so a bundle opened from disk can show it", () => {
-    const css = notationCss(new Uint8Array([1, 2, 3]));
+  it("loads the music font from where it's given: the relay's copy, or a bundle's own", () => {
+    expect(notationCss("/vendor/alphatab/font/Bravura.woff2")).toContain("url(/vendor/alphatab/font/Bravura.woff2)");
+    const css = notationCss(fontDataUri(new Uint8Array([1, 2, 3])));
     expect(css).toContain("url(data:font/woff2;base64,AQID)");
     expect(css).toMatch(/\.notation \.at \{[^}]*font-family/);
+  });
+});
+
+describe("drawNotation", () => {
+  it("draws every range each chart channel needs, by channel and range", async () => {
+    const doc = {
+      channels: [
+        { id: "lyrics", kind: "lyrics", rows: [] },
+        { id: "kit", kind: "figures", chart: "drums", instrument: "drums", source: "song.atex", track: DRUMS, rows: [
+          { type: "figures", section: 0, start: 0, end: 4, items: [{ letters: ["A"], scoreBars: [1], barBeats: [4], draw: [true], count: 1, phraseBeats: 4, songBar: 1, start: 0, end: 4 }] },
+        ] },
+        { id: "guitar", kind: "score", chart: "tab", instrument: "guitar", source: "song.atex", track: GUITAR, rows: [
+          { type: "score", section: 0, start: 0, end: 8, items: [{ songBar: 1, scoreBar: 1, start: 0, end: 4 }, { songBar: 2, scoreBar: 2, start: 4, end: 8 }] },
+        ] },
+      ],
+    } as unknown as RowDocument;
+    const drawn = await drawNotation(doc, (path) => (path === "song.atex" ? SCORE : null));
+    expect(Object.keys(drawn)).toEqual(["kit", "guitar"]);
+    expect(Object.keys(drawn.kit)).toEqual(["1+1"]);
+    expect(drawn.guitar["1+2"].bars).toHaveLength(2);
+  });
+
+  it("leaves out a chart whose score file is missing", async () => {
+    const doc = { channels: [{ id: "kit", kind: "figures", chart: "drums", instrument: "drums", source: "gone.gp5", track: 0, rows: [] }] } as unknown as RowDocument;
+    expect(await drawNotation(doc, () => null)).toEqual({});
   });
 });

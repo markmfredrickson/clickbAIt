@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildRows, rowsFromDisplay, type RowInput } from "../../src/teleprompter/build-rows.js";
-import { channelName, channelTitle, itemsAt, selectChannels } from "../../src/teleprompter/rows.js";
+import { channelName, channelTitle, itemsAt, resolveChannels, selectChannels } from "../../src/teleprompter/rows.js";
 import { figureChart } from "../../src/charts/figures.js";
 import { songSections, type MappedBar } from "../../src/charts/bar-map.js";
 
@@ -377,5 +377,25 @@ describe("channelName and channelTitle", () => {
     expect(channelTitle(chart("lead-guitar", "staff-tab"))).toBe("Lead guitar · notation + tab");
     expect(channelTitle(chart("drums", "drums"))).toBe("Drums");
     expect(channelTitle({ id: "lyrics", kind: "lyrics", rows: [] })).toBe("Lyrics");
+  });
+});
+
+describe("resolveChannels", () => {
+  const doc = {
+    channels: [
+      { id: "lyrics", kind: "lyrics", rows: [] },
+      { id: "rhythm-guitar", kind: "figures", chart: "tab", instrument: "guitar", source: "s", track: 2, rows: [] },
+      { id: "lead-guitar", kind: "figures", chart: "tab", instrument: "guitar", source: "s", track: 1, rows: [] },
+      { id: "kit", kind: "figures", chart: "drums", instrument: "drums", source: "s", track: 4, rows: [] },
+    ],
+  } as any;
+
+  it("takes each name as a channel id or an instrument, in the order asked", () => {
+    expect(resolveChannels(doc, ["drums", "lyrics"])).toEqual(["kit", "lyrics"]);
+    expect(resolveChannels(doc, ["guitar"])).toEqual(["rhythm-guitar", "lead-guitar"]);
+  });
+
+  it("lists a channel once, and leaves out names the song doesn't have", () => {
+    expect(resolveChannels(doc, ["lead-guitar", "guitar", "keys"])).toEqual(["lead-guitar", "rhythm-guitar"]);
   });
 });

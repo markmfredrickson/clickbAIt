@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import type { RowDocument } from "../rows.js";
-import { selectChannels } from "../rows.js";
+import { resolveChannels, selectChannels } from "../rows.js";
 import type { EinkDeck } from "./layout.js";
 import type { RenderOptions, RenderSize, RenderedPane } from "./render.js";
 
@@ -26,8 +26,6 @@ export interface EinkCurrent {
   song: unknown;
   version: string;
   rows: RowDocument | null;
-  /** A score file's bytes, by its path in the rows document. */
-  readSource?: (path: string) => Uint8Array | null;
 }
 
 /** What a deck shows: channel ids in pane order, and rows asked for per pane. */
@@ -47,7 +45,7 @@ export interface EinkRoutesOptions {
 }
 
 // Bump when the page design changes, so cached decks are re-rendered.
-const RENDER_VERSION = 12;
+const RENDER_VERSION = 13;
 
 const MAX_ROWS = 50;
 
@@ -84,12 +82,11 @@ export function parseView(q: URLSearchParams, doc: RowDocument): EinkView {
   const channels: string[] = [];
   const rows: Record<string, number> = {};
   for (const name of names) {
-    for (const c of doc.channels) {
-      const match = c.id === name || ((c.kind === "figures" || c.kind === "score") && c.instrument === name);
-      if (!match || channels.includes(c.id)) continue;
-      channels.push(c.id);
-      const n = Number(q.get(`${name}.rows`) ?? q.get(`${c.id}.rows`) ?? NaN);
-      if (Number.isInteger(n) && n >= 1 && n <= MAX_ROWS) rows[c.id] = n;
+    for (const id of resolveChannels(doc, [name])) {
+      if (channels.includes(id)) continue;
+      channels.push(id);
+      const n = Number(q.get(`${name}.rows`) ?? q.get(`${id}.rows`) ?? NaN);
+      if (Number.isInteger(n) && n >= 1 && n <= MAX_ROWS) rows[id] = n;
     }
   }
   return { channels, rows };
@@ -114,7 +111,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         key,
         (async () => {
           mkdirSync(dir, { recursive: true });
-          const panes = await opts.render(shown, size, dir, { rows: view.rows, ...(cur.readSource ? { readSource: cur.readSource } : {}) });
+          const panes = await opts.render(shown, size, dir, { rows: view.rows });
           const deck: EinkDeck = {
             slug: cur.slug,
             key,

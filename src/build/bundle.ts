@@ -13,7 +13,8 @@
  *   - <slug>.lyrics-display.json  — from `npm run generate` (the built display)
  *   - <slug>.rows.json            — also from generate: what the prompter's panes show
  *   - <slug>.charts.json          — optional; used only for a song built before rows files
- *   - the score files drum charts come from, whose bars are drawn here as SVG
+ *   - the score files charts come from (only for a song built before rows files,
+ *     whose notation is drawn here; a rows file carries it drawn)
  *   - mix.opus | mix.ogg | mix.m4a | mix.wav — the rendered show mix
  *     (render the song's RPP in REAPER and save it into the song folder).
  *
@@ -29,8 +30,7 @@ import { buildClient } from "../teleprompter/build-client.js";
 import { SongManifestSchema } from "../manifest.js";
 import { bundleVariants, type BundleVariant } from "./bundle-variants.js";
 import { rowsFromDisplay } from "../teleprompter/build-rows.js";
-import { notationCss, renderRanges } from "../charts/notation-svg.js";
-import { notationRanges } from "../teleprompter/drawings.js";
+import { drawNotation, fontDataUri, notationCss } from "../charts/notation-svg.js";
 import { ALPHATAB_DIR } from "../teleprompter/alphatab-files.js";
 
 function fail(msg: string): never {
@@ -108,20 +108,16 @@ if (existsSync(rowsPath)) {
 } else {
   const charts = existsSync(chartsPath) ? JSON.parse(readFileSync(chartsPath, "utf8")) : null;
   songData.rows = rowsFromDisplay(songData, charts ? { chords: charts.chords, charts: charts.charts } : null);
+  songData.rows.notation = await drawNotation(songData.rows, (path: string) =>
+    existsSync(join(songDir, path)) ? new Uint8Array(readFileSync(join(songDir, path))) : null,
+  );
 }
 
-// Notation, drawn now: a bundle has no relay to serve alphaTab or the score,
-// so it carries every range of bars its charts show as SVG, by channel and
-// range (see teleprompter/drawings.ts), and the music font they're drawn in.
-let notationStyle = "";
-const drawnCharts = notationRanges(songData.rows);
-if (drawnCharts.length) {
-  songData.notation = {};
-  for (const chart of drawnCharts) {
-    songData.notation[chart.id] = await renderRanges(new Uint8Array(readFileSync(join(songDir, chart.source))), chart.track, chart.chart, chart.ranges);
-  }
-  notationStyle = `  <style>${notationCss(new Uint8Array(readFileSync(join(ALPHATAB_DIR, "font/Bravura.woff2"))))}</style>\n`;
-}
+// The rows carry their charts' notation, drawn at build; the bundle embeds
+// the music font it's drawn in, as a bundle opened from disk can't fetch it.
+const notationStyle = Object.keys(songData.rows.notation ?? {}).length
+  ? `  <style>${notationCss(fontDataUri(new Uint8Array(readFileSync(join(ALPHATAB_DIR, "font/Bravura.woff2")))))}</style>\n`
+  : "";
 
 const clientDir = resolve(repoRoot, "src", "teleprompter", "client");
 if (!existsSync(clientDir)) fail(`teleprompter client dir missing: ${clientDir}`);
@@ -154,6 +150,7 @@ const songScript = `  <script>window.__SONG_DATA__ = ${JSON.stringify(songData)}
 const indexHtml = indexHtmlSrc
   .replace(/<div id="bundle-player"><\/div>/, `<div id="bundle-player">\n${audioTag}\n      </div>`)
   .replace(/(<script src="teleprompter\.js"><\/script>)/, `${songScript}\n  $1`)
+  .replace(/\s*<link rel="stylesheet" href="notation.css">/, "")
   .replace(/<\/head>/, `${notationStyle}</head>`);
 writeFileSync(join(outDir, "index.html"), indexHtml);
 

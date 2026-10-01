@@ -6,6 +6,7 @@ mod align;
 mod analyze;
 mod chunk;
 mod dbn;
+mod features;
 mod setup;
 mod split;
 mod transcribe;
@@ -31,6 +32,14 @@ enum Commands {
     Analyze {
         /// Path to audio file
         file: String,
+    },
+    /// Per-frame loudness, onsets, brightness and band levels for visuals (JSON to stdout)
+    Features {
+        /// Path to audio file (usually one stem)
+        file: String,
+        /// Frames per second
+        #[arg(long, default_value_t = 100.0)]
+        fps: f64,
     },
     /// Detect beats using DBN beat tracker
     Beats {
@@ -163,6 +172,13 @@ fn main() -> Result<()> {
             Ok(())
         },
         Commands::Setup => setup::run(),
+        Commands::Features { file, fps } => {
+            let (samples, sample_rate) = analyze::decode_audio(&file)?;
+            let mut f = features::compute(&samples, sample_rate, fps);
+            f.round(2);
+            println!("{}", serde_json::to_string(&f)?);
+            Ok(())
+        },
         Commands::Analyze { file } => analyze::run(&file),
         Commands::Beats { file, activation: act_fn, min_bpm, max_bpm, start, until, transition_lambda, kick_weight } => {
             eprintln!("Decoding {}...", file);

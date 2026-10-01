@@ -29,7 +29,7 @@ export function panePages(rows: readonly { start: number }[], perPage: number): 
 }
 
 /** The page showing at `beat`: the last one whose first row has started. */
-export function panePageAt(pages: readonly PanePage[], beat: number): number {
+export function panePageAt(pages: readonly { start: number }[], beat: number): number {
   let page = 0;
   for (let i = 1; i < pages.length && pages[i].start <= beat; i++) page = i;
   return page;

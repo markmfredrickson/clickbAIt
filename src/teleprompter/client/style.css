@@ -10,9 +10,6 @@
   --section-bg: #1a1a1a;
   --chord-color: #88bbff;
   --header-bg: #0a0a0a;
-  --lyric-size: 1.5rem;
-  --chord-size: 0.9rem;
-  --section-size: 0.75rem;
   --header-size: 1.2rem;
 }
 
@@ -230,156 +227,120 @@ body {
   box-shadow: 0 0 8px #d33;
 }
 
-/* ── Lyrics ── */
-#lyrics-container {
-  padding: 1rem;
-  padding-bottom: 60vh; /* room to scroll past the end */
+/* ── Panes: one per channel, stacked in the viewer's order ── */
+/* A pane shows a set number of its rows and turns them all at once (the
+   client sets its height and scroll). Manual scroll lets the reader scroll it. */
+#panes {
+  padding: 0.5rem 1rem 3rem;
 }
 
-.section {
-  margin-bottom: 2rem;
-}
-
-.section-name {
-  font-size: var(--section-size);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--accent);
-  margin-bottom: 0.5rem;
-  padding: 0.2rem 0;
+.pane {
+  position: relative;
+  overflow: hidden;
+  scrollbar-width: none;
   border-bottom: 1px solid var(--text-dim);
-  cursor: pointer; /* click to loop this section (bundle mode) */
+  padding-bottom: 0.2em;
+  margin-bottom: 0.6rem;
 }
 
-.lyric-line {
-  font-size: var(--lyric-size);
-  line-height: 2;
+.pane:last-child {
+  border-bottom: none;
+}
+
+#panes.manual .pane {
+  overflow-y: auto;
+}
+
+.pane-rows {
+  position: relative;
+}
+
+/* Rows use padding, not margins, so a page's height is its rows' boxes. */
+.row {
+  padding: 0.15em 0;
   color: var(--text-dim);
   transition: color 0.2s ease;
 }
 
-.lyric-line.reading {
+.row.current {
   color: var(--text);
 }
 
-.lyric-line.now {
-  color: var(--text);
-  opacity: 0.7;
-  border-left: 3px solid var(--accent);
-  padding-left: 0.5rem;
+/* ── Lyrics: a row is a sung line ── */
+.lyric-row {
+  line-height: 1.5;
 }
 
-.lyric-line.past {
-  color: var(--text-dim);
-}
-
-.chord-row {
-  font-size: var(--chord-size);
-  font-weight: 600;
-  color: var(--chord-color);
-  margin-bottom: 0.1rem;
-  min-height: 1.2em;
-}
-
-/* ── Word-level highlight (LyricsDisplay) ── */
-/* Lines are dim context by default; the current line brightens, the active
-   word glows, and words already sung within it fade. */
-.lyric-line.current {
-  color: var(--text);
+.lyric-row.bv {
+  font-style: italic;
 }
 
 .word {
   transition: color 0.08s ease, text-shadow 0.08s ease;
 }
 
-.lyric-line.current .word.sung {
+.row.current .word.sung {
   color: var(--text-dim);
 }
 
-.word.active {
+.word.now {
   color: var(--accent);
   text-shadow: 0 0 18px var(--accent);
   font-weight: 600;
 }
 
-/* ── Chords (shown when the viewer turns them on) ── */
-/* A chord sits over its word, as on a chord sheet. Every word becomes a
-   small column with a chord slot on top (blank when the word has no chord),
-   so a line is a row of chords over a row of text, and neighbouring chords
-   never overlap. */
-.chords-on .word {
-  display: inline-flex;
-  flex-direction: column;
-  vertical-align: bottom;
-  line-height: 1.2;
-}
-
-.chord {
-  font-size: var(--chord-size);
-  font-weight: 700;
-  color: var(--chord-color);
-  white-space: nowrap;
-  text-shadow: none;
-  transition: color 0.08s ease;
-}
-
-.chord.current {
-  color: var(--accent);
-}
-
-/* Chords nothing is sung under: a row of bars, each bar split into eighths. */
-.chord-bars-row {
-  margin: 0.4rem 0 0.6rem;
-}
-
-/* A line of up to four bars across the page. */
-.chord-bars {
+/* ── Chords: a row of bars, each as wide as its beats ── */
+.chord-row {
   display: flex;
-  font-size: var(--chord-size);
 }
 
-.chord-bars + .chord-bars {
-  margin-top: 0.3rem;
-}
-
-.chord-bar {
+.chord-row .bar {
   display: grid;
   flex-basis: 0;
   align-items: center;
   border-left: 2px solid var(--text-dim);
-  padding: 0.1rem 0.3rem;
+  padding: 0.1em 0.3em;
 }
 
-.chord-bar.end {
+.chord-row .bar.end {
   border-right: 2px solid var(--text-dim);
 }
 
-.chord-bar-pad {
+.chord-row .pad {
   flex-basis: 0;
 }
 
-.chord-bar .chord {
+.chord {
   grid-row: 1;
   padding-right: 0.3em;
+  font-weight: 700;
+  color: var(--chord-color);
+  white-space: nowrap;
+  transition: color 0.08s ease;
 }
 
-/* ── Drum chart: a line of groove letters per section ── */
-.drum-chart {
-  font-size: var(--drum-size, 1.2rem);
-  margin-bottom: 1.5rem;
+.row:not(.current) .chord {
+  opacity: 0.6;
 }
 
-.drum-section {
-  margin-bottom: 0.9rem;
+/* A chord still sounding from the row before. */
+.chord.held {
+  font-weight: 400;
+  opacity: 0.5;
 }
 
-/* One line per section: drawn grooves and letters in a row, centered on the staff. */
-.drum-runs {
+.chord.now {
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* ── Drums: a row per section, its groove runs in a line ── */
+.drum-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4em 1.2em;
+  padding: 0.3em 0 0.9em;
 }
 
 .drum-run {
@@ -388,8 +349,9 @@ body {
 }
 
 /* Letters and counts are the chart's main text, so they read larger than the
-   staff; the Drums size scales both together. */
+   staff; the pane's size scales both together. */
 .drum-label {
+  position: relative;
   font-size: 1.5em;
   font-weight: 700;
   white-space: nowrap;
@@ -401,10 +363,6 @@ body {
 }
 
 /* Which pass of a repeat is playing, under its count, out of the line's flow. */
-.drum-label {
-  position: relative;
-}
-
 .drum-pass {
   position: absolute;
   left: 0;
@@ -421,11 +379,16 @@ body {
 }
 
 /* Notation is drawn in the page's text color on a clear background. alphaTab
-   skips a container with no width, so each gets a minimum. */
+   skips a container with no width, so each gets a minimum; a bundle, which
+   has no notation to draw, shows the letters alone. */
 .drum-notation {
   zoom: var(--drum-zoom, 1);
   border-radius: 4px;
   min-width: 4rem;
+}
+
+.drum-notation:empty {
+  display: none;
 }
 
 .notation-credit {
@@ -435,6 +398,20 @@ body {
 
 .drum-run.now .drum-notation {
   outline: 3px solid var(--accent);
+}
+
+/* ── Drawer channel list ── */
+.channel-row .move {
+  margin-left: auto;
+  margin-right: 0.5rem;
+}
+
+.channel-row .move button {
+  padding: 0 0.4rem;
+}
+
+.rows-input {
+  width: 4rem;
 }
 
 /* ── Status bar ── */
@@ -466,18 +443,16 @@ body {
 /* ── Print ── */
 @media print {
   #header, #status-bar, #drawer, #drawer-scrim { display: none; }
-  .lyric-line { color: #000 !important; font-size: 12pt; line-height: 1.6; }
-  .chord-row { color: #444 !important; }
-  .section-name { color: #000 !important; }
-  #lyrics-container { padding: 0; }
+  .row, .chord { color: #000 !important; opacity: 1 !important; }
+  .pane { height: auto !important; overflow: visible !important; }
+  #panes { padding: 0; }
   body { background: #fff; color: #000; }
 }
 
 /* ── Bail states, pushed from the relay ────────────────────────────────────
    When the band is off the click the display stops claiming to know where they
-   are: word highlighting goes away and the CURRENT SECTION lights whole. The
-   singer is unguided, and saying so is more use than pointing at a line that
-   may be wrong. */
+   are: word highlighting goes away. The singer is unguided, and saying so is
+   more use than pointing at a word that may be wrong. */
 body.show-out { box-shadow: inset 0 0 0 4px #ff9e2c; animation: bail-pulse 1.1s steps(1) infinite; }
 @keyframes bail-pulse {
   0%, 49%   { box-shadow: inset 0 0 0 4px #ff9e2c; }
@@ -488,13 +463,9 @@ body.show-out { box-shadow: inset 0 0 0 4px #ff9e2c; animation: bail-pulse 1.1s 
 body.show-vamping, body.show-leaving { box-shadow: inset 0 0 0 4px #a678ff; }
 body.show-stopped { box-shadow: inset 0 0 0 4px #ff4d5e; }
 
-/* Unguided: drop word-level highlighting, light the current section instead. */
-body.show-out .word.active,
-body.show-out .word.sung { background: none; color: inherit; }
-body.show-out .section.current .lyric-line,
-body.show-vamping .section.current .lyric-line { opacity: 1; }
-body.show-out .section.current { outline: 2px solid #ff9e2c; outline-offset: 6px; border-radius: 6px; }
-body.show-vamping .section.current { outline: 2px solid #a678ff; outline-offset: 6px; border-radius: 6px; }
+/* Unguided: drop word-level highlighting. */
+body.show-out .word.now,
+body.show-out .word.sung { background: none; color: inherit; text-shadow: none; font-weight: inherit; }
 
 /* A banner naming the state, so it reads from across a room. */
 body.show-out::before, body.show-vamping::before,
@@ -507,3 +478,7 @@ body.show-out::before      { content: "No click · you're on your own"; backgrou
 body.show-vamping::before  { content: "Vamping · cue muted";           background: #a678ff; color: #120823; }
 body.show-leaving::before  { content: "Leaving at end of pass";        background: #a678ff; color: #120823; }
 body.show-stopped::before  { content: "Track stopped";                 background: #ff4d5e; color: #1a0206; }
+
+.channel-row .move button:disabled {
+  opacity: 0.3;
+}

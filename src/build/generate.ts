@@ -22,7 +22,7 @@ import { buildRpp } from "./rpp.js";
 import { stemTrackName } from "./bundle-variants.js";
 import { buildLyricsDisplay } from "./lyrics-display.js";
 import { buildChartsFile } from "../charts/build.js";
-import { buildRows } from "../teleprompter/rows.js";
+import { buildRows } from "../teleprompter/build-rows.js";
 import { songRecipe } from "./song-recipe.js";
 import { extractSections } from "./sections.js";
 import { cueOnset } from "./cue-onset.js";

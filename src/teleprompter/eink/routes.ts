@@ -1,61 +1,57 @@
 /**
  * The relay's e-ink endpoints.
  *
- *   GET /eink/deck?w=&h=&dpr=[&font=][&channels=lyrics,chords]
- *                                      page table for the current song at that size
- *   GET /eink/pages/<key>/<n>.png      a rendered page
+ *   GET /eink/deck?w=&h=&dpr=[&font=][&channels=drums,lyrics][&<channel>.rows=N]
+ *                                      the current song's panes at that size
+ *   GET /eink/pages/<key>/<file>.png   a rendered page
  *
  * The client page itself (/eink) is a static file in the client directory.
  * Beats reach e-ink clients over the relay's normal WebSocket, like every
- * other client, and each client picks its own page (layout.ts).
+ * other client, and each client turns its own panes (layout.ts).
  */
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
-import type { LyricsDisplay } from "../lyrics-display.js";
-import type { EinkChords, Page } from "./layout.js";
-import type { RenderSize } from "./render.js";
+import type { RowDocument } from "../rows.js";
+import { selectChannels } from "../rows.js";
+import type { EinkDeck } from "./layout.js";
+import type { RenderOptions, RenderSize, RenderedPane } from "./render.js";
 
-/** The relay's current song. `version` changes whenever the file does. */
+/** The relay's current song. `version` changes whenever its files do. */
 export interface EinkCurrent {
   slug: string;
+  /** Its lyrics display (only a built one can be shown). */
   song: unknown;
   version: string;
-  /** The song's chords, when it has a chord file. */
-  chords?: EinkChords | null;
+  rows: RowDocument | null;
+  /** A score file's bytes, by its path in the rows document. */
+  readSource?: (path: string) => Uint8Array | null;
 }
 
-/** What a deck shows. */
-export interface EinkDeckView {
-  lyrics: boolean;
-  chords: EinkChords | null;
+/** What a deck shows: channel ids in pane order, and rows asked for per pane. */
+export interface EinkView {
+  channels: string[];
+  rows: Record<string, number>;
 }
 
-/** Renders `song` into `outDir/<n>.png` and returns the page table. */
-export type EinkRenderer = (song: LyricsDisplay, size: RenderSize, outDir: string, view: EinkDeckView) => Promise<Page[]>;
+/** Renders `doc`'s channels into `outDir` and returns the panes. */
+export type EinkRenderer = (doc: RowDocument, size: RenderSize, outDir: string, opts: RenderOptions) => Promise<RenderedPane[]>;
 
 export interface EinkRoutesOptions {
   current: () => EinkCurrent | null;
   render: EinkRenderer;
-  /** Where rendered decks are kept, one folder per song × size. */
+  /** Where rendered decks are kept, one folder per song × size × view. */
   cacheDir: string;
 }
 
-interface Deck {
-  slug: string;
-  key: string;
-  width: number;
-  height: number;
-  beatsPerBar: number;
-  pages: (Page & { src: string })[];
-}
-
 // Bump when the page design changes, so cached decks are re-rendered.
-const RENDER_VERSION = 8;
+const RENDER_VERSION = 9;
 
-function isLyricsDisplay(song: unknown): song is LyricsDisplay {
+const MAX_ROWS = 50;
+
+function isLyricsDisplay(song: unknown): boolean {
   return !!song && typeof song === "object" && (song as { schema?: string }).schema === "clickbait/lyrics-display@1";
 }
 
@@ -77,26 +73,37 @@ function parseSize(q: URLSearchParams): RenderSize | null {
 }
 
 /**
- * The channels a page asks for (`channels=lyrics,chords`; lyrics alone by
- * default). Chords are shown only when the song has them.
+ * The panes a page asks for (`channels=drums,lyrics`, each an id or an
+ * instrument; lyrics alone by default), in that order, and the rows asked
+ * for each (`lyrics.rows=6`, by the name used). Channels the song doesn't
+ * have are left out.
  */
-function parseView(q: URLSearchParams, cur: EinkCurrent): EinkDeckView {
+export function parseView(q: URLSearchParams, doc: RowDocument): EinkView {
   const asked = q.get("channels");
-  const channels = asked === null ? ["lyrics"] : asked.split(",").map((c) => c.trim());
-  return {
-    lyrics: channels.includes("lyrics"),
-    chords: channels.includes("chords") && cur.chords ? cur.chords : null,
-  };
+  const names = asked === null ? ["lyrics"] : asked.split(",").map((c) => c.trim()).filter(Boolean);
+  const channels: string[] = [];
+  const rows: Record<string, number> = {};
+  for (const name of names) {
+    for (const c of doc.channels) {
+      const match = c.id === name || (c.kind === "drums" && c.instrument === name);
+      if (!match || channels.includes(c.id)) continue;
+      channels.push(c.id);
+      const n = Number(q.get(`${name}.rows`) ?? q.get(`${c.id}.rows`) ?? NaN);
+      if (Number.isInteger(n) && n >= 1 && n <= MAX_ROWS) rows[c.id] = n;
+    }
+  }
+  return { channels, rows };
 }
 
 /** Returns a handler that answers e-ink requests and returns false for anything else. */
 export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
-  const inFlight = new Map<string, Promise<Deck>>();
+  const inFlight = new Map<string, Promise<EinkDeck>>();
 
-  async function deckFor(cur: EinkCurrent, song: LyricsDisplay, size: RenderSize, view: EinkDeckView): Promise<Deck> {
-    // The chords themselves are in the key, so an edited chord file re-renders.
+  async function deckFor(cur: EinkCurrent, doc: RowDocument, size: RenderSize, view: EinkView): Promise<EinkDeck> {
+    const shown = selectChannels(doc, view.channels);
+    // The rows themselves are in the key, so an edited chord file re-renders.
     const key = createHash("sha1")
-      .update(JSON.stringify([RENDER_VERSION, cur.slug, cur.version, size, view]))
+      .update(JSON.stringify([RENDER_VERSION, cur.slug, cur.version, size, view, shown]))
       .digest("hex")
       .slice(0, 16);
     const dir = join(opts.cacheDir, key);
@@ -107,14 +114,16 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         key,
         (async () => {
           mkdirSync(dir, { recursive: true });
-          const pages = await opts.render(song, size, dir, view);
-          const deck: Deck = {
+          const panes = await opts.render(shown, size, dir, { rows: view.rows, ...(cur.readSource ? { readSource: cur.readSource } : {}) });
+          const deck: EinkDeck = {
             slug: cur.slug,
             key,
             width: size.width,
             height: size.height,
-            beatsPerBar: song.timeSignature?.[0] ?? 4,
-            pages: pages.map((p, i) => ({ ...p, src: `/eink/pages/${key}/${i}.png` })),
+            panes: panes.map((p) => ({
+              ...p,
+              pages: p.pages.map(({ file, ...page }) => ({ ...page, src: `/eink/pages/${key}/${file}` })),
+            })),
           };
           writeFileSync(table, JSON.stringify(deck));
           return deck;
@@ -133,7 +142,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         json(res, 404, { error: "no song loaded" });
         return true;
       }
-      if (!isLyricsDisplay(cur.song)) {
+      if (!isLyricsDisplay(cur.song) || !cur.rows) {
         json(res, 404, { error: "e-ink needs a built lyrics-display song" });
         return true;
       }
@@ -143,7 +152,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         return true;
       }
       try {
-        json(res, 200, await deckFor(cur, cur.song, size, parseView(url.searchParams, cur)));
+        json(res, 200, await deckFor(cur, cur.rows, size, parseView(url.searchParams, cur.rows)));
       } catch (err) {
         console.error(`  ✗ e-ink render failed: ${err instanceof Error ? err.message : err}`);
         json(res, 500, { error: "render failed" });
@@ -152,7 +161,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
     }
 
     // Key and file name are matched exactly, so no path can leave the cache.
-    const m = url.pathname.match(/^\/eink\/pages\/([0-9a-f]{16})\/(\d+)\.png$/);
+    const m = url.pathname.match(/^\/eink\/pages\/([0-9a-f]{16})\/(\d+-\d+)\.png$/);
     if (m) {
       const file = join(opts.cacheDir, m[1], `${m[2]}.png`);
       if (!existsSync(file)) {
@@ -160,7 +169,7 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         res.end();
         return true;
       }
-      // A key names one song version at one size, so its pages never change.
+      // A key names one song version at one size and view, so its pages never change.
       res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "max-age=31536000, immutable" });
       res.end(readFileSync(file));
       return true;

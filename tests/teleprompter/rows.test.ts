@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildRows, itemsAt, selectChannels, type RowInput } from "../../src/teleprompter/rows.js";
+import { buildRows, rowsFromDisplay, type RowInput } from "../../src/teleprompter/build-rows.js";
+import { itemsAt, selectChannels } from "../../src/teleprompter/rows.js";
 import { grooveChart } from "../../src/charts/grooves.js";
 import { songSections, type MappedBar } from "../../src/charts/bar-map.js";
 
@@ -248,5 +249,45 @@ describe("itemsAt", () => {
     expect(itemsAt(drums, 0).drums).toEqual({ row: 0, item: 0, pass: 1, of: 8 });
     expect(itemsAt(drums, 29).drums).toEqual({ row: 0, item: 0, pass: 8, of: 8 });
     expect(itemsAt(drums, 32).drums).toEqual({ row: 0, item: -1 });
+  });
+});
+
+describe("rowsFromDisplay (a song built before rows files)", () => {
+  // The display a build of SONG would write: its sections, and two lines.
+  const display = {
+    slug: "song",
+    title: "Song",
+    timeSignature: [4, 4] as [number, number],
+    words: [
+      { text: "one", startBeat: 3, endBeat: 3.5 },
+      { text: "two", startBeat: 4, endBeat: 9 },
+    ],
+    display: {
+      sections: [
+        { name: "Verse", startBeat: 0, bars: 6 },
+        { name: "Break", startBeat: 24, bars: 2 },
+        { name: "Bridge", startBeat: 28, bars: 3, barBeats: [4, 2, 4] },
+      ],
+      lines: [{ words: [0, 1] as [number, number] }],
+    },
+  };
+
+  it("gets the same sections, meters included, from the display", () => {
+    expect(rowsFromDisplay(display).sections.map((s) => [s.name, s.start, s.end, s.beatsPerBar, s.barBeats])).toEqual([
+      ["Verse", 0, 24, 4, undefined],
+      ["Break", 24, 28, 2, undefined],
+      ["Bridge", 28, 38, 4, [4, 2, 4]],
+    ]);
+  });
+
+  it("lays out the lyrics as a build would", () => {
+    const rows = (rowsFromDisplay(display).channels[0] as any).rows;
+    expect(rows.map((r: any) => [r.start, r.end, r.items.length])).toEqual([[3, 7.5, 2]]);
+  });
+
+  it("adds chords and drum charts from the charts file, in rows of 4 bars", () => {
+    const doc = rowsFromDisplay(display, { chords: [{ chord: "A", beat: 0 }], charts: [] });
+    expect(doc.channels.map((c) => c.id)).toEqual(["lyrics", "chords"]);
+    expect((doc.channels[1] as any).rows[0].bars.length).toBe(4);
   });
 });

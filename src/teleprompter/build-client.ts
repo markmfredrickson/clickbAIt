@@ -23,8 +23,9 @@ export async function buildClient(dir = clientDir): Promise<void> {
   await esbuild.build({
     // The lyrics display and the control bar share show-state, so the bail
     // logic can't drift between them. The e-ink client shares eink/layout
-    // with the relay's page renderer.
-    entryPoints: [join(dir, "teleprompter.ts"), join(dir, "control.ts"), join(dir, "eink.ts")],
+    // with the relay's page renderer, and eink-page is the page that renderer
+    // draws in headless Chrome, with the prompter's own pane-view.
+    entryPoints: [join(dir, "teleprompter.ts"), join(dir, "control.ts"), join(dir, "eink.ts"), join(dir, "eink-page.ts")],
     outdir: dir,
     bundle: true,
     platform: "browser",

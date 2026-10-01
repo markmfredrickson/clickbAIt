@@ -66,15 +66,18 @@ The config sends: TIME, BEAT, TEMPO, PLAY, STOP, PAUSE, REPEAT, LAST_MARKER, LAS
 ## Browser client
 
 - **`/`** — join page: one QR code to the picker, and the picker's choices for the laptop
-- **`/pick`** — the picker: each person chooses what their screen shows (Lyrics, Lyrics + chords, Chords only, E-ink, Custom)
-- **`/prompt`** — the teleprompter (`/lyrics` still works). Its options live in the URL, so a setup is a link: `/prompt?channels=lyrics,chords&lyrics=2&chords=0.9&offset=1&scroll=manual&theme=light`. Changing a setting in the drawer rewrites the URL.
+- **`/pick`** — the picker: each person chooses what their screen shows (Lyrics, Chords + lyrics, Chords only, Drums + lyrics, the same on e-ink, Custom)
+- **`/prompt`** — the teleprompter (`/lyrics` still works). Its options live in the URL, so a setup is a link: `/prompt?channels=chords,lyrics&lyrics=2&lyrics.rows=6&chords.rows=2&offset=1&scroll=manual&theme=light`. Changing a setting in the drawer rewrites the URL.
+- **`/eink`** — the same panes as page images for an e-ink browser (Kindle), rendered by the relay in headless Chrome: `/eink?channels=drums,lyrics&drums.rows=2`. The last pane fills the screen unless given rows.
 - **`/control`** — the bail bar, for whoever runs the show; not offered on the picker
 - **`/songs`** — JSON list of available song slugs
 
 Features:
 - Header shows only what matters during playback: song, section, and `(bar : beat) of <bars in the section>`. The footer shows the song bar (`m45:2`), as REAPER counts measures.
-- Channels (lyrics, chords) are switched and sized in the ⚙ drawer. Chords sit over the words they're played on; chords with nothing sung under them form bar rows. With lyrics off, chords become a chart, one labeled row per section.
-- Auto-scroll via `requestAnimationFrame` easing (not browser smooth scroll — Brave compat); Manual lets the reader scroll freely
+- Each channel (lyrics, chords, drums) is a pane, stacked in the order of `channels=`. The ⚙ drawer turns channels on and off, moves them up and down, and sets each one's size and rows. Panes don't line up with each other; each follows the beat on its own.
+- A pane shows its set number of rows and turns them all at once as its bottom row starts, so that row moves to the top, still lit. Lyric rows are sung lines, chord rows are `barsPerRow` bars (manifest; 4 by default), drum rows are a section's groove runs. Section names appear only in the header.
+- What the panes show comes from the build's `<slug>.rows.json` (served at `/rows.json`); a song built before rows files gets its rows laid out from its lyrics display.
+- Manual scroll lets the reader scroll each pane freely
 - Beat offset slider (0–16 beats) for scroll lookahead
 - Red/green transport indicator (play/stop), in the drawer
 - Dark/light mode

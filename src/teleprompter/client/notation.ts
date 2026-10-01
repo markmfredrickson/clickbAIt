@@ -54,8 +54,9 @@ function hex(color: string): string {
  * score's titles, tempo, markers, text or dynamics, in `ink` (a CSS color)
  * on a clear background so it sits on the page like the text around it. The
  * prompter credits alphaTab once in its drawer instead of under every bar.
+ * Resolves once the bar is drawn.
  */
-export function renderBar(at: any, el: HTMLElement, score: any, track: number, bar: number, ink: string): void {
+export function renderBar(at: any, el: HTMLElement, score: any, track: number, bar: number, ink: string): Promise<void> {
   const color = hex(ink);
   const api = new at.AlphaTabApi(el, {
     core: { fontDirectory: BASE + "font/", useWorkers: false, enableLazyLoading: false, engine: "svg" },
@@ -78,10 +79,26 @@ export function renderBar(at: any, el: HTMLElement, score: any, track: number, b
     },
     player: { enablePlayer: false },
   });
-  api.renderFinished.on(() => {
-    el.querySelectorAll("text").forEach((t) => {
-      if (/rendered by alphaTab/i.test(t.textContent ?? "")) t.remove();
+  const done = new Promise<void>((resolve) => {
+    api.renderFinished.on(() => {
+      el.querySelectorAll("text").forEach((t) => {
+        if (/rendered by alphaTab/i.test(t.textContent ?? "")) t.remove();
+      });
+      resolve();
     });
   });
   api.renderScore(score, [track]);
+  return done;
+}
+
+/** Draw each target's bar of `track` from the score at `scoreUrl`, in `ink`. */
+export async function drawNotation(
+  targets: readonly { el: HTMLElement; scoreBar: number }[],
+  scoreUrl: string,
+  track: number,
+  ink: string,
+): Promise<void> {
+  if (!targets.length) return;
+  const [at, score] = await Promise.all([loadAlphaTab(), loadScore(scoreUrl)]);
+  await Promise.all(targets.map((t) => renderBar(at, t.el, score, track, t.scoreBar, ink)));
 }

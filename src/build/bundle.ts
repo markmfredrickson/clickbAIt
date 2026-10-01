@@ -11,7 +11,8 @@
  *
  * Inputs (already produced by the normal pipeline), found in the song folder:
  *   - <slug>.lyrics-display.json  — from `npm run generate` (the built display)
- *   - <slug>.charts.json          — optional, also from generate; its chords are carried
+ *   - <slug>.rows.json            — also from generate: what the prompter's panes show
+ *   - <slug>.charts.json          — optional; used only for a song built before rows files
  *   - mix.opus | mix.ogg | mix.m4a | mix.wav — the rendered show mix
  *     (render the song's RPP in REAPER and save it into the song folder).
  *
@@ -25,6 +26,7 @@ import { resolve, join } from "path";
 import { buildClient } from "../teleprompter/build-client.js";
 import { SongManifestSchema } from "../manifest.js";
 import { bundleVariants, type BundleVariant } from "./bundle-variants.js";
+import { rowsFromDisplay } from "../teleprompter/build-rows.js";
 
 function fail(msg: string): never {
   console.error("error: " + msg);
@@ -91,12 +93,16 @@ if (!full) {
 }
 songData.variants = variants.map(({ id, label, file }) => ({ id, label, file }));
 
-// Chords, when the song has them: the bundle has no relay to ask, so they ride
-// along in the display data, in the same shape the relay's /charts/chords sends.
+// The rows the prompter's panes show: the bundle has no relay to ask, so they
+// ride along in the display data. A song built before rows files gets them
+// laid out from its display and charts file, as the relay would.
+const rowsPath = join(songDir, `${slug}.rows.json`);
 const chartsPath = join(songDir, `${slug}.charts.json`);
-if (existsSync(chartsPath)) {
-  const charts = JSON.parse(readFileSync(chartsPath, "utf8"));
-  if (charts.chords) songData.chordData = { slug, sections: charts.sections, chords: charts.chords };
+if (existsSync(rowsPath)) {
+  songData.rows = JSON.parse(readFileSync(rowsPath, "utf8"));
+} else {
+  const charts = existsSync(chartsPath) ? JSON.parse(readFileSync(chartsPath, "utf8")) : null;
+  songData.rows = rowsFromDisplay(songData, charts ? { chords: charts.chords, charts: charts.charts } : null);
 }
 
 const clientDir = resolve(repoRoot, "src", "teleprompter", "client");
@@ -144,8 +150,10 @@ writeFileSync(
         variants.map((v) => `       ${v.file}  —  ${v.label}\n`).join("")
       : "") +
     `  3. Use the Offset slider to get the lyrics a beat or two ahead.\n` +
-    `  4. To drill a part: pick it from "Loop" (or click a section name) — it\n` +
-    `     repeats that section. "Speed" slows playback down (pitch preserved).\n\n` +
+    `  4. To drill a part: pick it from "Loop" — it repeats that section.\n` +
+    `     "Speed" slows playback down (pitch preserved).\n` +
+    `  5. The gear button picks what shows (lyrics, chords, drums) and in\n` +
+    `     what order.\n\n` +
     `If audio doesn't play when opened directly (some browsers block file:// audio):\n` +
     `  cd into this folder and run:  npx serve .\n` +
     `  then open the URL it prints.\n`,

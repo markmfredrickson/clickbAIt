@@ -1,104 +1,73 @@
 /**
  * clickbAIt Teleprompter — browser client
  *
- * Fetches the full song on load, connects to the relay WebSocket (or drives
- * off an <audio> element in bundle mode), and highlights/scrolls lyrics from
- * the incoming beat position.
+ * Shows the song's channels (lyrics, chords, drums) as panes stacked in the
+ * order the viewer picks, each following the beat on its own. A pane shows
+ * a set number of its channel's rows and turns them all at once as its
+ * bottom row starts, so that row moves to the top (see panes.ts). Section
+ * names are only in the header.
  *
- * Two song formats, detected at load:
- *   - LyricsDisplay (`schema: "clickbait/lyrics-display@1"`): word-level
- *     karaoke highlight, beats resolved through the song curve.
- *   - Legacy SongPayload (sections with line-level `lyrics[]`): the original
- *     whole-line highlight. Kept so songs not yet rebuilt still display.
+ * The song comes from the relay (its lyrics display for the header and
+ * timing, its row document for the panes) with beats over the WebSocket, or
+ * in a practice bundle inline, with beats from an <audio> element.
  */
 
 import { Curve } from "../../core/curve.js";
 import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
-import { activeIndex } from "../highlight.js";
-import { layoutChords, currentChord, followTarget, barGrid, rowLines, BARS_PER_LINE } from "../../charts/chord-layout.js";
 import { songPosition, sectionMeters } from "../position.js";
 import { parseDisplayOptions, displayQuery } from "../display-options.js";
 import { songMap, songProgress } from "../song-map.js";
-import { runAt } from "../../charts/grooves.js";
-import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
+import { itemsAt, type RowChannel, type RowDocument } from "../rows.js";
+import { panePages, panePageAt, type PanePage } from "../panes.js";
+import { channelView, showPass, type ChannelView } from "./pane-view.js";
+import { drawNotation } from "./notation.js";
 
 (function () {
   "use strict";
 
   // ── State ──
-  let song = null;
-  let isLD = false;        // true when song is a LyricsDisplay
-  let curve = null;        // Curve built from LyricsDisplay.curve (bundle mode)
+  let song = null;         // the lyrics display: header, sections, timing
+  let doc: RowDocument | null = null; // the row document: what the panes show
+  let curve = null;        // Curve built from the display's curve (bundle mode)
   let ws = null;
   let autoScroll = true;
   let offsetBeats = 0;
   let rawBeat = -1;      // most recent beat from OSC (no offset applied)
-  let currentBeat = -1;  // rawBeat + offsetBeats (reading position)
-  let sectionElements = [];
-  let lyricElements = [];  // legacy: flat list of { el, beat, sectionIdx }
-  let wordElements = [];   // LyricsDisplay: flat list of { el, startBeat, lineEl }
   let reconnectTimer = null;
 
-  // Chords: the relay's /charts/chords for the current song, shown when the
-  // viewer turns them on (a drummer's screen can leave them off).
   // The page's options come from its URL first (so a setup is a link), then
   // from what this screen remembers. Changing one writes it back to the URL.
-  const SIZED = ["header", "lyrics", "chords", "drums"];
-  const urlOptions = parseDisplayOptions(location.search, SIZED);
-  let chordData = null;    // { sections, chords } or null when the song has none
-  let chordsOn = channelWanted("chords", false);
-  let lyricsOn = channelWanted("lyrics", true);
-  // Drums: the song's drum chart (groove letters), from /charts/chart/<id>.
-  let drumChart = null;    // the built chart, or null when the song has none
-  let drumsOn = channelWanted("drums", false);
-  let drumRuns = [];       // section index -> run index -> { el, label, run }
-  let drumSectionEls = []; // section index -> its element in the drum chart
-  let lastRun = null;
-  let drumGeneration = 0;  // bumped per render, so a late score load is dropped
-  let chordLayout = null;  // from layoutChords, while chords are shown
-  let chordInput = null;   // the layout's input, kept for followTarget
-  let chordEls = [];       // chord index -> its element
-  let rowEls = [];         // chord row index -> its element
-  let lastChord = -1;
+  let urlOptions = parseDisplayOptions(location.search, ["header"]);
+
+  /** One pane: a channel's rows in a window that shows `perPage` of them. */
+  interface Pane {
+    channel: RowChannel;
+    view: ChannelView;
+    el: HTMLElement;
+    rowsEl: HTMLElement;
+    perPage: number;
+    pages: PanePage[];
+    page: number;
+    litRow: number;
+    litItem: number;
+  }
+  let panes: Pane[] = [];
+  let order: string[] = [];  // channel ids shown, top to bottom
+  let generation = 0;        // bumped per render, so a late notation load is dropped
 
   // ── Clock (pub/sub) ──
   const clock = (function () {
     const subs = new Set();
     return {
       subscribe: function (cb) { subs.add(cb); return function () { subs.delete(cb); }; },
-      emit: function (beat) { subs.forEach(function (cb) { cb(beat); }); },
+      emit: function (beat) { subs.forEach(function (cb: any) { cb(beat); }); },
     };
   })();
-
-  // Curve (time <-> beat) is the real src/core/curve.ts, imported and bundled —
-  // no more hand-ported copy to keep in sync. `curve` below is a Curve instance.
-
-  // Legacy: piecewise-linear accumulation along the tempo map.
-  function secondsToBeats(seconds, s) {
-    const map = s.tempoMap || [];
-    if (map.length === 0) return (seconds / 60) * s.bpm;
-    let beat = 0, prevSec = 0, bpm = map[0].bpm;
-    for (let i = 0; i < map.length; i++) {
-      const tp = map[i];
-      if (tp.seconds >= seconds) break;
-      if (tp.seconds > prevSec) {
-        beat += ((tp.seconds - prevSec) / 60) * bpm;
-        prevSec = tp.seconds;
-      }
-      bpm = tp.bpm;
-    }
-    beat += ((seconds - prevSec) / 60) * bpm;
-    return beat;
-  }
-
-  function beatFromSeconds(seconds) {
-    return isLD ? curve.toBeat(seconds) : secondsToBeats(seconds, song);
-  }
 
   // ── DOM refs ──
   const titleEl = document.getElementById("song-title");
   const metaEl = document.getElementById("song-meta");
-  const container = document.getElementById("lyrics-container");
+  const container = document.getElementById("panes");
   const statusEl = document.getElementById("connection-status");
   const beatDisplay = document.getElementById("beat-display");
   const nowSectionEl = document.getElementById("now-section");
@@ -110,15 +79,15 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
   let metered = [];
   let sectionNames = [];
   let countInBeatsPerBar = 4;
-  const offsetSlider = document.getElementById("offset-slider");
+  const offsetSlider = document.getElementById("offset-slider") as HTMLInputElement;
   const offsetValue = document.getElementById("offset-value");
   const scrollModeBtn = document.getElementById("scroll-mode-btn");
   const darkModeBtn = document.getElementById("dark-mode-btn");
   const transportLight = document.getElementById("transport-light");
   const bundleControls = document.getElementById("bundle-controls");
-  const loopFrom = document.getElementById("loop-from");
-  const loopTo = document.getElementById("loop-to");
-  const speedSlider = document.getElementById("speed-slider");
+  const loopFrom = document.getElementById("loop-from") as HTMLSelectElement;
+  const loopTo = document.getElementById("loop-to") as HTMLSelectElement;
+  const speedSlider = document.getElementById("speed-slider") as HTMLInputElement;
   const speedValue = document.getElementById("speed-value");
   const drawer = document.getElementById("drawer");
   const drawerBtn = document.getElementById("drawer-btn");
@@ -128,6 +97,103 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
   // Bundle-mode section loop: audio-time window we keep playback inside, or null.
   let loop = null;
 
+  // ── Channels ──
+  // What each kind of channel starts with. A size is in rem; `rows` is how
+  // many of its rows its pane shows.
+  const KINDS = {
+    lyrics: { label: "Lyrics", size: 1.5, min: 0.75, max: 3, step: 0.125, rows: 6 },
+    chords: { label: "Chords", size: 1.3, min: 0.6, max: 3, step: 0.05, rows: 2 },
+    drums: { label: "Drums", size: 1.2, min: 0.6, max: 2.5, step: 0.05, rows: 2 },
+  };
+  const HEADER = { channel: "header", label: "Header", cssVar: "--header-size", size: 1.2, min: 0.8, max: 3, step: 0.05 };
+  const MAX_ROWS = 20;
+
+  function kindOf(channel: RowChannel) { return KINDS[channel.kind]; }
+
+  function channelLabel(channel: RowChannel): string {
+    if (channel.kind === "drums") {
+      const name = channel.instrument || channel.id;
+      return name.charAt(0).toUpperCase() + name.slice(1);
+    }
+    return kindOf(channel).label;
+  }
+
+  /** The channels a list of names asks for: each name an id or an instrument. */
+  function resolve(names: readonly string[]): string[] {
+    const ids: string[] = [];
+    names.forEach(function (name) {
+      doc!.channels.forEach(function (c) {
+        const match = c.id === name || (c.kind === "drums" && c.instrument === name);
+        if (match && ids.indexOf(c.id) < 0) ids.push(c.id);
+      });
+    });
+    return ids;
+  }
+
+  function remembered(key: string): string | null {
+    try { return localStorage.getItem("clickbait." + key); } catch (e) { return null; }
+  }
+  function remember(key: string, value: string): void {
+    try { localStorage.setItem("clickbait." + key, value); } catch (e) { /* private window */ }
+  }
+
+  /** The panes to show: the URL's channels, else what this screen showed last, else lyrics. */
+  function wantedOrder(): string[] {
+    if (urlOptions.channels) return resolve(urlOptions.channels);
+    const saved = remembered("channels");
+    if (saved !== null) {
+      try { return resolve(JSON.parse(saved)); } catch (e) { /* ignore */ }
+    }
+    const lyrics = resolve(["lyrics"]);
+    return lyrics.length ? lyrics : doc!.channels.slice(0, 1).map(function (c) { return c.id; });
+  }
+
+  function sizeOf(channel: RowChannel): number {
+    const k = kindOf(channel);
+    const v = urlOptions.sizes[channel.id] ?? parseFloat(remembered("size." + channel.id) ?? "");
+    return isNaN(v) ? k.size : Math.min(k.max, Math.max(k.min, v));
+  }
+
+  function rowsOf(channel: RowChannel): number {
+    const v = urlOptions.rows[channel.id] ?? parseInt(remembered("rows." + channel.id) ?? "", 10);
+    return isNaN(v) ? kindOf(channel).rows : Math.min(MAX_ROWS, Math.max(1, v));
+  }
+
+  function headerSize(): number {
+    const v = urlOptions.sizes.header ?? parseFloat(remembered("size.header") ?? "");
+    return isNaN(v) ? HEADER.size : Math.min(HEADER.max, Math.max(HEADER.min, v));
+  }
+
+  /** Rewrite the URL to match the page, so copying it copies the setup. */
+  function writeUrl() {
+    const options = {
+      channels: order.slice(),
+      sizes: {},
+      rows: {},
+      offset: offsetBeats !== 0 ? offsetBeats : undefined,
+      scroll: autoScroll ? undefined : "manual",
+      theme: document.body.classList.contains("light") ? "light" : undefined,
+    } as any;
+    if (headerSize() !== HEADER.size) options.sizes.header = headerSize();
+    const names = ["header"];
+    (doc ? doc.channels : []).forEach(function (c) {
+      names.push(c.id);
+      if (order.indexOf(c.id) < 0) return;
+      if (sizeOf(c) !== kindOf(c).size) options.sizes[c.id] = sizeOf(c);
+      if (rowsOf(c) !== kindOf(c).rows) options.rows[c.id] = rowsOf(c);
+    });
+    try { history.replaceState(null, "", location.pathname + displayQuery(options, names)); } catch (e) { /* file:// */ }
+  }
+
+  /** Change what's shown and re-render in place, keeping the beat. */
+  function changed() {
+    remember("channels", JSON.stringify(order));
+    writeUrl();
+    renderPanes();
+    renderDrawerChannels();
+    if (rawBeat >= 0) onBeatUpdate(rawBeat);
+  }
+
   // ── Init ──
   function renderWaiting() {
     titleEl.textContent = "Waiting for song…";
@@ -136,30 +202,28 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
     barBeatEl.textContent = "–";
     metered = [];
     sectionNames = [];
+    doc = null;
     renderSongMap();
     document.title = "clickbAIt: One Simple Track";
     container.innerHTML = '<div class="waiting-message">No song loaded yet.</div>';
-    sectionElements = [];
-    lyricElements = [];
-    wordElements = [];
+    panes = [];
   }
 
   async function loadSong() {
-    if (typeof window.__SONG_DATA__ === "object" && window.__SONG_DATA__) {
-      song = window.__SONG_DATA__;
-      // A practice bundle carries its chords inline; there's no relay to ask.
-      chordData = song.chordData || null;
+    if (typeof (window as any).__SONG_DATA__ === "object" && (window as any).__SONG_DATA__) {
+      song = (window as any).__SONG_DATA__;
+      // A practice bundle carries its rows inline; there's no relay to ask.
+      doc = song.rows || null;
       renderSong();
       return;
     }
     try {
-      var res = await fetch("song.json");
+      const res = await fetch("song.json");
       if (!res.ok) { renderWaiting(); return; }
       song = await res.json();
-      await loadChords();
-      await loadDrums();
+      const rows = await fetch("rows.json");
+      doc = rows.ok ? await rows.json() : null;
       renderSong();
-      renderDrawerChannels();
     } catch (e) {
       statusEl.textContent = "Failed to load song";
       statusEl.className = "disconnected";
@@ -182,11 +246,11 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
     songMapEl.innerHTML = "";
     mapFills = [];
     songMap(metered).forEach(function (seg, i) {
-      var el = document.createElement("div");
+      const el = document.createElement("div");
       el.className = "map-seg";
       el.style.flex = seg.width + " 1 0";
       el.title = sectionNames[i] || "";
-      var fill = document.createElement("div");
+      const fill = document.createElement("div");
       fill.className = "map-fill";
       el.appendChild(fill);
       songMapEl.appendChild(el);
@@ -195,256 +259,18 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
   }
 
   function updateSongMap(beat) {
-    var p = songProgress(metered, beat);
+    const p = songProgress(metered, beat);
     mapFills.forEach(function (fill, i) {
-      var done = i < p.section ? 1 : i === p.section ? p.inSection : 0;
+      const done = i < p.section ? 1 : i === p.section ? p.inSection : 0;
       fill.style.width = (done * 100) + "%";
       fill.parentNode.classList.toggle("past", i < p.section);
       fill.parentNode.classList.toggle("now", i === p.section);
     });
   }
 
-  // ── Chords ──
-  // On when the page asks for them (?channels=chords,lyrics) or the viewer
-  // turned them on last time.
-  function channelWanted(channel, byDefault) {
-    if (urlOptions.channels) return urlOptions.channels.indexOf(channel) >= 0;
-    try {
-      var saved = localStorage.getItem("clickbait." + channel);
-      if (saved !== null) return saved === "1";
-    } catch (e) { /* private window */ }
-    return byDefault;
-  }
-
-  /** Rewrite the URL to match the page, so copying it copies the setup. */
-  function writeUrl() {
-    var options = {
-      channels: [lyricsOn ? "lyrics" : null, chordsOn ? "chords" : null, drumsOn ? "drums" : null].filter(Boolean),
-      sizes: {},
-      offset: offsetBeats !== 0 ? offsetBeats : undefined,
-      scroll: autoScroll ? undefined : "manual",
-      theme: document.body.classList.contains("light") ? "light" : undefined,
-    };
-    CHANNELS.forEach(function (c) {
-      if (currentSizes[c.channel] !== undefined && currentSizes[c.channel] !== c.size) options.sizes[c.channel] = currentSizes[c.channel];
-    });
-    try { history.replaceState(null, "", location.pathname + displayQuery(options, SIZED)); } catch (e) { /* file:// */ }
-  }
-
-  async function loadChords() {
-    chordData = null;
-    try {
-      var res = await fetch("/charts/chords");
-      if (res.ok) chordData = await res.json();
-    } catch (e) { /* no relay charts: no chords */ }
-  }
-
-  /** Turn chords on or off, re-rendering in place so the page keeps its beat. */
-  function setChordsOn(on) {
-    chordsOn = on;
-    channelChanged("chords", on);
-  }
-
-  function setDrumsOn(on) {
-    drumsOn = on;
-    channelChanged("drums", on);
-  }
-
-  function setLyricsOn(on) {
-    lyricsOn = on;
-    channelChanged("lyrics", on);
-  }
-
-  /** Remember a channel switch and re-render in place, keeping the beat. */
-  function channelChanged(channel, on) {
-    try { localStorage.setItem("clickbait." + channel, on ? "1" : "0"); } catch (e) { /* private window */ }
-    writeUrl();
-    var beat = rawBeat;
-    renderSong();
-    if (beat >= 0) onBeatUpdate(beat);
-  }
-
-  /** The song's first drum chart, if it has one. */
-  async function loadDrums() {
-    drumChart = null;
-    try {
-      var res = await fetch("/charts/channels");
-      if (!res.ok) return;
-      var drums = (await res.json()).channels.filter(function (c) { return c.kind === "drums"; })[0];
-      if (!drums) return;
-      var one = await fetch("/charts/chart/" + encodeURIComponent(drums.id));
-      if (one.ok) drumChart = (await one.json()).chart;
-    } catch (e) { /* no relay charts: no drums */ }
-  }
-
-  /** Whether a run shows its groove's notation (its first time in the section). */
-  function drawsNotation(run) {
-    return run.first && run.letter !== null;
-  }
-
-  /** The run's letter: "(A)" over notation, "A" alone, "–" for no score bar. */
-  function runLetter(run) {
-    return run.letter === null ? "–" : drawsNotation(run) ? "(" + run.letter + ")" : run.letter;
-  }
-
-  /**
-   * Show a run's count ("×4"), after its notation or after its letter. While
-   * it plays, which pass this is ("3/4") hangs under the count, taking no room
-   * in the line, so the line doesn't reflow as the highlight moves.
-   */
-  function showRun(ref, pass) {
-    var count = ref.run.count > 1 ? "×" + ref.run.count : "";
-    var el = ref.count || ref.label;
-    el.textContent = ref.count ? count : runLetter(ref.run) + (count ? " " + count : "");
-    if (pass && ref.run.count > 1) {
-      var tag = document.createElement("span");
-      tag.className = "drum-pass";
-      tag.textContent = pass + "/" + ref.run.count;
-      el.appendChild(tag);
-    }
-  }
-
-  /**
-   * The drum chart: a line per section of groove letters, with each groove's
-   * notation drawn where it's first played.
-   */
-  function renderDrumChart() {
-    drumRuns = [];
-    drumSectionEls = [];
-    lastRun = null;
-    var generation = ++drumGeneration;
-    var chart = document.createElement("div");
-    chart.className = "drum-chart";
-    var toDraw = [];
-    drumChart.grooves.sections.forEach(function (sec) {
-      var secEl = document.createElement("div");
-      secEl.className = "drum-section";
-      var nameEl = document.createElement("div");
-      nameEl.className = "section-name";
-      var bars = metered[sec.section] ? metered[sec.section].bars : 0;
-      nameEl.textContent = (sectionNames[sec.section] || "") + (bars ? " · " + bars + (bars === 1 ? " bar" : " bars") : "");
-      secEl.appendChild(nameEl);
-      if (!lyricsOn && metered[sec.section]) sectionElements.push({ el: nameEl, beat: metered[sec.section].startBeat });
-      var runsEl = document.createElement("div");
-      runsEl.className = "drum-runs";
-      drumRuns[sec.section] = sec.runs.map(function (run) {
-        var runEl = document.createElement("div");
-        runEl.className = "drum-run" + (run.first ? " first" : "");
-        var label = document.createElement("span");
-        label.className = "drum-label";
-        runEl.appendChild(label);
-        var ref = { el: runEl, label: label, count: null, run: run };
-        if (drawsNotation(run)) {
-          // In line: the letter, the groove, and its count after it: (B) [groove] ×8.
-          label.textContent = runLetter(run);
-          var body = document.createElement("div");
-          body.className = "drum-body";
-          body.appendChild(label);
-          var groove = drumChart.grooves.grooves.filter(function (g) { return g.letter === run.letter; })[0];
-          var notation = document.createElement("div");
-          notation.className = "drum-notation";
-          body.appendChild(notation);
-          ref.count = document.createElement("span");
-          ref.count.className = "drum-label drum-count";
-          body.appendChild(ref.count);
-          runEl.appendChild(body);
-          if (groove) toDraw.push({ el: notation, bar: groove.scoreBar });
-        }
-        showRun(ref, 0);
-        runsEl.appendChild(runEl);
-        return ref;
-      });
-      secEl.appendChild(runsEl);
-      chart.appendChild(secEl);
-      drumSectionEls[sec.section] = secEl;
-    });
-    container.appendChild(chart);
-
-    // Notation draws once alphaTab and the score have loaded.
-    Promise.all([loadAlphaTab(), loadScore("/charts/source/" + encodeURIComponent(drumChart.id))])
-      .then(function (loaded) {
-        if (generation !== drumGeneration) return;
-        // Ink in the page's text color, so notation reads in either theme.
-        var ink = getComputedStyle(document.body).color;
-        toDraw.forEach(function (d) { renderBar(loaded[0], d.el, loaded[1], drumChart.track, d.bar, ink); });
-      })
-      .catch(function (e) { statusEl.textContent = "Notation: " + e.message; });
-  }
-
-  /** Light the drum run playing, with which pass of it this is ("3/8"). */
-  function updateDrumHighlight(beat) {
-    if (!drumChart || !drumRuns.length) return;
-    var at = runAt(drumChart.grooves, beat);
-    var ref = at ? drumRuns[at.section] && drumRuns[at.section][at.run] : null;
-    if (lastRun && lastRun !== ref) {
-      lastRun.el.classList.remove("now");
-      showRun(lastRun, 0);
-    }
-    if (ref) {
-      ref.el.classList.add("now");
-      showRun(ref, at.bar);
-    }
-    lastRun = ref;
-  }
-
-  function updateChordHighlight(readingBeat) {
-    if (!chordLayout) return;
-    var c = currentChord(chordData.chords, readingBeat);
-    if (c === lastChord) return;
-    if (lastChord >= 0 && chordEls[lastChord]) chordEls[lastChord].classList.remove("current");
-    if (c >= 0 && chordEls[c]) chordEls[c].classList.add("current");
-    lastChord = c;
-  }
-
-  /** A chord row: an optional section label and a line of bars. */
-  function chordRowElement(row) {
-    var wrap = document.createElement("div");
-    wrap.className = "chord-bars-row";
-    if (row.label) {
-      var nameEl = document.createElement("div");
-      nameEl.className = "section-name";
-      nameEl.textContent = row.label;
-      wrap.appendChild(nameEl);
-      sectionElements.push({ el: nameEl, beat: row.bars[0].startBeat });
-    }
-    // Four-bar lines, the same breaks e-ink uses.
-    rowLines(row.bars).forEach(function (line) {
-      var barsEl = document.createElement("div");
-      barsEl.className = "chord-bars";
-      // Each bar's share of the line is set by its beats; a short last line is
-      // padded so its bars line up with the lines above.
-      line.forEach(function (bar, k) {
-        var barEl = document.createElement("div");
-        barEl.className = "chord-bar" + (k === line.length - 1 ? " end" : "");
-        var grid = barGrid(bar);
-        barEl.style.flexGrow = String(bar.beats);
-        barEl.style.gridTemplateColumns = "repeat(" + grid.columns + ", 1fr)";
-        bar.chords.forEach(function (c, k) {
-          var el = document.createElement("span");
-          el.className = "chord";
-          el.textContent = chordData.chords[c.chord].chord;
-          el.style.gridColumnStart = String(grid.starts[k]);
-          barEl.appendChild(el);
-          chordEls[c.chord] = el;
-        });
-        barsEl.appendChild(barEl);
-      });
-      // A full line is four of the song's bars; pad a shorter one to that.
-      var room = BARS_PER_LINE * countInBeatsPerBar - line.reduce(function (sum, bar) { return sum + bar.beats; }, 0);
-      if (room > 0) {
-        var pad = document.createElement("div");
-        pad.className = "chord-bar-pad";
-        pad.style.flexGrow = String(room);
-        barsEl.appendChild(pad);
-      }
-      wrap.appendChild(barsEl);
-    });
-    return wrap;
-  }
-
   // ── Bundle-mode clock: drive from <audio id="mix-audio"> ──
   function startAudioClock() {
-    const audio = document.getElementById("mix-audio");
+    const audio = document.getElementById("mix-audio") as HTMLAudioElement;
     if (!audio) {
       statusEl.textContent = "No <audio id=\"mix-audio\"> element found";
       statusEl.className = "disconnected";
@@ -463,16 +289,16 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
         // Only act on a SETTLED clock. While a seek is in flight, currentTime
         // reads its stale pre-seek value, which would (a) fire a second wrap
         // (double click) and (b) emit a beat that flickers the highlight back
-        // to the section's last line before the seek lands at the start.
+        // before the seek lands at the start.
         //
         // Keep playback inside the loop: wrap at the end (a scrub earlier is
         // left alone so a manual lead-in works). Setting currentTime starts the
         // seek, so we skip the emit this frame and resume once it settles.
-        var wrapTo = loop ? loopWrapTarget(audio.currentTime, loop.startTime, loop.endTime) : null;
+        const wrapTo = loop ? loopWrapTarget(audio.currentTime, loop.startTime, loop.endTime) : null;
         if (wrapTo !== null) {
           audio.currentTime = wrapTo;
-        } else {
-          clock.emit(beatFromSeconds(audio.currentTime || 0));
+        } else if (curve) {
+          clock.emit(curve.toBeat(audio.currentTime || 0));
         }
       }
       requestAnimationFrame(tick);
@@ -482,103 +308,78 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
 
   // Loop + slow-down controls, shown only in bundle mode (they act on the
   // <audio> element; live/OSC mode has no such clock to steer).
-  function setupBundleControls(audio) {
+  function setupBundleControls(audio: HTMLAudioElement) {
     if (!bundleControls) return;
     bundleControls.hidden = false;
 
     // Mix variant (full / minus-<part> / click only): the bundle inlines one
     // <option> per rendered file. Every variant is the same render length, so
     // section loops carry over; playback restarts from the top on a switch.
-    var variantSel = document.getElementById("mix-variant");
+    const variantSel = document.getElementById("mix-variant") as HTMLSelectElement;
     if (variantSel) {
       variantSel.addEventListener("change", function () {
-        var wasPlaying = !audio.paused;
+        const wasPlaying = !audio.paused;
         audio.src = variantSel.value;
         audio.load();
         audio.currentTime = 0;
         if (wasPlaying) audio.play().catch(function () {});
       });
     }
-    var sections = (isLD && song.display && song.display.sections) || [];
+    const sections = (song.display && song.display.sections) || [];
 
     // "from" gets Off + every section; "to" gets every section (instrumentals
     // included — loop a solo, or a contiguous run like Verse → Chorus).
     sections.forEach(function (s, i) {
-      var a = document.createElement("option");
+      const a = document.createElement("option");
       a.value = String(i); a.textContent = s.name; loopFrom.appendChild(a);
-      var b = document.createElement("option");
+      const b = document.createElement("option");
       b.value = String(i); b.textContent = s.name; loopTo.appendChild(b);
     });
 
     // Apply the current from/to selection. Clamps to a valid contiguous range
     // (to >= from), seeks to the range start, and plays.
     function applyLoop() {
-      var from = parseInt(loopFrom.value, 10);
+      const from = parseInt(loopFrom.value, 10);
       if (from < 0 || !curve || !sections.length) { loop = null; return; }
-      var to = parseInt(loopTo.value, 10);
+      let to = parseInt(loopTo.value, 10);
       if (isNaN(to) || to < from) { to = from; loopTo.value = String(to); }
-      var dur = isFinite(audio.duration) ? audio.duration : Infinity;
-      var b = sectionLoopBounds(sections, from, to, function (beat) { return curve.toTime(beat); }, dur);
+      const dur = isFinite(audio.duration) ? audio.duration : Infinity;
+      const b = sectionLoopBounds(sections, from, to, function (beat) { return curve.toTime(beat); }, dur);
       loop = { startTime: b.startTime, endTime: b.endTime };
       audio.currentTime = b.startTime;
       if (audio.paused) audio.play().catch(function () {});
     }
 
-    // Set the range explicitly (used by section-name clicks).
-    function setLoopRange(from, to) {
-      loopFrom.value = String(from);
-      loopTo.value = String(to < from ? from : to);
-      applyLoop();
-    }
-
     loopFrom.addEventListener("change", applyLoop);
     loopTo.addEventListener("change", applyLoop);
-
-    // Click a rendered section name to loop just it; shift-click a second one to
-    // extend the range to there (a discoverable alternative to the dropdowns —
-    // only lyric sections get a header, so the dropdowns still cover instrumentals).
-    container.addEventListener("click", function (e) {
-      var el = e.target.closest && e.target.closest(".section-name");
-      if (!el) return;
-      var idx = sections.findIndex(function (s) { return s.name === el.textContent; });
-      if (idx < 0) return;
-      var from = parseInt(loopFrom.value, 10);
-      if (e.shiftKey && from >= 0) {
-        setLoopRange(Math.min(from, idx), Math.max(from, idx));
-      } else {
-        setLoopRange(idx, idx);
-      }
-    });
 
     function applySpeed(v) {
       audio.playbackRate = v;
       audio.preservesPitch = true;
-      audio.mozPreservesPitch = true;
-      audio.webkitPreservesPitch = true;
+      (audio as any).mozPreservesPitch = true;
+      (audio as any).webkitPreservesPitch = true;
       speedValue.textContent = Math.round(v * 100) + "%";
     }
     speedSlider.addEventListener("input", function () { applySpeed(parseFloat(this.value)); });
     applySpeed(parseFloat(speedSlider.value));
   }
 
-  // ── Render: dispatch on format ──
+  // ── Render ──
   function renderSong() {
-    isLD = song.schema === "clickbait/lyrics-display@1";
-    curve = isLD && song.curve ? new Curve(song.curve) : null;
+    if (song.schema !== "clickbait/lyrics-display@1") {
+      renderWaiting();
+      titleEl.textContent = song.title || "Song";
+      container.innerHTML = '<div class="waiting-message">This song was built by an older clickbait. Rebuild it to show it here.</div>';
+      return;
+    }
+    curve = song.curve ? new Curve(song.curve) : null;
 
     titleEl.textContent = song.title;
     nowSectionEl.textContent = "";
     barBeatEl.textContent = "–";
     countInBeatsPerBar = (song.timeSignature && song.timeSignature[0]) || 4;
-    if (isLD) {
-      metered = sectionMeters(song);
-      sectionNames = song.display.sections.map(function (s) { return s.name; });
-    } else {
-      metered = (song.sections || []).map(function (s) {
-        return { startBeat: s.beat, bars: s.durationBeats / countInBeatsPerBar, beatsPerBar: countInBeatsPerBar };
-      });
-      sectionNames = (song.sections || []).map(function (s) { return s.name; });
-    }
+    metered = sectionMeters(song);
+    sectionNames = song.display.sections.map(function (s) { return s.name; });
     renderSongMap();
     const parts = [];
     if (song.artist) parts.push(song.artist);
@@ -587,178 +388,94 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
     metaEl.textContent = parts.join(" · ");
     document.title = song.title + " — clickbAIt: One Simple Track";
 
-    container.innerHTML = "";
-    sectionElements = [];
-    lyricElements = [];
-    wordElements = [];
-    chordEls = [];
-    rowEls = [];
-    lastChord = -1;
-    chordLayout = null;
-    chordInput = null;
-    if (isLD && chordsOn && chordData) {
-      // Without lyrics there are no words to hang chords on, so every chord
-      // goes into bar rows: a chart, a labeled row per section.
-      chordInput = {
-        sections: chordData.sections,
-        words: lyricsOn ? song.words : [],
-        lines: lyricsOn ? song.display.lines : [],
-        chords: chordData.chords,
-      };
-      chordLayout = layoutChords(chordInput);
-    }
+    // Sizes and rows in the URL are by channel id, known only now.
+    const names = ["header"].concat(doc ? doc.channels.map(function (c) { return c.id; }) : []);
+    urlOptions = parseDisplayOptions(location.search, names);
+    order = doc ? wantedOrder() : [];
+    renderPanes();
+    renderDrawerChannels();
 
-    container.classList.toggle("chords-on", !!chordLayout);
-    if (isLD && drumsOn && drumChart) renderDrumChart();
-    if (isLD) renderLyricsDisplay();
-    else renderLegacy();
-
-    // New song: jump back to the top and clear the beat position. Otherwise the
-    // page lingers at the previous song's scroll/highlight (often the very end)
-    // until the next OSC beat arrives — and if REAPER is stopped, none does.
+    // New song: clear the beat position, so the page doesn't linger at the
+    // previous song's place until the next OSC beat arrives.
     rawBeat = -1;
-    currentBeat = -1;
-    scrollTarget = 0;
     window.scrollTo(0, 0);
   }
 
-  // ── LyricsDisplay renderer: words grouped into lines + sections ──
-  function renderLyricsDisplay() {
-    const words = song.words;
-    const lines = lyricsOn ? song.display.lines : [];
-    const sections = song.display.sections || [];
-    if (!lyricsOn && !chordLayout) {
-      // The drum chart already lists every section.
-      if (drumsOn && drumChart) return;
-      // Neither lyrics nor chords: just the song's sections, to follow along.
-      sections.forEach(function (s) {
-        var nameEl = document.createElement("div");
-        nameEl.className = "section-name";
-        nameEl.textContent = s.name + (s.bars ? " · " + s.bars + (s.bars === 1 ? " bar" : " bars") : "");
-        container.appendChild(nameEl);
-        sectionElements.push({ el: nameEl, beat: s.startBeat });
-      });
+  function renderPanes() {
+    container.innerHTML = "";
+    panes = [];
+    const gen = ++generation;
+    if (!doc) {
+      container.innerHTML = '<div class="waiting-message">No rows for this song yet. Rebuild it to show it here.</div>';
       return;
     }
-    let lastSection = null;
-    const rows = chordLayout ? chordLayout.rows : [];
-    function appendRowsBefore(li) {
-      rows.forEach(function (row, ri) {
-        if (row.beforeLine !== li) return;
-        var el = chordRowElement(row);
-        rowEls[ri] = el;
-        container.appendChild(el);
-        // A labeled row names its section, so a line after it in the same
-        // section shouldn't repeat the header.
-        if (row.label) lastSection = row.label;
-      });
+    if (!order.length) {
+      container.innerHTML = '<div class="waiting-message">Nothing shown. Pick channels in ⚙.</div>';
+      return;
     }
-
-    lines.forEach(function (line, li) {
-      appendRowsBefore(li);
-      // Section header when the line's section changes.
-      if (line.section && line.section !== lastSection) {
-        var nameEl = document.createElement("div");
-        nameEl.className = "section-name";
-        nameEl.textContent = line.section;
-        container.appendChild(nameEl);
-        var secInfo = sections.find(function (s) { return s.name === line.section; });
-        sectionElements.push({ el: nameEl, beat: secInfo ? secInfo.startBeat : 0 });
-        lastSection = line.section;
+    order.forEach(function (id) {
+      const channel = doc!.channels.filter(function (c) { return c.id === id; })[0];
+      if (!channel) return;
+      const view = channelView(channel);
+      const el = document.createElement("section");
+      el.className = "pane pane-" + channel.kind;
+      el.style.fontSize = sizeOf(channel) + "rem";
+      // Notation scales with the pane's size.
+      if (channel.kind === "drums") el.style.setProperty("--drum-zoom", String(sizeOf(channel) / 1.2));
+      const rowsEl = document.createElement("div");
+      rowsEl.className = "pane-rows";
+      view.rows.forEach(function (r) { rowsEl.appendChild(r.el); });
+      el.appendChild(rowsEl);
+      container.appendChild(el);
+      const perPage = rowsOf(channel);
+      const pane: Pane = { channel, view, el, rowsEl, perPage, pages: panePages(channel.rows, perPage), page: -1, litRow: -1, litItem: -1 };
+      panes.push(pane);
+      // Staffs draw once alphaTab and the score load (not in a bundle, which
+      // has no relay to serve them); the pane is sized again when they do.
+      if (channel.kind === "drums" && view.notation.length && !song.bundle) {
+        const ink = getComputedStyle(document.body).color;
+        drawNotation(view.notation, "/charts/source/" + encodeURIComponent(channel.id), channel.track, ink)
+          .then(function () { if (gen === generation) sizePane(pane); })
+          .catch(function (e) { statusEl.textContent = "Notation: " + e.message; });
       }
-
-      var lineEl = document.createElement("div");
-      lineEl.className = "lyric-line";
-      if (line.tag) lineEl.dataset.tag = line.tag;
-
-      var first = words[line.words[0]];
-      lineEl.dataset.beat = first ? first.startBeat : 0;
-
-      for (var i = line.words[0]; i <= line.words[1] && i < words.length; i++) {
-        var w = words[i];
-        var span = document.createElement("span");
-        span.className = "word";
-        if (chordLayout) {
-          // Every word gets a chord slot above it, empty or not, so all the
-          // text in a line sits at the same height under a row of chords.
-          var ci = chordLayout.overWord[i];
-          var chordEl = document.createElement("span");
-          chordEl.className = "chord";
-          if (ci !== undefined) {
-            chordEl.textContent = chordData.chords[ci].chord;
-            chordEls[ci] = chordEl;
-          } else {
-            chordEl.textContent = "\u00a0";
-          }
-          span.appendChild(chordEl);
-          span.appendChild(document.createTextNode(w.text));
-        } else {
-          span.textContent = w.text;
-        }
-        lineEl.appendChild(span);
-        lineEl.appendChild(document.createTextNode(" "));
-        wordElements.push({ el: span, startBeat: w.startBeat, endBeat: w.endBeat, lineEl: lineEl });
-      }
-
-      container.appendChild(lineEl);
+      if (typeof ResizeObserver !== "undefined") new ResizeObserver(function () { sizePane(pane); }).observe(rowsEl);
     });
-    appendRowsBefore(lines.length);
+    panes.forEach(sizePane);
+    showScrollClass();
   }
 
-  // ── Legacy renderer (line-level SongPayload) ──
-  function renderLegacy() {
-    song.sections.forEach(function (section, sIdx) {
-      var sectionDiv = document.createElement("div");
-      sectionDiv.className = "section";
-      sectionDiv.dataset.beat = section.beat;
-
-      var nameEl = document.createElement("div");
-      nameEl.className = "section-name";
-      nameEl.textContent = section.name;
-      sectionDiv.appendChild(nameEl);
-
-      var items = [];
-      (section.chords || []).forEach(function (c) { items.push({ beat: c.beat, type: "chord", text: c.chord }); });
-      (section.lyrics || []).forEach(function (l) { items.push({ beat: l.beat, type: "lyric", text: l.text, tag: l.tag }); });
-      items.sort(function (a, b) { return a.beat - b.beat; });
-
-      var beatGroups = [];
-      var lastBeat = null;
-      items.forEach(function (item) {
-        if (item.beat !== lastBeat) { beatGroups.push({ beat: item.beat, chords: [], lyrics: [] }); lastBeat = item.beat; }
-        var group = beatGroups[beatGroups.length - 1];
-        if (item.type === "chord") group.chords.push(item); else group.lyrics.push(item);
-      });
-
-      beatGroups.forEach(function (group) {
-        if (group.chords.length > 0) {
-          var chordRow = document.createElement("div");
-          chordRow.className = "chord-row";
-          chordRow.textContent = group.chords.map(function (c) { return c.text; }).join("  ");
-          sectionDiv.appendChild(chordRow);
-        }
-        group.lyrics.forEach(function (l) {
-          var lineEl = document.createElement("div");
-          lineEl.className = "lyric-line";
-          lineEl.textContent = l.text;
-          lineEl.dataset.beat = l.beat;
-          sectionDiv.appendChild(lineEl);
-          lyricElements.push({ el: lineEl, beat: l.beat, sectionIdx: sIdx });
-        });
-      });
-
-      container.appendChild(sectionDiv);
-      sectionElements.push({ el: sectionDiv, beat: section.beat, sectionIdx: sIdx });
+  /** Make a pane tall enough for its tallest page, and put it back on its page. */
+  function sizePane(p: Pane) {
+    const rows = p.view.rows.map(function (r) { return r.el; });
+    let height = 0;
+    p.pages.forEach(function (pg) {
+      const top = rows[pg.first].offsetTop;
+      const bottom = rows[pg.last].offsetTop + rows[pg.last].offsetHeight;
+      height = Math.max(height, bottom - top);
     });
+    p.el.style.height = height ? height + "px" : "";
+    const page = p.page;
+    p.page = -1;
+    if (page >= 0) showPage(p, page, false);
+  }
+
+  function showPage(p: Pane, index: number, smooth: boolean) {
+    if (index === p.page || !p.pages[index]) return;
+    p.page = index;
+    const top = p.view.rows[p.pages[index].first].el.offsetTop;
+    try { p.el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" }); } catch (e) { p.el.scrollTop = top; }
+  }
+
+  /** Manual scroll lets the reader scroll each pane; auto turns them. */
+  function showScrollClass() {
+    container.classList.toggle("manual", !autoScroll);
   }
 
   // ── Show state (bail / vamp), pushed by the relay ──
   //
-  // The display's precision should track the system's confidence. While
-  // following, it highlights the current word. The moment someone bails, the
-  // band is free-running and any word-level claim is the track's opinion rather
-  // than the room's — so the body gets a mode class and the CSS lights the
-  // whole section instead of pointing at a line that may be wrong.
+  // The display's precision should track the system's confidence. The moment
+  // someone bails, the band is free-running, so the body gets a mode class
+  // and the CSS stops pointing at a word that may be wrong.
   function applyShowState(state) {
     if (!state || !state.mode) return;
     document.body.classList.remove(
@@ -769,7 +486,7 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
 
   // ── WebSocket ──
   function connectWebSocket() {
-    var protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(protocol + "//" + location.host);
     ws.onopen = function () {
       statusEl.textContent = "Connected";
@@ -777,7 +494,7 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     };
     ws.onmessage = function (event) {
-      var msg;
+      let msg;
       try { msg = JSON.parse(event.data); } catch (e) { return; }
       if (msg.type === "position") clock.emit(msg.beat);
       else if (msg.type === "stop") transportLight.className = "stopped";
@@ -796,10 +513,10 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
   // ── Beat update ──
   function onBeatUpdate(beat) {
     rawBeat = beat;
-    var readingBeat = beat + offsetBeats;
-    currentBeat = readingBeat;
+    if (!song || !metered.length) return;
+    const readingBeat = beat + offsetBeats;
     // What's playing now (not the reading position): section, bar and beat.
-    var pos = songPosition(metered, beat, countInBeatsPerBar);
+    const pos = songPosition(metered, beat, countInBeatsPerBar);
     updateSongMap(beat);
     nowSectionEl.textContent = " : " + (pos.section >= 0 ? sectionNames[pos.section] : "Count-in");
     // Bar out of the section's bars, so the reader sees how far through it is.
@@ -807,212 +524,184 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
       ? "(" + pos.bar + " : " + pos.beat + ") of " + metered[pos.section].bars
       : "(" + pos.bar + " : " + pos.beat + ")";
     beatDisplay.textContent = "m" + pos.measure + ":" + pos.beat;
+    if (!doc) return;
 
-    if (isLD) updateWordHighlight(readingBeat);
-    else updateHighlightLegacy(beat, readingBeat);
-    updateChordHighlight(readingBeat);
-    updateDrumHighlight(beat);
-
-    if (autoScroll) scrollToCurrentLine(readingBeat);
-  }
-
-  // LyricsDisplay word highlight. The bright ("active") word lights at its start
-  // and RELEASES when it's done, so the last word before a solo/rest doesn't
-  // stay lit through the gap. Release at min(next word start, start + clamped
-  // duration + grace): mid-phrase the next word wins (smooth karaoke, held notes
-  // stay lit); before a gap the clamped hold wins. CTC endBeats can be bogus-
-  // stretched into the following silence (that's the very lingering we're
-  // fixing), so the duration is clamped to a sane 1–3 beats. Words already
-  // started still read as "sung", and the last line stays "current" for context.
-  var HOLD_MIN = 1, HOLD_MAX = 3, HOLD_GRACE = 0.5;
-  function updateWordHighlight(readingBeat) {
-    var i = activeIndex(wordElements, readingBeat, function (w) { return w.startBeat; });
-    var active = i;
-    if (i >= 0) {
-      var w = wordElements[i];
-      var nextStart = i + 1 < wordElements.length ? wordElements[i + 1].startBeat : Infinity;
-      var dur = Math.min(HOLD_MAX, Math.max(HOLD_MIN, (w.endBeat || w.startBeat) - w.startBeat));
-      var releaseAt = Math.min(nextStart, w.startBeat + dur + HOLD_GRACE);
-      if (readingBeat >= releaseAt) active = -1; // word done — drop the bright highlight
-    }
-    var activeLine = i >= 0 ? wordElements[i].lineEl : null;
-    wordElements.forEach(function (item, idx) {
-      item.el.classList.toggle("active", idx === active);
-      item.el.classList.toggle("sung", idx <= i && idx !== active);
-      item.lineEl.classList.toggle("current", item.lineEl === activeLine);
+    // Words and chords light at the reading position, ahead of the music; a
+    // drum pass counts the bar actually playing.
+    const reading = itemsAt(doc, readingBeat);
+    const playing = itemsAt(doc, beat);
+    panes.forEach(function (p) {
+      if (autoScroll) showPage(p, panePageAt(p.pages, readingBeat), true);
+      const at = p.channel.kind === "drums" ? playing[p.channel.id] : reading[p.channel.id];
+      light(p, at, p.channel.kind === "drums" ? beat : readingBeat);
     });
   }
 
-  // Legacy line-level highlight.
-  function updateHighlightLegacy(nowBeat, readingBeat) {
-    var beatOf = function (l) { return l.beat; };
-    var nowIdx = activeIndex(lyricElements, nowBeat, beatOf);
-    var readIdx = activeIndex(lyricElements, readingBeat, beatOf);
-    lyricElements.forEach(function (item, idx) {
-      item.el.classList.remove("reading", "now", "past");
-      if (idx === readIdx) item.el.classList.add("reading");
-      else if (idx === nowIdx && nowIdx !== readIdx) item.el.classList.add("now");
-      else if (idx < nowIdx) item.el.classList.add("past");
-    });
-  }
-
-  // ── Scroll ──
-  var scrollTarget = 0;
-  var scrolling = false;
-  function animateScroll() {
-    // Manual mode lets the reader scroll: stop pulling toward the last target.
-    if (!autoScroll) { scrolling = false; return; }
-    var current = window.scrollY;
-    var diff = scrollTarget - current;
-    if (Math.abs(diff) < 1) { scrolling = false; return; }
-    window.scrollTo(0, current + diff * 0.1);
-    requestAnimationFrame(animateScroll);
-  }
-
-  function scrollToCurrentLine(beat) {
-    var target = null;
-    // While a chord row plays and nothing has been sung since, follow the row.
-    var follow = chordLayout ? followTarget(chordLayout, chordInput, beat) : null;
-    if (follow && "row" in follow) target = rowEls[follow.row] || null;
-    // A drum chart without lyrics follows its current section.
-    if (!target && drumsOn && !lyricsOn && drumChart && drumSectionEls.length) {
-      var dr = runAt(drumChart.grooves, beat);
-      if (dr) target = drumSectionEls[dr.section] || null;
+  function light(p: Pane, at, beat: number) {
+    const rows = p.view.rows;
+    if (p.litRow !== at.row) {
+      if (p.litRow >= 0 && rows[p.litRow]) rows[p.litRow].el.classList.remove("current");
+      if (at.row >= 0) rows[at.row].el.classList.add("current");
     }
-    if (!target && isLD) {
-      var wi = activeIndex(wordElements, beat, function (w) { return w.startBeat; });
-      if (wi >= 0) target = wordElements[wi].lineEl;
-    } else if (!target) {
-      var li = activeIndex(lyricElements, beat, function (l) { return l.beat; });
-      if (li >= 0) target = lyricElements[li].el;
+    // The item: a word, a chord, or a drum run with its pass.
+    if (p.litRow >= 0 && p.litItem >= 0 && (p.litRow !== at.row || p.litItem !== at.item)) {
+      const old = rows[p.litRow].items[p.litItem];
+      if (old) {
+        old.classList.remove("now");
+        if (p.channel.kind === "drums") showPass(old, p.channel.rows[p.litRow].items[p.litItem], 0);
+      }
     }
-    if (!target) {
-      var si = activeIndex(sectionElements, beat, function (s) { return s.beat; });
-      if (si >= 0) target = sectionElements[si].el;
+    if (at.row >= 0 && at.item >= 0) {
+      const item = rows[at.row].items[at.item];
+      if (item) {
+        item.classList.add("now");
+        if (p.channel.kind === "drums") showPass(item, p.channel.rows[at.row].items[at.item], at.pass);
+      }
     }
-    if (target) {
-      var rect = target.getBoundingClientRect();
-      scrollTarget = window.scrollY + rect.top - window.innerHeight * 0.4;
-      if (!scrolling) { scrolling = true; requestAnimationFrame(animateScroll); }
+    // Words already sung in the current line stay marked.
+    if (p.channel.kind === "lyrics" && at.row >= 0) {
+      const row = p.channel.rows[at.row];
+      rows[at.row].items.forEach(function (w, i) { w.classList.toggle("sung", row.items[i].start <= beat && i !== at.item); });
     }
+    p.litRow = at.row;
+    p.litItem = at.item;
   }
 
-  // ── Channels in the drawer ──
-  // One drawer section per channel the song offers: a show/hide switch for
-  // the optional ones and a size, remembered per screen. A new channel (tab,
-  // staff, …) adds an entry here with the CSS variable its rows use. `also`
-  // sets variables that follow the size (section labels belong to the lyrics).
-  var CHANNELS = [
-    {
-      // Not a channel: always shown, so it has a size but no switch.
-      channel: "header", label: "Header", cssVar: "--header-size", also: [],
-      min: 0.8, max: 3, step: 0.05, size: 1.2,
-      fixed: true,
-      isOn: function () { return true; },
-    },
-    {
-      channel: "lyrics", label: "Lyrics", cssVar: "--lyric-size", also: [{ cssVar: "--section-size", scale: 0.5 }],
-      min: 0.75, max: 3, step: 0.125, size: 1.5,
-      isOn: function () { return lyricsOn; },
-      setOn: setLyricsOn,
-    },
-    {
-      channel: "drums", label: "Drums", cssVar: "--drum-size", also: [{ cssVar: "--drum-zoom", scale: 1 / 1.2, unitless: true }],
-      min: 0.6, max: 2.5, step: 0.05, size: 1.2,
-      available: function () { return !!drumChart; },
-      isOn: function () { return drumsOn; },
-      setOn: setDrumsOn,
-    },
-    {
-      channel: "chords", label: "Chords", cssVar: "--chord-size", also: [],
-      min: 0.5, max: 2.25, step: 0.0625, size: 0.9,
-      available: function () { return !!chordData; },
-      isOn: function () { return chordsOn; },
-      setOn: setChordsOn,
-    },
-  ];
-
-  function sizeKey(c) { return "clickbait.size." + c.channel; }
-
-  var currentSizes = {};
-
-  function savedSize(c) {
-    if (urlOptions.sizes[c.channel] !== undefined) return Math.min(c.max, Math.max(c.min, urlOptions.sizes[c.channel]));
-    var saved = null;
-    try { saved = localStorage.getItem(sizeKey(c)); } catch (e) { /* private window */ }
-    var v = saved === null ? NaN : parseFloat(saved);
-    // Clamped, so a size saved under an older, wider range still fits.
-    return isNaN(v) ? c.size : Math.min(c.max, Math.max(c.min, v));
-  }
-
-  function applySize(c, v) {
-    var root = document.documentElement;
-    currentSizes[c.channel] = v;
-    root.style.setProperty(c.cssVar, v + "rem");
-    c.also.forEach(function (a) { root.style.setProperty(a.cssVar, v * a.scale + (a.unitless ? "" : "rem")); });
-  }
-
-  /**
-   * The drawer's channel part: a checkbox per channel the song offers, then a
-   * settings section for each channel that's on.
-   */
+  // ── Drawer ──
+  // A checkbox per channel the song offers, with buttons to move it up or
+  // down the stack, then each shown channel's size and rows.
   function renderDrawerChannels() {
     if (!drawerChannels) return;
     drawerChannels.innerHTML = "";
-    var offered = CHANNELS.filter(function (c) { return !c.available || c.available(); });
-    var switchable = offered.filter(function (c) { return !c.fixed; });
 
-    var list = document.createElement("section");
+    const list = document.createElement("section");
     list.className = "drawer-section";
-    var listHead = document.createElement("h2");
+    const listHead = document.createElement("h2");
     listHead.textContent = "Channels";
     list.appendChild(listHead);
-    switchable.forEach(function (c) {
-      var label = document.createElement("label");
-      var box = document.createElement("input");
+    const offered = doc ? doc.channels.slice() : [];
+    // Shown channels first, in their order, then the rest.
+    offered.sort(function (a, b) {
+      const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    offered.forEach(function (c) {
+      const label = document.createElement("label");
+      label.className = "channel-row";
+      const box = document.createElement("input");
       box.type = "checkbox";
-      box.checked = c.isOn();
-      box.disabled = !c.setOn;
-      if (c.setOn) {
-        box.addEventListener("change", function () {
-          c.setOn(box.checked);
-          renderDrawerChannels();
+      box.checked = order.indexOf(c.id) >= 0;
+      box.addEventListener("change", function () {
+        order = box.checked ? order.concat([c.id]) : order.filter(function (id) { return id !== c.id; });
+        changed();
+      });
+      label.appendChild(document.createTextNode(channelLabel(c)));
+      const i = order.indexOf(c.id);
+      if (i >= 0) {
+        const move = document.createElement("span");
+        move.className = "move";
+        [["↑", -1], ["↓", 1]].forEach(function (m) {
+          const btn = document.createElement("button");
+          btn.textContent = m[0] as string;
+          btn.title = m[1] === -1 ? "Move up" : "Move down";
+          const j = i + (m[1] as number);
+          btn.disabled = j < 0 || j >= order.length;
+          btn.addEventListener("click", function (e) {
+            e.preventDefault();
+            const next = order.slice();
+            next[i] = order[j];
+            next[j] = order[i];
+            order = next;
+            changed();
+          });
+          move.appendChild(btn);
         });
+        label.appendChild(move);
       }
-      label.appendChild(document.createTextNode(c.label));
       label.appendChild(box);
       list.appendChild(label);
     });
     drawerChannels.appendChild(list);
 
-    offered.forEach(function (c) {
-      if (!c.isOn()) return;
-      var section = document.createElement("section");
-      section.className = "drawer-section";
-      var h = document.createElement("h2");
-      h.textContent = c.label;
-      section.appendChild(h);
-      var sizeLabel = document.createElement("label");
-      var slider = document.createElement("input");
-      slider.type = "range";
-      slider.min = String(c.min);
-      slider.max = String(c.max);
-      slider.step = String(c.step);
-      slider.value = String(savedSize(c));
-      slider.addEventListener("input", function () {
-        applySize(c, parseFloat(slider.value));
-        try { localStorage.setItem(sizeKey(c), slider.value); } catch (e) { /* private window */ }
-        writeUrl();
-      });
-      sizeLabel.appendChild(document.createTextNode("Size"));
-      sizeLabel.appendChild(slider);
-      section.appendChild(sizeLabel);
-      drawerChannels.appendChild(section);
+    // The header's size, then each shown channel's.
+    drawerChannels.appendChild(settingsSection(HEADER.label, [
+      slider("Size", HEADER, headerSize(), function (v) {
+        delete urlOptions.sizes.header;
+        remember("size.header", String(v));
+        applyHeaderSize(v);
+      }),
+    ]));
+    order.forEach(function (id) {
+      const c = doc!.channels.filter(function (x) { return x.id === id; })[0];
+      if (!c) return;
+      const k = kindOf(c);
+      drawerChannels.appendChild(settingsSection(channelLabel(c), [
+        slider("Size", k, sizeOf(c), function (v) {
+          delete urlOptions.sizes[c.id];
+          remember("size." + c.id, String(v));
+          writeUrl();
+          const pane = panes.filter(function (p) { return p.channel.id === c.id; })[0];
+          if (pane) {
+            pane.el.style.fontSize = v + "rem";
+            if (c.kind === "drums") pane.el.style.setProperty("--drum-zoom", String(v / 1.2));
+          }
+        }),
+        rowsInput(c),
+      ]));
     });
   }
 
-  // ── Drawer ──
-  function setDrawerOpen(open) {
+  function settingsSection(title: string, controls: HTMLElement[]): HTMLElement {
+    const section = document.createElement("section");
+    section.className = "drawer-section";
+    const h = document.createElement("h2");
+    h.textContent = title;
+    section.appendChild(h);
+    controls.forEach(function (c) { section.appendChild(c); });
+    return section;
+  }
+
+  function slider(name: string, range, value: number, onInput: (v: number) => void): HTMLElement {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(range.min);
+    input.max = String(range.max);
+    input.step = String(range.step);
+    input.value = String(value);
+    input.addEventListener("input", function () {
+      onInput(parseFloat(input.value));
+      writeUrl();
+    });
+    label.appendChild(document.createTextNode(name));
+    label.appendChild(input);
+    return label;
+  }
+
+  function rowsInput(c: RowChannel): HTMLElement {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "1";
+    input.max = String(MAX_ROWS);
+    input.value = String(rowsOf(c));
+    input.className = "rows-input";
+    input.addEventListener("change", function () {
+      const v = Math.min(MAX_ROWS, Math.max(1, parseInt(input.value, 10) || 1));
+      delete urlOptions.rows[c.id];
+      remember("rows." + c.id, String(v));
+      changed();
+    });
+    label.appendChild(document.createTextNode("Rows"));
+    label.appendChild(input);
+    return label;
+  }
+
+  function applyHeaderSize(v: number) {
+    document.documentElement.style.setProperty(HEADER.cssVar, v + "rem");
+  }
+
+  function setDrawerOpen(open: boolean) {
     drawer.classList.toggle("open", open);
     drawer.setAttribute("aria-hidden", open ? "false" : "true");
     drawerBtn.setAttribute("aria-expanded", open ? "true" : "false");
@@ -1023,14 +712,14 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
   function setupControls() {
     offsetSlider.addEventListener("input", function () {
       offsetBeats = parseFloat(this.value);
-      offsetValue.textContent = offsetBeats;
+      offsetValue.textContent = String(offsetBeats);
       if (rawBeat >= 0) onBeatUpdate(rawBeat);
       writeUrl();
     });
     if (urlOptions.offset !== undefined) {
       offsetSlider.value = String(urlOptions.offset);
       offsetBeats = parseFloat(offsetSlider.value);
-      offsetValue.textContent = offsetBeats;
+      offsetValue.textContent = String(offsetBeats);
     }
     function showScrollMode() {
       scrollModeBtn.classList.toggle("active", autoScroll);
@@ -1038,17 +727,18 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
     }
     autoScroll = urlOptions.scroll !== "manual";
     showScrollMode();
+    showScrollClass();
     scrollModeBtn.addEventListener("click", function () {
       autoScroll = !autoScroll;
       showScrollMode();
+      showScrollClass();
       writeUrl();
     });
     if (urlOptions.theme === "light") {
       document.body.classList.add("light");
       darkModeBtn.textContent = "☀️";
     }
-    CHANNELS.forEach(function (c) { applySize(c, savedSize(c)); });
-    renderDrawerChannels();
+    applyHeaderSize(headerSize());
     drawerBtn.addEventListener("click", function () { setDrawerOpen(!drawer.classList.contains("open")); });
     document.getElementById("drawer-close").addEventListener("click", function () { setDrawerOpen(false); });
     drawerScrim.addEventListener("click", function () { setDrawerOpen(false); });
@@ -1057,18 +747,17 @@ import { loadAlphaTab, loadScore, renderBar } from "./notation.js";
       this.textContent = document.body.classList.contains("light") ? "☀️" : "🌙";
       writeUrl();
       // Notation is drawn in the theme's ink, so redraw it in the new one.
-      if (drumsOn && drumChart) {
-        var beat = rawBeat;
-        renderSong();
-        if (beat >= 0) onBeatUpdate(beat);
+      if (panes.some(function (p) { return p.view.notation.length > 0; })) {
+        renderPanes();
+        if (rawBeat >= 0) onBeatUpdate(rawBeat);
       }
     });
     // The picker's Custom choice opens the page with the settings out.
     if (new URLSearchParams(location.search).get("settings") === "open") setDrawerOpen(true);
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") setDrawerOpen(false);
-      if (e.key === "ArrowUp") { offsetSlider.value = parseFloat(offsetSlider.value) + 0.5; offsetSlider.dispatchEvent(new Event("input")); }
-      if (e.key === "ArrowDown") { offsetSlider.value = parseFloat(offsetSlider.value) - 0.5; offsetSlider.dispatchEvent(new Event("input")); }
+      if (e.key === "ArrowUp") { offsetSlider.value = String(parseFloat(offsetSlider.value) + 0.5); offsetSlider.dispatchEvent(new Event("input")); }
+      if (e.key === "ArrowDown") { offsetSlider.value = String(parseFloat(offsetSlider.value) - 0.5); offsetSlider.dispatchEvent(new Event("input")); }
     });
   }
 

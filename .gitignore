@@ -103,3 +103,4 @@ songs/example-songs/stems/
 src/teleprompter/client/teleprompter.js
 src/teleprompter/client/control.js
 src/teleprompter/client/eink.js
+src/teleprompter/client/eink-page.js

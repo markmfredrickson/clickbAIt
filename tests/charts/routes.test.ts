@@ -85,38 +85,6 @@ describe("GET /charts/channels", () => {
   });
 });
 
-describe("GET /charts/rows", () => {
-  it("builds rows for the requested channels, expanding instrument names", async () => {
-    const { body } = await get("/charts/rows?channels=guitar,lyrics&barsPerRow=2");
-    expect(body.channels).toEqual(["rhythm-guitar", "lyrics"]);
-    expect(body.unknown).toEqual([]);
-    expect(body.rows.map((r: { kind: string; bars: number[] }) => [r.kind, r.bars])).toEqual([["bars", [1, 2]], ["bars", [3, 4]]]);
-    expect(body.rows[1].words).toEqual([0, 1]);
-  });
-
-  it("gives today's lyric rows when no channels are named", async () => {
-    const { body } = await get("/charts/rows");
-    expect(body.channels).toEqual(["sections", "lyrics"]);
-    expect(body.rows.map((r: { kind: string }) => r.kind)).toEqual(["section", "line"]);
-  });
-
-  it("reports channels the song doesn't have", async () => {
-    const { body } = await get("/charts/rows?channels=keys,lyrics");
-    expect(body.unknown).toEqual(["keys"]);
-  });
-
-  it("builds text rows from the display alone for a song with no charts file", async () => {
-    current = { ...current!, charts: null };
-    const { body } = await get("/charts/rows?channels=lyrics");
-    expect(body.rows.map((r: { kind: string; section: number }) => [r.kind, r.section])).toEqual([["section", 0], ["line", 1]]);
-  });
-
-  it("rejects an implausible barsPerRow", async () => {
-    expect((await get("/charts/rows?channels=guitar&barsPerRow=0")).status).toBe(400);
-    expect((await get("/charts/rows?channels=guitar&barsPerRow=abc")).status).toBe(400);
-  });
-});
-
 describe("GET /charts/source/<id>", () => {
   it("serves the score file behind a chart", async () => {
     const res = await fetch(`${base}/charts/source/rhythm-guitar`);
@@ -139,14 +107,6 @@ describe("chords", () => {
     expect(body.channels.map((c: { id: string }) => c.id)).toEqual(["sections", "lyrics", "chords", "rhythm-guitar", "bass"]);
   });
 
-  it("serves the chords with the sections they fall in", async () => {
-    current = { ...current!, charts: { ...CHARTS, chords: CHORDS } };
-    expect(await get("/charts/chords")).toEqual({ status: 200, body: { slug: "test-song", sections: SECTIONS, chords: CHORDS } });
-  });
-
-  it("is a 404 for a song with no chord file", async () => {
-    expect((await get("/charts/chords")).status).toBe(404);
-  });
 });
 
 describe("GET /charts/chart/<id>", () => {

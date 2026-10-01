@@ -9,17 +9,19 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join, extname, dirname } from "node:path";
 import { createSocket } from "node:dgram";
 import { WebSocketServer, type WebSocket } from "ws";
 import QRCode from "qrcode";
 import { networkInterfaces, tmpdir } from "node:os";
+import { ALPHATAB_DIR, ALPHATAB_FILES } from "./alphatab-files.js";
 import { createEinkRoutes } from "./eink/routes.js";
-import { renderPages } from "./eink/render.js";
+import { renderPanes } from "./eink/render.js";
 import { createChartRoutes } from "../charts/routes.js";
 import { PRESETS, presetHref } from "./display-options.js";
 import type { ChartsFile } from "../charts/build.js";
+import type { RowDocument } from "./rows.js";
+import { rowsFromDisplay } from "./build-rows.js";
 import type { SongPayload, TempoPoint } from "./types.js";
 import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
 import { toSlug } from "../core/dsongl/index.js";
@@ -64,18 +66,6 @@ export interface RelayOptions {
   /** Where rendered e-ink pages are cached (default: a folder in the OS temp dir). */
   einkCacheDir?: string;
 }
-
-// alphaTab draws notation in the browser. The relay serves its script and
-// the Bravura music font, and only those files, from the installed package.
-const ALPHATAB_DIR = dirname(createRequire(import.meta.url).resolve("@coderline/alphatab"));
-const ALPHATAB_FILES: Record<string, string> = {
-  "alphaTab.min.js": "application/javascript",
-  "font/Bravura.woff2": "font/woff2",
-  "font/Bravura.woff": "font/woff",
-  "font/Bravura.otf": "font/otf",
-  "font/Bravura.svg": "image/svg+xml",
-  "font/Bravura.eot": "application/vnd.ms-fontobject",
-};
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({
@@ -421,24 +411,54 @@ export function startRelay(opts: RelayOptions) {
   }, pollIntervalMs);
   pollTimer.unref();
 
-  // E-ink pages for the current song, rendered at each device's size.
-  // The current song's chords, from the charts file beside its lyrics display.
-  function currentChords(): { sections: ChartsFile["sections"]; chords: NonNullable<ChartsFile["chords"]> } | null {
-    const songDir = currentCacheEntry?.filePath ? dirname(currentCacheEntry.filePath) : songsDirs[0];
+  /** The current song's folder, where its built files sit beside its lyrics display. */
+  function currentSongDir(): string {
+    return currentCacheEntry?.filePath ? dirname(currentCacheEntry.filePath) : songsDirs[0];
+  }
+
+  /** The current song's charts file, or null when it has none. */
+  function currentChartsFile(): ChartsFile | null {
     try {
-      const file = JSON.parse(readFileSync(join(songDir, `${currentSlug}.charts.json`), "utf8")) as ChartsFile;
-      return file.chords ? { sections: file.sections, chords: file.chords } : null;
+      return JSON.parse(readFileSync(join(currentSongDir(), `${currentSlug}.charts.json`), "utf8")) as ChartsFile;
     } catch {
       return null;
     }
   }
 
+  /**
+   * The current song's rows, read per request so a rebuild shows up at once.
+   * A song built before rows files gets them laid out from its lyrics
+   * display and charts file.
+   */
+  function currentRows(): RowDocument | null {
+    if (!currentSong || !isLyricsDisplay(currentSong)) return null;
+    try {
+      return JSON.parse(readFileSync(join(currentSongDir(), `${currentSlug}.rows.json`), "utf8")) as RowDocument;
+    } catch {
+      const charts = currentChartsFile();
+      return rowsFromDisplay(currentSong, charts ? { chords: charts.chords, charts: charts.charts } : null);
+    }
+  }
+
+  // E-ink pages for the current song, rendered at each device's size.
   const eink = createEinkRoutes({
     current: () =>
       currentSong
-        ? { slug: currentSlug, song: currentSong, version: String(currentCacheEntry?.mtimeMs ?? 0), chords: currentChords() }
+        ? {
+            slug: currentSlug,
+            song: currentSong,
+            version: String(currentCacheEntry?.mtimeMs ?? 0),
+            rows: currentRows(),
+            readSource: (path: string) => {
+              try {
+                return new Uint8Array(readFileSync(join(currentSongDir(), path)));
+              } catch {
+                return null;
+              }
+            },
+          }
         : null,
-    render: renderPages,
+    render: renderPanes,
     cacheDir: opts.einkCacheDir ?? join(tmpdir(), "clickbait-eink"),
   });
 
@@ -480,6 +500,18 @@ export function startRelay(opts: RelayOptions) {
 
     if (url.startsWith("/eink/") && (await eink(req, res))) return;
     if (url.startsWith("/charts/") && (await charts(req, res))) return;
+
+    if (url.split("?")[0] === "/rows.json") {
+      const rows = currentRows();
+      if (!rows) {
+        res.writeHead(404);
+        res.end("No song loaded");
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify(rows));
+      return;
+    }
 
     if (url === "/song.json") {
       if (!currentSong) {

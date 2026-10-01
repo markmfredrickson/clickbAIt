@@ -29,7 +29,8 @@ import { buildClient } from "../teleprompter/build-client.js";
 import { SongManifestSchema } from "../manifest.js";
 import { bundleVariants, type BundleVariant } from "./bundle-variants.js";
 import { rowsFromDisplay } from "../teleprompter/build-rows.js";
-import { notationBars, notationCss, renderBars } from "../charts/notation-svg.js";
+import { notationCss, renderRanges } from "../charts/notation-svg.js";
+import { notationRanges } from "../teleprompter/drawings.js";
 import { ALPHATAB_DIR } from "../teleprompter/alphatab-files.js";
 
 function fail(msg: string): never {
@@ -109,15 +110,15 @@ if (existsSync(rowsPath)) {
   songData.rows = rowsFromDisplay(songData, charts ? { chords: charts.chords, charts: charts.charts } : null);
 }
 
-// Drum staffs, drawn now: a bundle has no relay to serve alphaTab or the
-// score, so it carries each bar its drum charts show as SVG, by channel and
-// score bar, and the music font they're drawn in.
+// Notation, drawn now: a bundle has no relay to serve alphaTab or the score,
+// so it carries every range of bars its charts show as SVG, by channel and
+// range (see teleprompter/drawings.ts), and the music font they're drawn in.
 let notationStyle = "";
-const drawnCharts = notationBars(songData.rows);
+const drawnCharts = notationRanges(songData.rows);
 if (drawnCharts.length) {
   songData.notation = {};
   for (const chart of drawnCharts) {
-    songData.notation[chart.id] = await renderBars(new Uint8Array(readFileSync(join(songDir, chart.source))), chart.track, chart.bars);
+    songData.notation[chart.id] = await renderRanges(new Uint8Array(readFileSync(join(songDir, chart.source))), chart.track, chart.chart, chart.ranges);
   }
   notationStyle = `  <style>${notationCss(new Uint8Array(readFileSync(join(ALPHATAB_DIR, "font/Bravura.woff2"))))}</style>\n`;
 }

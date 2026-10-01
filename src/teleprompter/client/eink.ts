@@ -5,8 +5,8 @@
  * The page asks the relay for the song at its own size, as panes stacked in
  * the order of `channels=` (drums above lyrics, say). Each pane is its own
  * set of page images and turns on its own, as its bottom row starts (see
- * panes.ts); a box inverts what's playing in it, and under a drum run a bar
- * fills one step per pass. A strip at the top names the song and section.
+ * panes.ts); a box inverts what's playing in it, and under a figure run a
+ * bar fills one step per time through. A strip at the top names the song and section.
  * Tapping a pane turns it by hand (left third back, the rest forward) and
  * holds every pane there until LIVE is tapped.
  *
@@ -83,11 +83,11 @@ function showPage(s: Shown, p: number): void {
   s.page = p;
 }
 
-/** Invert what's playing on the pane's page, and fill a drum run's pass bar. */
+/** Invert what's playing on the pane's page, and fill a figure run's pass bar. */
 function light(s: Shown): void {
   const marks = s.pane.pages[s.page]?.marks ?? [];
-  // A drum pass counts the bar actually playing; the rest light a little early.
-  const at = s.pane.kind === "drums" ? beat : beat + lookahead;
+  // A part's chart follows the bar actually playing; words and chords light a little early.
+  const at = s.pane.kind === "figures" || s.pane.kind === "score" ? beat : beat + lookahead;
   const i = manual || markerMode === "0" ? -1 : markAt(marks, at);
   const m = marks[i];
   if (!m) {
@@ -176,8 +176,13 @@ async function loadDeck(): Promise<void> {
     marker.className = markerMode === "bar" ? "marker bar" : "marker";
     const passBar = document.createElement("div");
     passBar.className = "pass";
+    // What the pane is, in its corner; it never changes, so it costs no redraws.
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = pane.title ?? "";
     box.appendChild(marker);
     box.appendChild(passBar);
+    box.appendChild(label);
     stage.appendChild(box);
     return { pane, imgs: loaded[i], marker, passBar, page: -1 };
   });

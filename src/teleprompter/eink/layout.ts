@@ -12,8 +12,8 @@
 
 /**
  * Something to light on a page, in CSS px from the pane's top-left, with the
- * beats it plays: a lyric line, a chord bar, or a drum run (which also knows
- * its bars, so the client can show which pass is playing).
+ * beats it plays: a lyric line, a chord bar, a score bar, or a figure run
+ * (which also knows its passes, so the client can show which is playing).
  */
 export interface Mark {
   start: number;
@@ -22,9 +22,9 @@ export interface Mark {
   y: number;
   w: number;
   h: number;
-  /** Drum runs: how many bars, and the beats in each. */
+  /** Figure runs: how many times through, and the beats in each. */
   count?: number;
-  barBeats?: number;
+  passBeats?: number;
 }
 
 export interface EinkPage {
@@ -37,7 +37,9 @@ export interface EinkPage {
 export interface EinkPane {
   /** The channel's id. */
   id: string;
-  kind: "lyrics" | "chords" | "drums";
+  kind: "lyrics" | "chords" | "figures" | "score";
+  /** Its label: "Rhythm guitar · tab". */
+  title: string;
   /** Where the pane sits on the screen, and its height, in CSS px. */
   top: number;
   height: number;
@@ -60,8 +62,8 @@ export function markAt(marks: readonly Mark[], beat: number): number {
   return -1;
 }
 
-/** Which bar of a drum run is playing at `beat`, or null outside it or for another mark. */
+/** Which time through a figure run is playing at `beat`, or null outside it or for another mark. */
 export function passOf(mark: Mark, beat: number): { pass: number; of: number } | null {
-  if (!mark.count || !mark.barBeats || beat < mark.start || beat >= mark.end) return null;
-  return { pass: Math.floor((beat - mark.start) / mark.barBeats) + 1, of: mark.count };
+  if (!mark.count || !mark.passBeats || beat < mark.start || beat >= mark.end) return null;
+  return { pass: Math.floor((beat - mark.start) / mark.passBeats) + 1, of: mark.count };
 }

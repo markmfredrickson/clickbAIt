@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SongManifestSchema, sectionStarts, barBeats, type SongManifest } from "../src/manifest.js";
+import { SongManifestSchema, sectionStarts, barBeats, chartStyle, type SongManifest } from "../src/manifest.js";
 
 /** A fresh, fully-valid manifest object each test can mutate in isolation. */
 function validManifest(): unknown {
@@ -357,6 +357,32 @@ describe("SongManifestSchema — scores and charts", () => {
   it("rejects duplicate chart ids and ids that clash with built-in channels", () => {
     expect(() => SongManifestSchema.parse(withScore([], [chart(), chart()]))).toThrow(/rhythm-guitar/);
     expect(() => SongManifestSchema.parse(withScore([], [chart({ id: "lyrics" })]))).toThrow(/lyrics/);
+  });
+
+  it("accepts tab with notation above it, and a chart or score style", () => {
+    const m = withScore([], [chart({ kind: "staff-tab", style: "score" }), chart({ id: "bass", style: "chart" })]);
+    expect(SongManifestSchema.parse(m).charts?.map((c) => [c.kind, c.style])).toEqual([["staff-tab", "score"], ["tab", "chart"]]);
+    expect(() => SongManifestSchema.parse(withScore([], [chart({ style: "lead-sheet" })]))).toThrow();
+  });
+
+  it("lets a chart-style part draw named sections as scores", () => {
+    const parsed = SongManifestSchema.parse(withScore([], [chart({ scoreSections: ["Verse"] })]));
+    expect(parsed.charts?.[0].scoreSections).toEqual(["Verse"]);
+  });
+
+  it("rejects a score section the song doesn't have, or one on a score-style part", () => {
+    expect(() => SongManifestSchema.parse(withScore([], [chart({ scoreSections: ["Solo"] })]))).toThrow(/Solo/);
+    expect(() => SongManifestSchema.parse(withScore([], [chart({ style: "score", scoreSections: ["Verse"] })]))).toThrow(/scoreSections/);
+  });
+});
+
+describe("chartStyle", () => {
+  it("draws vocals as a score and every other part as a chart, unless the manifest says", () => {
+    expect(chartStyle({ instrument: "vocals" })).toBe("score");
+    expect(chartStyle({ instrument: "bass" })).toBe("chart");
+    expect(chartStyle({ instrument: "drums" })).toBe("chart");
+    expect(chartStyle({ instrument: "vocals", style: "chart" })).toBe("chart");
+    expect(chartStyle({ instrument: "guitar", style: "score" })).toBe("score");
   });
 });
 

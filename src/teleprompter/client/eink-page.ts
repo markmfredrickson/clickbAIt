@@ -5,9 +5,9 @@
  * reports where its marks landed.
  */
 
-import type { RowChannel, RowDocument } from "../rows.js";
+import type { FigureRow, RowChannel, RowDocument, ScoreRow } from "../rows.js";
 import type { Mark } from "../eink/layout.js";
-import { channelView, type ChannelView } from "./pane-view.js";
+import { channelView, fitRows, type ChannelView } from "./pane-view.js";
 import { drawNotation } from "./notation.js";
 
 interface Drawn {
@@ -33,9 +33,14 @@ async function setup(doc: RowDocument): Promise<void> {
   });
   await Promise.all(
     drawn
-      .filter((d) => d.channel.kind === "drums" && d.view.notation.length)
-      .map((d) => drawNotation(d.view.notation, `/charts/source/${encodeURIComponent(d.channel.id)}`, (d.channel as { track: number }).track, "rgb(0, 0, 0)")),
+      .filter((d) => d.view.notation.length)
+      .map((d) => {
+        const c = d.channel as Extract<RowChannel, { kind: "figures" | "score" }>;
+        return drawNotation(d.view.notation, `/charts/source/${encodeURIComponent(c.id)}`, c.track, c.chart, "rgb(0, 0, 0)");
+      }),
   );
+  // Notation wider than the screen is scaled down to fit.
+  for (const d of drawn) fitRows(d.view);
 }
 
 /** The height of the tallest of these pages of pane `i`. */
@@ -77,10 +82,18 @@ function show(i: number, page: { first: number; last: number }, height: number, 
         if (bars[b]) marks.push({ ...box(bars[b]), start: bar.start, end: bar.end });
       });
     } else {
-      const runs = el.querySelectorAll(".drum-run");
-      channel.rows[page.first + k].items.forEach((run, j) => {
-        if (runs[j]) marks.push({ ...box(runs[j]), start: run.start, end: run.end, count: run.count, barBeats: run.barBeats });
-      });
+      const chartRow: FigureRow | ScoreRow = channel.rows[page.first + k];
+      if (chartRow.type === "figures") {
+        const runs = el.querySelectorAll(".figure-run");
+        chartRow.items.forEach((run, j) => {
+          if (runs[j]) marks.push({ ...box(runs[j]), start: run.start, end: run.end, count: run.count, passBeats: run.phraseBeats });
+        });
+      } else {
+        const bars = el.querySelectorAll(".score-bar");
+        chartRow.items.forEach((bar, j) => {
+          if (bars[j]) marks.push({ ...box(bars[j]), start: bar.start, end: bar.end });
+        });
+      }
     }
   });
   return marks;

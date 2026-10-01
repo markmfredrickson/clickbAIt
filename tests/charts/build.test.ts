@@ -73,12 +73,26 @@ describe("buildChartsFile", () => {
     expect(reads).toBe(1);
   });
 
-  it("writes a drum chart as groove letters: the fixture's drums play a beat, then rest", () => {
+  it("writes a chart-style part as figure letters: the fixture's drums play a beat, then rest", () => {
     const drums: ChartSpec = { id: "drums", kind: "drums", instrument: "drums", score: "fixture", track: 2 };
-    const out = buildChartsFile(song([fixture], [guitar, drums]), files);
-    const grooves = out.charts[1].grooves!;
-    expect(grooves.sections.map((sec) => sec.runs.map((r) => `${r.letter}×${r.count}`))).toEqual([["A×1", "B×1"], ["B×2"], ["B×2"]]);
-    expect(out.charts[0].grooves).toBeUndefined();
+    const out = buildChartsFile(song([fixture], [drums]), files);
+    expect(out.charts[0].style).toBe("chart");
+    const figures = out.charts[0].figures!;
+    expect(figures.sections.map((sec) => sec.runs.map((r) => `${r.letters.join(" ")}×${r.count}`))).toEqual([["A×1", "B×1"], ["B×2"], ["B×2"]]);
+  });
+
+  it("draws as scores the sections the manifest names, and those where no bar repeats", () => {
+    const drums: ChartSpec = { id: "drums", kind: "drums", instrument: "drums", score: "fixture", track: 2 };
+    // The Intro plays a beat then a rest bar, two different bars: drawn as a score unasked.
+    expect(buildChartsFile(song([fixture], [drums]), files).charts[0].sectionsAsScore).toEqual([0]);
+    const named = buildChartsFile(song([fixture], [{ ...drums, scoreSections: ["Verse"] }]), files).charts[0];
+    expect(named.sectionsAsScore).toEqual([0, 1, 2]);
+  });
+
+  it("gives a score-style part its style and no figures", () => {
+    const out = buildChartsFile(song([fixture], [{ ...guitar, style: "score" }]), files);
+    expect(out.charts[0].style).toBe("score");
+    expect(out.charts[0].figures).toBeUndefined();
   });
 
   it("skips a score no chart uses", () => {

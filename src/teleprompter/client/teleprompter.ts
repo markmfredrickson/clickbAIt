@@ -1,7 +1,7 @@
 /**
  * clickbAIt Teleprompter — browser client
  *
- * Shows the song's channels (lyrics, chords, drums) as panes stacked in the
+ * Shows the song's channels (lyrics, chords, charts of parts) as panes stacked in the
  * order the viewer picks, each following the beat on its own. A pane shows
  * a set number of its channel's rows and turns them all at once as its
  * bottom row starts, so that row moves to the top (see panes.ts). Section
@@ -17,9 +17,10 @@ import { sectionLoopBounds, loopWrapTarget } from "../loop.js";
 import { songPosition, sectionMeters } from "../position.js";
 import { parseDisplayOptions, displayQuery } from "../display-options.js";
 import { songMap, songProgress } from "../song-map.js";
-import { itemsAt, type RowChannel, type RowDocument } from "../rows.js";
+import { channelName, channelTitle, itemsAt, type RowChannel, type RowDocument } from "../rows.js";
 import { panePages, panePageAt, type PanePage } from "../panes.js";
-import { channelView, showPass, type ChannelView } from "./pane-view.js";
+import { channelView, fitRows, placeDrawing, showPass, type ChannelView } from "./pane-view.js";
+import { drawingKey } from "../drawings.js";
 import { drawNotation } from "./notation.js";
 
 (function () {
@@ -102,29 +103,29 @@ import { drawNotation } from "./notation.js";
   // What each kind of channel starts with. A size is in rem; `rows` is how
   // many of its rows its pane shows.
   const KINDS = {
-    lyrics: { label: "Lyrics", size: 1.5, min: 0.75, max: 3, step: 0.125, rows: 6 },
-    chords: { label: "Chords", size: 1.3, min: 0.6, max: 3, step: 0.05, rows: 2 },
-    drums: { label: "Drums", size: 1.2, min: 0.6, max: 2.5, step: 0.05, rows: 2 },
+    lyrics: { size: 1.5, min: 0.75, max: 3, step: 0.125, rows: 6 },
+    chords: { size: 1.3, min: 0.6, max: 3, step: 0.05, rows: 2 },
+    figures: { size: 1.2, min: 0.6, max: 2.5, step: 0.05, rows: 2 },
+    score: { size: 1.2, min: 0.6, max: 2.5, step: 0.05, rows: 2 },
   };
   const HEADER = { channel: "header", label: "Header", cssVar: "--header-size", size: 1.2, min: 0.8, max: 3, step: 0.05 };
   const MAX_ROWS = 20;
 
   function kindOf(channel: RowChannel) { return KINDS[channel.kind]; }
 
-  function channelLabel(channel: RowChannel): string {
-    if (channel.kind === "drums") {
-      const name = channel.instrument || channel.id;
-      return name.charAt(0).toUpperCase() + name.slice(1);
-    }
-    return kindOf(channel).label;
+  /** A part's chart: figures or a score, drawn in notation. */
+  function isChart(c: RowChannel): c is Extract<RowChannel, { kind: "figures" | "score" }> {
+    return c.kind === "figures" || c.kind === "score";
   }
+
+  const channelLabel = channelName;
 
   /** The channels a list of names asks for: each name an id or an instrument. */
   function resolve(names: readonly string[]): string[] {
     const ids: string[] = [];
     names.forEach(function (name) {
       doc!.channels.forEach(function (c) {
-        const match = c.id === name || (c.kind === "drums" && c.instrument === name);
+        const match = c.id === name || (isChart(c) && c.instrument === name);
         if (match && ids.indexOf(c.id) < 0) ids.push(c.id);
       });
     });
@@ -460,7 +461,13 @@ import { drawNotation } from "./notation.js";
       el.className = "pane pane-" + channel.kind;
       el.style.fontSize = sizeOf(channel) + "rem";
       // Notation scales with the pane's size.
-      if (channel.kind === "drums") el.style.setProperty("--drum-zoom", String(sizeOf(channel) / 1.2));
+      if (isChart(channel)) el.style.setProperty("--notation-zoom", String((sizeOf(channel) / 1.2) * 1.1));
+      // What the pane is, in its corner: parts can look alike (rhythm and lead guitar).
+      const label = document.createElement("div");
+      label.className = "pane-label";
+      label.innerHTML = "<span></span>";
+      (label.firstChild as HTMLElement).textContent = channelTitle(channel);
+      el.appendChild(label);
       const rowsEl = document.createElement("div");
       rowsEl.className = "pane-rows";
       view.rows.forEach(function (r) { rowsEl.appendChild(r.el); });
@@ -469,14 +476,17 @@ import { drawNotation } from "./notation.js";
       const perPage = rowsOf(channel);
       const pane: Pane = { channel, view, el, rowsEl, perPage, pages: panePages(channel.rows, perPage), page: -1, litRow: -1, litItem: -1 };
       panes.push(pane);
-      // A bundle carries its staffs drawn; live, they draw once alphaTab and
-      // the score load, and the pane is sized again when they do.
+      // A bundle carries its notation drawn; live, it draws once alphaTab and
+      // the score load, and the pane is sized again when it does.
       const drawn = song.notation && song.notation[channel.id];
       if (drawn) {
-        view.notation.forEach(function (t) { t.el.innerHTML = drawn[t.scoreBar] || ""; });
-      } else if (channel.kind === "drums" && view.notation.length && !song.bundle) {
+        view.notation.forEach(function (t) {
+          const d = drawn[drawingKey(t.start, t.count)];
+          if (d) placeDrawing(t, d, d.svg);
+        });
+      } else if (isChart(channel) && view.notation.length && !song.bundle) {
         const ink = getComputedStyle(document.body).color;
-        drawNotation(view.notation, "/charts/source/" + encodeURIComponent(channel.id), channel.track, ink)
+        drawNotation(view.notation, "/charts/source/" + encodeURIComponent(channel.id), channel.track, channel.chart, ink)
           .then(function () { if (gen === generation) sizePane(pane); })
           .catch(function (e) { statusEl.textContent = "Notation: " + e.message; });
       }
@@ -488,6 +498,7 @@ import { drawNotation } from "./notation.js";
 
   /** Make a pane tall enough for its tallest page, and put it back on its page. */
   function sizePane(p: Pane) {
+    fitRows(p.view);
     const rows = p.view.rows.map(function (r) { return r.el; });
     let height = 0;
     p.pages.forEach(function (pg) {
@@ -567,13 +578,13 @@ import { drawNotation } from "./notation.js";
     if (!doc) return;
 
     // Words and chords light at the reading position, ahead of the music; a
-    // drum pass counts the bar actually playing.
+    // part's chart follows the bar actually playing.
     const reading = itemsAt(doc, readingBeat);
     const playing = itemsAt(doc, beat);
     panes.forEach(function (p) {
       if (autoScroll) showPage(p, panePageAt(p.pages, readingBeat), true);
-      const at = p.channel.kind === "drums" ? playing[p.channel.id] : reading[p.channel.id];
-      light(p, at, p.channel.kind === "drums" ? beat : readingBeat);
+      const at = isChart(p.channel) ? playing[p.channel.id] : reading[p.channel.id];
+      light(p, at, isChart(p.channel) ? beat : readingBeat);
     });
   }
 
@@ -583,19 +594,21 @@ import { drawNotation } from "./notation.js";
       if (p.litRow >= 0 && rows[p.litRow]) rows[p.litRow].el.classList.remove("current");
       if (at.row >= 0) rows[at.row].el.classList.add("current");
     }
-    // The item: a word, a chord, or a drum run with its pass.
+    // The item: a word, a chord, a bar, or a figure run with its pass.
     if (p.litRow >= 0 && p.litItem >= 0 && (p.litRow !== at.row || p.litItem !== at.item)) {
       const old = rows[p.litRow].items[p.litItem];
       if (old) {
         old.classList.remove("now");
-        if (p.channel.kind === "drums") showPass(old, p.channel.rows[p.litRow].items[p.litItem], 0);
+        const oldRow = p.channel.kind === "figures" ? p.channel.rows[p.litRow] : null;
+        if (oldRow && oldRow.type === "figures") showPass(old, oldRow.items[p.litItem], 0);
       }
     }
     if (at.row >= 0 && at.item >= 0) {
       const item = rows[at.row].items[at.item];
       if (item) {
         item.classList.add("now");
-        if (p.channel.kind === "drums") showPass(item, p.channel.rows[at.row].items[at.item], at.pass);
+        const row = p.channel.kind === "figures" ? p.channel.rows[at.row] : null;
+        if (row && row.type === "figures") showPass(item, row.items[at.item], at.pass);
       }
     }
     // Words already sung in the current line stay marked.
@@ -683,7 +696,7 @@ import { drawNotation } from "./notation.js";
           const pane = panes.filter(function (p) { return p.channel.id === c.id; })[0];
           if (pane) {
             pane.el.style.fontSize = v + "rem";
-            if (c.kind === "drums") pane.el.style.setProperty("--drum-zoom", String(v / 1.2));
+            if (isChart(c)) pane.el.style.setProperty("--notation-zoom", String((v / 1.2) * 1.1));
           }
         }),
         rowsInput(c),

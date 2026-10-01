@@ -7,10 +7,11 @@
 import { songSections, type SongSection } from "../charts/bar-map.js";
 import type { PlaceableSection } from "../manifest.js";
 import type { ChartChord } from "../charts/build.js";
-import type { GrooveChart } from "../charts/grooves.js";
+import type { FigureChart } from "../charts/figures.js";
+import type { MappedBar } from "../charts/bar-map.js";
 import type { DisplayLine, LyricWord } from "./lyrics-display.js";
 import { sectionMeters } from "./position.js";
-import type { ChordRow, DrumRow, LyricRow, RowChannel, RowDocument, RowSection, Span, Word } from "./rows.js";
+import type { ChartKind, ChordRow, FigureRow, LyricRow, RowChannel, RowDocument, RowSection, ScoreRow, Span, Word } from "./rows.js";
 
 export interface RowInput {
   slug: string;
@@ -23,8 +24,19 @@ export interface RowInput {
   };
   lyrics?: { words: readonly LyricWord[]; lines: readonly DisplayLine[] };
   chords?: readonly ChartChord[];
-  /** Built charts; drum charts with grooves become channels. */
-  charts?: readonly { id: string; kind: string; instrument: string; source: string; track: number; grooves?: GrooveChart }[];
+  /** Built charts: a chart-style one becomes a figures channel, a score-style one a score channel. */
+  charts?: readonly {
+    id: string;
+    kind: ChartKind;
+    instrument: string;
+    source: string;
+    track: number;
+    style: "chart" | "score";
+    bars: readonly MappedBar[];
+    figures?: FigureChart;
+    /** Chart style: sections drawn bar by bar anyway, by index. */
+    sectionsAsScore?: number[];
+  }[];
 }
 
 export const BARS_PER_ROW = 4;
@@ -52,21 +64,20 @@ export function buildRows(input: RowInput): RowDocument {
 
   if (input.lyrics) channels.push({ id: "lyrics", kind: "lyrics", rows: lyricRows(input.lyrics) });
 
-  if (input.chords) {
-    const perRow = input.song.sections.map((s) => s.barsPerRow ?? input.song.barsPerRow ?? BARS_PER_ROW);
-    channels.push({ id: "chords", kind: "chords", rows: chordRows(placed, perRow, input.chords, songEnd) });
-  }
+  const perRow = input.song.sections.map((s) => s.barsPerRow ?? input.song.barsPerRow ?? BARS_PER_ROW);
+  if (input.chords) channels.push({ id: "chords", kind: "chords", rows: chordRows(placed, perRow, input.chords, songEnd) });
 
   for (const chart of input.charts ?? []) {
-    if (chart.kind !== "drums" || !chart.grooves) continue;
-    channels.push({
-      id: chart.id,
-      kind: "drums",
-      instrument: chart.instrument,
-      source: chart.source,
-      track: chart.track,
-      rows: drumRows(sections, chart.grooves),
-    });
+    const drawing = { id: chart.id, instrument: chart.instrument, chart: chart.kind, source: chart.source, track: chart.track };
+    if (chart.style === "score") channels.push({ ...drawing, kind: "score", rows: scoreRows(placed, perRow, chart.bars) });
+    else if (chart.figures) {
+      const asScore = new Set(chart.sectionsAsScore ?? []);
+      const scored = scoreRows(placed, perRow, chart.bars);
+      const rows = figureRows(sections, chart.figures).flatMap((row): (FigureRow | ScoreRow)[] =>
+        asScore.has(row.section) ? scored.filter((s) => s.section === row.section) : [row],
+      );
+      channels.push({ ...drawing, kind: "figures", rows });
+    }
   }
 
   return { schema: "clickbait/rows@1", slug: input.slug, title: input.title, sections, channels };
@@ -95,18 +106,30 @@ function lyricRows(lyrics: NonNullable<RowInput["lyrics"]>): LyricRow[] {
   return rows;
 }
 
-function chordRows(sections: SongSection[], perRow: number[], chords: readonly ChartChord[], songEnd: number): ChordRow[] {
-  const rows: ChordRow[] = [];
+/** Each section's bars in rows of `perRow`, never past its end, with each bar's song bar number. */
+function barRows(sections: SongSection[], perRow: number[]): { section: number; bars: (Span & { songBar: number })[] }[] {
+  const rows: { section: number; bars: (Span & { songBar: number })[] }[] = [];
   sections.forEach((s, section) => {
     const n = Math.max(1, perRow[section]);
     const starts = [s.startBeat];
     for (const b of s.barBeats) starts.push(starts[starts.length - 1] + b);
     for (let first = 0; first < s.barBeats.length; first += n) {
-      const bars: Span[] = [];
-      for (let b = first; b < Math.min(s.barBeats.length, first + n); b++) bars.push({ start: starts[b], end: starts[b + 1] });
-      rows.push({ section, start: bars[0].start, end: bars[bars.length - 1].end, bars, items: [] });
+      const bars: (Span & { songBar: number })[] = [];
+      for (let b = first; b < Math.min(s.barBeats.length, first + n); b++) bars.push({ start: starts[b], end: starts[b + 1], songBar: s.firstBar + b });
+      rows.push({ section, bars });
     }
   });
+  return rows;
+}
+
+function chordRows(sections: SongSection[], perRow: number[], chords: readonly ChartChord[], songEnd: number): ChordRow[] {
+  const rows: ChordRow[] = barRows(sections, perRow).map(({ section, bars }) => ({
+    section,
+    start: bars[0].start,
+    end: bars[bars.length - 1].end,
+    bars: bars.map(({ start, end }) => ({ start, end })),
+    items: [],
+  }));
   if (!rows.length) return rows;
 
   const sorted = [...chords].sort((a, b) => a.beat - b.beat);
@@ -121,22 +144,38 @@ function chordRows(sections: SongSection[], perRow: number[], chords: readonly C
   return rows;
 }
 
-function drumRows(sections: RowSection[], chart: GrooveChart): DrumRow[] {
-  const scoreBarOf = new Map(chart.grooves.map((g) => [g.letter, g.scoreBar]));
+function figureRows(sections: RowSection[], chart: FigureChart): FigureRow[] {
   return chart.sections.map(({ section, runs }) => ({
+    type: "figures" as const,
     section,
     start: sections[section].start,
     end: sections[section].end,
-    items: runs.map((run) => ({
-      letter: run.letter,
-      count: run.count,
-      barBeats: run.beats,
-      songBar: run.songBar,
-      scoreBar: run.letter === null ? null : (scoreBarOf.get(run.letter) ?? null),
-      first: run.first,
-      start: run.startBeat,
-      end: run.startBeat + run.count * run.beats,
-    })),
+    items: runs.map((run) => {
+      const phraseBeats = run.barBeats.reduce((sum, b) => sum + b, 0);
+      return {
+        letters: run.letters,
+        scoreBars: run.scoreBars,
+        barBeats: run.barBeats,
+        draw: run.draw,
+        count: run.count,
+        phraseBeats,
+        songBar: run.songBar,
+        start: run.startBeat,
+        end: run.startBeat + run.count * phraseBeats,
+      };
+    }),
+  }));
+}
+
+/** A score-style part: rows of bars, like chord rows, each bar with the score bar that plays there. */
+function scoreRows(sections: SongSection[], perRow: number[], mapped: readonly MappedBar[]): ScoreRow[] {
+  const scoreBarOf = new Map(mapped.map((m) => [m.songBar, m.scoreBar]));
+  return barRows(sections, perRow).map(({ section, bars }) => ({
+    type: "score" as const,
+    section,
+    start: bars[0].start,
+    end: bars[bars.length - 1].end,
+    items: bars.map((bar) => ({ ...bar, scoreBar: scoreBarOf.get(bar.songBar) ?? null })),
   }));
 }
 

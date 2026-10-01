@@ -27,7 +27,7 @@ const ROWS: RowDocument = {
   channels: [
     { id: "lyrics", kind: "lyrics", rows: [{ start: 1, end: 2.5, items: [{ text: "w", start: 1, end: 2.5 }] }] },
     { id: "chords", kind: "chords", rows: [{ section: 0, start: 0, end: 4, bars: [{ start: 0, end: 4 }], items: [{ chord: "A", start: 0, end: 4 }] }] },
-    { id: "kit", kind: "drums", instrument: "drums", source: "song.gp5", track: 3, rows: [{ section: 0, start: 0, end: 4, items: [] }] },
+    { id: "kit", kind: "figures", chart: "drums", instrument: "drums", source: "song.gp5", track: 3, rows: [{ section: 0, start: 0, end: 4, items: [] }] },
   ],
 };
 
@@ -44,7 +44,7 @@ const fakeRender: EinkRenderer = async (doc, _size, outDir, opts) => {
   rendered.push({ channels: doc.channels.map((c) => c.id), rows: opts.rows });
   return doc.channels.map((c, i) => {
     writeFileSync(join(outDir, `${i}-0.png`), "png");
-    return { id: c.id, kind: c.kind, top: i * 100, height: 100, pages: [{ start: 0, file: `${i}-0.png`, marks: [{ start: 1, end: 2, x: 0, y: 10, w: 50, h: 20 }] }] };
+    return { id: c.id, kind: c.kind, title: c.id, top: i * 100, height: 100, pages: [{ start: 0, file: `${i}-0.png`, marks: [{ start: 1, end: 2, x: 0, y: 10, w: 50, h: 20 }] }] };
   });
 };
 

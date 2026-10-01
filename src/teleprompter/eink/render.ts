@@ -4,7 +4,7 @@
  *
  * The page is the prompter's own pane-view (client/eink-page.ts) with e-ink
  * styles, served to Chrome from a private origin along with alphaTab and the
- * song's score files, so drum panes get their staffs. Panes are fitted top to
+ * song's score files, so chart panes get their notation. Panes are fitted top to
  * bottom: each shows the rows asked for, or fewer if they don't fit, and the
  * last pane, unless told otherwise, as many as fit.
  *
@@ -14,7 +14,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { RowDocument } from "../rows.js";
+import { channelTitle, type RowDocument } from "../rows.js";
 import { panePages } from "../panes.js";
 import { clientDir } from "../build-client.js";
 import { ALPHATAB_DIR, ALPHATAB_FILES } from "../alphatab-files.js";
@@ -33,7 +33,7 @@ export interface RenderSize {
 export interface RenderOptions {
   /** Rows per pane, by channel id; a pane not listed takes its kind's default. */
   rows?: Record<string, number>;
-  /** A score file's bytes, by its path in the rows document (drum notation). */
+  /** A score file's bytes, by its path in the rows document (for notation). */
   readSource?: (path: string) => Uint8Array | null;
 }
 
@@ -41,7 +41,7 @@ export interface RenderOptions {
 export type RenderedPane = Omit<EinkPane, "pages"> & { pages: { start: number; file: string; marks: Mark[] }[] };
 
 /** Rows a pane shows when the page doesn't say: a little of a chart above, the rest for words. */
-const DEFAULT_ROWS = { lyrics: 8, chords: 3, drums: 2 };
+const DEFAULT_ROWS = { lyrics: 8, chords: 3, figures: 2, score: 2 };
 
 type Chromium = { launch(opts: { channel: string }): Promise<any> };
 
@@ -81,7 +81,7 @@ function pageHtml(size: Required<RenderSize>): string {
     .pane.ruled { border-bottom: 3px solid #000; }
     .row { padding: ${Math.round(f * 0.1)}px 0; }
     .pane-chords { font-size: 0.85em; }
-    .pane-drums { font-size: 0.75em; }
+    .pane-figures, .pane-score { font-size: 0.75em; }
     .bv { font-style: italic; color: #333; }
     .chord-row { display: flex; }
     .chord-row .bar { display: grid; flex-basis: 0; align-items: center; border-left: 2px solid #000; padding: 0 ${Math.round(f * 0.15)}px; }
@@ -89,12 +89,17 @@ function pageHtml(size: Required<RenderSize>): string {
     .chord-row .pad { flex-basis: 0; }
     .chord { grid-row: 1; font-weight: 700; white-space: nowrap; padding-right: 0.3em; }
     .chord.held { font-weight: 400; color: #666; }
-    .drum-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 1em; padding-bottom: ${Math.round(f * 0.25)}px; }
-    .drum-run { display: inline-flex; align-items: center; }
-    .drum-body { display: flex; align-items: center; gap: 0.4em; }
-    .drum-label { font-size: 1.5em; font-weight: 700; white-space: nowrap; }
-    .drum-notation { min-width: 4rem; zoom: ${((f * 0.75) / 19.2).toFixed(3)}; }
-    .drum-notation:empty { display: none; }
+    .figure-row, .score-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 1em; padding-bottom: ${Math.round(f * 0.25)}px; }
+    .figure-run, .figure-body { display: inline-flex; align-items: center; gap: 0.4em; }
+    .figure-label { font-size: 1.5em; font-weight: 700; white-space: nowrap; }
+    .figure-label.paren { font-weight: 400; font-size: 2em; }
+    .figure-count:empty { display: none; }
+    .score-seg { position: relative; }
+    .score-seg.empty { display: flex; gap: 0.6em; }
+    .score-bar { position: absolute; top: 0; bottom: 0; display: none; }
+    .score-bar.blank { position: static; display: inline-block; min-width: 3em; text-align: center; font-size: 1.5em; color: #666; }
+    .notation { min-width: 4rem; zoom: calc(${((f * 0.75 * 1.1) / 19.2).toFixed(3)} * var(--fit, 1)); }
+    .notation:empty { display: none; }
   </style></head><body><div id="work"></div><div id="stage"></div><script src="/eink-page.js"></script></body></html>`;
 }
 
@@ -121,7 +126,7 @@ export async function renderPanes(doc: RowDocument, size: RenderSize, outDir: st
       const source = path.match(/^\/charts\/source\/(.+)$/);
       if (source) {
         const channel = doc.channels.find((c) => c.id === decodeURIComponent(source[1]));
-        const bytes = channel && channel.kind === "drums" ? opts.readSource?.(channel.source) : null;
+        const bytes = channel && (channel.kind === "figures" || channel.kind === "score") ? opts.readSource?.(channel.source) : null;
         if (bytes) return send(bytes, "application/octet-stream");
       }
       return route.fulfill({ status: 404, body: "" });
@@ -161,7 +166,7 @@ export async function renderPanes(doc: RowDocument, size: RenderSize, outDir: st
         await page.locator("#stage").screenshot({ path: join(outDir, file) });
         out.push({ start: pages[j].start, file, marks });
       }
-      panes.push({ id: channel.id, kind: channel.kind, top: full.height - room, height, pages: out });
+      panes.push({ id: channel.id, kind: channel.kind, title: channelTitle(channel), top: full.height - room, height, pages: out });
       room -= height;
     }
     return panes;

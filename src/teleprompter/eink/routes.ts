@@ -47,7 +47,7 @@ export interface EinkRoutesOptions {
 }
 
 // Bump when the page design changes, so cached decks are re-rendered.
-const RENDER_VERSION = 9;
+const RENDER_VERSION = 12;
 
 const MAX_ROWS = 50;
 
@@ -85,7 +85,7 @@ export function parseView(q: URLSearchParams, doc: RowDocument): EinkView {
   const rows: Record<string, number> = {};
   for (const name of names) {
     for (const c of doc.channels) {
-      const match = c.id === name || (c.kind === "drums" && c.instrument === name);
+      const match = c.id === name || ((c.kind === "figures" || c.kind === "score") && c.instrument === name);
       if (!match || channels.includes(c.id)) continue;
       channels.push(c.id);
       const n = Number(q.get(`${name}.rows`) ?? q.get(`${c.id}.rows`) ?? NaN);

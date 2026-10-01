@@ -344,13 +344,23 @@ const ScoreSpecSchema = z
 
 /**
  * A chart channel: one track of a score, shown alongside the song. `kind`
- * says how to draw it; `instrument` groups channels, so a display can ask for
- * "guitar" and get every guitar chart.
+ * says how to draw its bars: `tab` as tab with the rhythm under it, `staff`
+ * as standard notation, `staff-tab` as both, `drums` as percussion. `style`
+ * says what to draw: `chart` names each distinct bar with a letter and draws
+ * it once per section ("(A) [bar] ×8"), `score` draws every bar; see
+ * chartStyle for the default; `scoreSections` draws some sections of a chart
+ * as scores. `instrument` groups channels, so a display can
+ * ask for "guitar" and get every guitar chart.
  */
 const ChartSpecSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "chart id must be a kebab-case slug"),
-    kind: z.enum(["tab", "staff", "drums"]),
+    kind: z.enum(["tab", "staff", "staff-tab", "drums"]),
+    style: z.enum(["chart", "score"]).optional(),
+    /** Chart style only: sections to draw bar by bar anyway (a solo that never
+     *  repeats), by name, every occurrence. A section of two or more bars in
+     *  which no bar repeats is drawn as a score without being listed. */
+    scoreSections: z.array(z.string().min(1)).optional(),
     instrument: z.string().min(1),
     /** Id of an entry in `scores`. */
     score: z.string().min(1),
@@ -377,6 +387,15 @@ const ChordsSpec = z
 export type ScoreSpec = z.infer<typeof ScoreSpecSchema>;
 export type ChordsSpec = z.infer<typeof ChordsSpec>;
 export type ChartSpec = z.infer<typeof ChartSpecSchema>;
+
+/**
+ * How a chart is drawn when its entry doesn't say: a vocal line changes bar
+ * to bar, so it reads best as a score; a part that repeats (bass, guitar,
+ * drums) reads best as a chart of its figures.
+ */
+export function chartStyle(spec: { instrument: string; style?: "chart" | "score" }): "chart" | "score" {
+  return spec.style ?? (spec.instrument === "vocals" ? "score" : "chart");
+}
 
 /** Channel ids the display provides itself; a chart can't use them. */
 export const BUILT_IN_CHANNELS = ["sections", "lyrics", "chords"] as const;
@@ -467,6 +486,12 @@ function checkCharts(
     }
     if (chartIds.has(chart.id)) issue(`another chart already uses the id "${chart.id}"`, ["id"]);
     chartIds.add(chart.id);
+    chart.scoreSections?.forEach((name, i) => {
+      if (!counts.has(name)) issue(`scoreSections: no section named "${name}" (have: ${[...counts.keys()].join(", ")})`, ["scoreSections", i]);
+    });
+    if (chart.scoreSections?.length && chartStyle(chart) === "score") {
+      issue(`scoreSections only applies to a chart-style part; this one is drawn as a score throughout`, ["scoreSections"]);
+    }
     if (!scoreIds.has(chart.score)) {
       issue(`no score with the id "${chart.score}" (have: ${[...scoreIds].join(", ") || "none"})`, ["score"]);
     }

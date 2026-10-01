@@ -116,6 +116,23 @@ To start one from a chord sheet (chord names over the lyrics, with `[Section]` h
 
 Displays show chords in rows of 4 bars. Set `"barsPerRow"` on the song to change that, or on a section to change it there (e.g. `3` for a 6-bar section). A row never runs past the end of its section.
 
+## Charts from a score file
+
+A Guitar Pro, MusicXML or alphaTex file gives the displays notation for each part. `scores` maps the file's bars onto our sections (the file's own markers are only a check), and each entry in `charts` shows one track of it:
+
+```json
+"scores": [{ "id": "ug", "file": "song.gp5", "sections": [{ "section": "Verse", "occurrence": 1, "bars": [9, 26] }] }],
+"charts": [
+  { "id": "bass", "kind": "tab", "instrument": "bass", "score": "ug", "track": 3 },
+  { "id": "vocals", "kind": "staff", "instrument": "vocals", "score": "ug", "track": 0 }
+]
+```
+
+- **`kind`** — how bars are drawn: `tab` (tab with the rhythm under it), `staff` (standard notation), `staff-tab` (both), `drums`.
+- **`style`** — what's drawn: `chart` names each distinct bar with a letter and groups repeats into phrases of up to 4 bars (`(A B) ×4`), drawing a bar the first time each section plays it; `score` draws every bar, in rows of `barsPerRow`. Defaults to `score` for the `vocals` instrument, `chart` otherwise.
+- **`scoreSections`** — chart style only: sections (by name, every occurrence) to draw bar by bar anyway, such as a solo. A section of two or more bars in which no bar repeats is drawn that way without being listed.
+- **`instrument`** — groups charts, so a display can ask for `guitar` and get every guitar chart.
+
 ## Full schema
 
 Generated from `src/manifest.ts` (zod → JSON Schema). The source file is authoritative; read it for exact constraints and inline comments.
@@ -748,8 +765,23 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
             "enum": [
               "tab",
               "staff",
+              "staff-tab",
               "drums"
             ]
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "chart",
+              "score"
+            ]
+          },
+          "scoreSections": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           "instrument": {
             "type": "string",

@@ -31,8 +31,8 @@ const CHARTS: ChartsFile = {
   slug: "test-song",
   sections: SECTIONS,
   charts: [
-    { id: "rhythm-guitar", kind: "tab", instrument: "guitar", score: "ug", source: "song.gp5", track: 2, trackName: "Rhythm", bars: bars([1, 2, 3, 4]) },
-    { id: "bass", kind: "tab", instrument: "bass", score: "ug", source: "song.gp5", track: 3, trackName: "Bass", bars: bars([null, null, 3, 4]) },
+    { id: "rhythm-guitar", kind: "tab", instrument: "guitar", style: "chart", score: "ug", source: "song.gp5", track: 2, trackName: "Rhythm", bars: bars([1, 2, 3, 4]) },
+    { id: "bass", kind: "tab", instrument: "bass", style: "chart", score: "ug", source: "song.gp5", track: 3, trackName: "Bass", bars: bars([null, null, 3, 4]) },
   ],
 };
 

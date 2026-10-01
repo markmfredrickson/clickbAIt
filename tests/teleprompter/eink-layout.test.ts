@@ -25,8 +25,8 @@ describe("markAt", () => {
 });
 
 describe("passOf", () => {
-  // A drum run of 8 bars of 4 beats from beat 32.
-  const run: Mark = { ...box, start: 32, end: 64, count: 8, barBeats: 4 };
+  // A run of 8 times through a one-bar figure of 4 beats, from beat 32.
+  const run: Mark = { ...box, start: 32, end: 64, count: 8, passBeats: 4 };
 
   it("counts which bar of the run is playing", () => {
     expect(passOf(run, 32)).toEqual({ pass: 1, of: 8 });

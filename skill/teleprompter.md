@@ -74,8 +74,8 @@ The config sends: TIME, BEAT, TEMPO, PLAY, STOP, PAUSE, REPEAT, LAST_MARKER, LAS
 
 Features:
 - Header shows only what matters during playback: song, section, and `(bar : beat) of <bars in the section>`. The footer shows the song bar (`m45:2`), as REAPER counts measures.
-- Each channel (lyrics, chords, drums) is a pane, stacked in the order of `channels=`. The ⚙ drawer turns channels on and off, moves them up and down, and sets each one's size and rows. Panes don't line up with each other; each follows the beat on its own.
-- A pane shows its set number of rows and turns them all at once as its bottom row starts, so that row moves to the top, still lit. Lyric rows are sung lines, chord rows are `barsPerRow` bars (manifest; 4 by default), drum rows are a section's groove runs. Section names appear only in the header.
+- Each channel (lyrics, chords, and each part charted from a score file) is a pane, stacked in the order of `channels=`. The ⚙ drawer turns channels on and off, moves them up and down, and sets each one's size and rows. Panes don't line up with each other; each follows the beat on its own.
+- A pane shows its set number of rows and turns them all at once as its bottom row starts, so that row moves to the top, still lit. Lyric rows are sung lines, chord rows are `barsPerRow` bars (manifest; 4 by default), a chart-style part's rows are a section's runs of figures (`(A B) ×4`), and a score-style part's rows are `barsPerRow` drawn bars. Section names appear only in the header.
 - What the panes show comes from the build's `<slug>.rows.json` (served at `/rows.json`); a song built before rows files gets its rows laid out from its lyrics display.
 - Manual scroll lets the reader scroll each pane freely
 - Beat offset slider (0–16 beats) for scroll lookahead

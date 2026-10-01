@@ -2,7 +2,7 @@
  * The relay's chart endpoints, all for the current song.
  *
  *   GET /charts/channels            the channels the song offers
- *   GET /charts/chart/<chart-id>    one chart: its bars, and a drum chart's grooves
+ *   GET /charts/chart/<chart-id>    one chart: its bars, and a chart-style part's figures
  *   GET /charts/source/<chart-id>   the score file behind a chart
  *
  * What displays show comes from the song's row document (the relay's

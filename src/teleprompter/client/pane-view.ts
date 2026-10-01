@@ -3,17 +3,20 @@
  * e-ink renderer (which runs this same code in headless Chrome), so both draw
  * rows alike and only their styles differ.
  *
- *   lyrics  a line of words
- *   chords  a line of bars, each as wide as its beats, chords on a grid
- *   drums   a line of groove runs: "(A) [staff] ×8" the first time a section
- *           plays a groove, the letter alone after that
+ *   lyrics   a line of words
+ *   chords   a line of bars, each as wide as its beats, chords on a grid
+ *   figures  a line of runs: "(A) [staff] ×8" or "(A [staff] B [staff]) ×3"
+ *            the first time a section plays them, the letters after that
+ *   score    a line of drawn bars, a box over each to light while it plays
  *
  * Every row and item element is returned in order, so a display can light
- * what's playing (see itemsAt in rows.ts).
+ * what's playing (see itemsAt in rows.ts). Notation is drawn into the
+ * returned targets later, live or from a bundle's drawings (placeDrawing).
  */
 
-import type { ChordRow, DrumItem, DrumRow, LyricRow, RowChannel } from "../rows.js";
+import type { ChordRow, FigureItem, FigureRow, LyricRow, RowChannel, ScoreRow } from "../rows.js";
 import { barGrid } from "../bar-grid.js";
+import { scoreSegments } from "../drawings.js";
 
 export interface RowView {
   el: HTMLElement;
@@ -23,10 +26,13 @@ export interface RowView {
   bars?: HTMLElement[];
 }
 
-/** A drum run's notation to draw: into `el`, the score's bar `scoreBar`. */
+/** Where to draw a range of score bars, and the boxes to place over its bars. */
 export interface NotationTarget {
   el: HTMLElement;
-  scoreBar: number;
+  start: number;
+  count: number;
+  /** Score rows: one box per bar, placed once the drawing says where its bars are. */
+  boxes: HTMLElement[];
 }
 
 export interface ChannelView {
@@ -42,14 +48,31 @@ function el(tag: string, className: string, text?: string): HTMLElement {
 }
 
 export function channelView(channel: RowChannel): ChannelView {
-  if (channel.kind === "lyrics") return { rows: channel.rows.map(lyricRow), notation: [] };
+  const notation: NotationTarget[] = [];
+  if (channel.kind === "lyrics") return { rows: channel.rows.map(lyricRow), notation };
   if (channel.kind === "chords") {
     // Every row is as wide as the longest, so bars line up down the pane.
     const width = Math.max(0, ...channel.rows.map((r) => r.end - r.start));
-    return { rows: channel.rows.map((r, i) => chordRow(r, width, heldChord(channel.rows, i))), notation: [] };
+    return { rows: channel.rows.map((r, i) => chordRow(r, width, heldChord(channel.rows, i))), notation };
   }
-  const notation: NotationTarget[] = [];
-  return { rows: channel.rows.map((r) => drumRow(r, notation)), notation };
+  const rows: (FigureRow | ScoreRow)[] = channel.rows;
+  return { rows: rows.map((r) => (r.type === "figures" ? figureRow(r, notation) : scoreRow(r, notation))), notation };
+}
+
+/**
+ * Put a drawing in its target (its SVG, when it comes from a bundle) and
+ * place the target's bar boxes over the bars, as fractions of its width so
+ * they follow any zoom.
+ */
+export function placeDrawing(target: NotationTarget, drawing: { width: number; bars: { x: number; w: number }[] }, svg?: string): void {
+  if (svg !== undefined) target.el.innerHTML = svg;
+  target.boxes.forEach((box, i) => {
+    const bar = drawing.bars[i];
+    if (!bar || !drawing.width) return;
+    box.style.left = `${(bar.x / drawing.width) * 100}%`;
+    box.style.width = `${(bar.w / drawing.width) * 100}%`;
+    box.style.display = "block";
+  });
 }
 
 function lyricRow(row: LyricRow): RowView {
@@ -112,30 +135,36 @@ function chordRow(row: ChordRow, width: number, held: string | null): RowView {
   return { el: line, items, bars };
 }
 
-/** The run's letter: "(A)" where its notation is drawn, "A" alone, "–" for no score bar. */
-function runLetter(run: DrumItem): string {
-  return run.letter === null ? "–" : draws(run) ? `(${run.letter})` : run.letter;
-}
+const letterText = (letter: string | null) => letter ?? "–";
 
-const draws = (run: DrumItem) => run.first && run.letter !== null && run.scoreBar !== null;
-
-function drumRow(row: DrumRow, notation: NotationTarget[]): RowView {
-  const line = el("div", "row drum-row");
+function figureRow(row: FigureRow, notation: NotationTarget[]): RowView {
+  const line = el("div", "row figure-row");
   const items = row.items.map((run) => {
-    const runEl = el("div", "drum-run" + (run.first ? " first" : ""));
-    const label = el("span", "drum-label", runLetter(run));
-    if (draws(run)) {
-      // In line: the letter, the groove, and its count after it: (B) [groove] ×8.
-      const body = el("div", "drum-body");
-      body.appendChild(label);
-      const staff = el("div", "drum-notation");
-      body.appendChild(staff);
-      body.appendChild(el("span", "drum-label drum-count"));
-      runEl.appendChild(body);
-      notation.push({ el: staff, scoreBar: run.scoreBar! });
+    const runEl = el("div", "figure-run" + (run.draw.some(Boolean) ? " first" : ""));
+    const drawn = run.draw.some(Boolean);
+    if (!drawn) {
+      // Letters only: "A ×8", or a phrase "(A B) ×3".
+      const text = run.letters.map(letterText).join(" ");
+      runEl.appendChild(el("span", "figure-label", run.letters.length > 1 ? `(${text})` : text));
     } else {
-      runEl.appendChild(label);
+      // In line: each letter with its notation where it's drawn, and the count
+      // after: "(B) [bar] ×8", or "(A [bar] B [bar]) ×3" for a phrase.
+      const body = el("div", "figure-body");
+      const single = run.letters.length === 1;
+      if (!single) body.appendChild(el("span", "figure-label paren", "("));
+      run.letters.forEach((letter, j) => {
+        body.appendChild(el("span", "figure-label", single ? `(${letterText(letter)})` : letterText(letter)));
+        const scoreBar = run.scoreBars[j];
+        if (run.draw[j] && scoreBar !== null) {
+          const staff = el("div", "notation");
+          body.appendChild(staff);
+          notation.push({ el: staff, start: scoreBar, count: 1, boxes: [] });
+        }
+      });
+      if (!single) body.appendChild(el("span", "figure-label paren", ")"));
+      runEl.appendChild(body);
     }
+    runEl.appendChild(el("span", "figure-label figure-count"));
     showPass(runEl, run, 0);
     line.appendChild(runEl);
     return runEl;
@@ -143,15 +172,56 @@ function drumRow(row: DrumRow, notation: NotationTarget[]): RowView {
   return { el: line, items };
 }
 
+function scoreRow(row: ScoreRow, notation: NotationTarget[]): RowView {
+  const line = el("div", "row score-row");
+  const items: HTMLElement[] = [];
+  for (const seg of scoreSegments(row.items)) {
+    const segEl = el("div", "score-seg" + (seg.start === null ? " empty" : ""));
+    if (seg.start === null) {
+      // Bars the score has nothing for: a rest-like gap, still lit in turn.
+      for (let i = 0; i < seg.count; i++) items[seg.first + i] = segEl.appendChild(el("span", "score-bar blank", "–"));
+    } else {
+      const staff = el("div", "notation");
+      segEl.appendChild(staff);
+      const boxes: HTMLElement[] = [];
+      for (let i = 0; i < seg.count; i++) boxes.push((items[seg.first + i] = segEl.appendChild(el("span", "score-bar"))));
+      notation.push({ el: staff, start: seg.start, count: seg.count, boxes });
+    }
+    line.appendChild(segEl);
+  }
+  return { el: line, items };
+}
+
 /**
- * Show a run's count ("×4") after its notation or its letter, and while it
- * plays, which pass this is ("3/4"), hung under the count so the line
- * doesn't reflow as the highlight moves. `pass` 0 shows none.
+ * Show a run's count ("×4") after it, and while it plays, which time through
+ * this is ("3/4"), hung under the count so the line doesn't reflow as the
+ * highlight moves. `pass` 0 shows none.
  */
-export function showPass(runEl: HTMLElement, run: DrumItem, pass: number): void {
-  const count = run.count > 1 ? `×${run.count}` : "";
-  const countEl = runEl.querySelector<HTMLElement>(".drum-count");
-  const target = countEl ?? runEl.querySelector<HTMLElement>(".drum-label")!;
-  target.textContent = countEl ? count : runLetter(run) + (count ? " " + count : "");
-  if (pass > 0 && run.count > 1) target.appendChild(el("span", "drum-pass", `${pass}/${run.count}`));
+export function showPass(runEl: HTMLElement, run: FigureItem, pass: number): void {
+  const countEl = runEl.querySelector<HTMLElement>(".figure-count")!;
+  countEl.textContent = run.count > 1 ? `×${run.count}` : "";
+  if (pass > 0 && run.count > 1) countEl.appendChild(el("span", "figure-pass", `${pass}/${run.count}`));
+}
+
+/**
+ * Scale down any notation too wide for its row: a figure run or a piece of a
+ * score row wider than the row gets a smaller zoom (the `--fit` variable its
+ * notation multiplies by), so nothing runs off the side of the screen.
+ */
+export function fitRows(view: ChannelView): void {
+  for (const row of view.rows) {
+    const room = row.el.clientWidth;
+    if (!room) continue;
+    row.el.querySelectorAll<HTMLElement>(".figure-run, .score-seg").forEach((part) => {
+      if (!part.querySelector(".notation")) return;
+      part.style.setProperty("--fit", "1");
+      const width = part.scrollWidth;
+      if (width <= room) return;
+      // Only the notation shrinks; the letters and count around it keep their size.
+      let staves = 0;
+      part.querySelectorAll(".notation").forEach((n) => (staves += n.getBoundingClientRect().width));
+      const fit = staves > 0 ? (room - (width - staves) - 2) / staves : 1;
+      part.style.setProperty("--fit", String(Math.max(0.3, Math.min(1, fit))));
+    });
+  }
 }

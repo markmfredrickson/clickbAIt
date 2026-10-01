@@ -6,10 +6,14 @@
  * a drum pane can sit on "A ×8" while the lyrics pane turns several lines.
  *
  * A channel's rows depend on what it is:
- *   lyrics  one row per sung line, its words the items
- *   chords  `barsPerRow` bars per row (4, or the song's or section's own),
- *           never past a section's end; its chords the items
- *   drums   one row per section; its groove runs the items, each run whole
+ *   lyrics   one row per sung line, its words the items
+ *   chords   `barsPerRow` bars per row (4, or the song's or section's own),
+ *            never past a section's end; its chords the items
+ *   figures  a chart-style part (see charts/figures.ts): one row per
+ *            section, its runs the items, each run whole; a section drawn
+ *            as a score instead has score rows, as below
+ *   score    a score-style part: `barsPerRow` bars per row, like chords,
+ *            each bar an item
  *
  * Every row and item has a start and an end in beats, so a display lights
  * whatever contains the beat, and pages by row starts (see panes.ts).
@@ -55,30 +59,60 @@ export interface ChordRow extends Span {
   items: ChordItem[];
 }
 
-export interface DrumItem extends Span {
-  /** The groove's letter, or null for bars the score has nothing for. */
-  letter: string | null;
-  /** Bars in the run. */
+/** How a chart's bars are drawn: the manifest's chart `kind`. */
+export type ChartKind = "tab" | "staff" | "staff-tab" | "drums";
+
+export interface FigureItem extends Span {
+  /** The phrase's letters, one per bar, or null for a bar the score has nothing for. */
+  letters: (string | null)[];
+  /** The score bar behind each bar of the phrase. */
+  scoreBars: (number | null)[];
+  /** Beats in each bar of the phrase. */
+  barBeats: number[];
+  /** Which of the phrase's bars to draw: a letter's first time in its section. */
+  draw: boolean[];
+  /** Times through the phrase. */
   count: number;
-  /** Beats in each of its bars. */
-  barBeats: number;
+  /** Beats in one time through it. */
+  phraseBeats: number;
   /** 1-based song bar the run starts on. */
   songBar: number;
-  /** The score bar that shows the groove, or null. */
-  scoreBar: number | null;
-  /** True on the run where its section first plays the letter: draw the notation here. */
-  first: boolean;
 }
 
-export interface DrumRow extends Span {
+export interface FigureRow extends Span {
+  type: "figures";
   section: number;
-  items: DrumItem[];
+  items: FigureItem[];
+}
+
+export interface ScoreBar extends Span {
+  songBar: number;
+  /** The score bar that plays here, or null where the score has nothing. */
+  scoreBar: number | null;
+}
+
+export interface ScoreRow extends Span {
+  type: "score";
+  section: number;
+  items: ScoreBar[];
+}
+
+/** What every chart channel carries for drawing its notation. */
+interface ChartChannel {
+  id: string;
+  instrument: string;
+  chart: ChartKind;
+  /** The score file, relative to the song folder, and the track in it. */
+  source: string;
+  track: number;
 }
 
 export type RowChannel =
   | { id: string; kind: "lyrics"; rows: LyricRow[] }
   | { id: string; kind: "chords"; rows: ChordRow[] }
-  | { id: string; kind: "drums"; instrument: string; source: string; track: number; rows: DrumRow[] };
+  // A chart-style part: figure rows, with score rows for the sections drawn bar by bar.
+  | (ChartChannel & { kind: "figures"; rows: (FigureRow | ScoreRow)[] })
+  | (ChartChannel & { kind: "score"; rows: ScoreRow[] });
 
 export interface RowDocument {
   schema: "clickbait/rows@1";
@@ -99,7 +133,7 @@ export interface ChannelPosition {
   row: number;
   /** The item in it playing now, or -1. */
   item: number;
-  /** Drum runs: which bar of the run this is, of how many. */
+  /** Figure runs: which time through the phrase this is, of how many. */
   pass?: number;
   of?: number;
 }
@@ -120,13 +154,30 @@ export function itemsAt(doc: RowDocument, beat: number): Record<string, ChannelP
           break;
         }
       }
-      if (channel.kind === "drums" && pos.item >= 0) {
-        const run = channel.rows[row].items[pos.item];
-        pos.pass = Math.floor((beat - run.start) / run.barBeats) + 1;
+      const chartRow = channel.kind === "figures" ? channel.rows[row] : null;
+      if (chartRow?.type === "figures" && pos.item >= 0) {
+        const run = chartRow.items[pos.item];
+        pos.pass = Math.floor((beat - run.start) / run.phraseBeats) + 1;
         pos.of = run.count;
       }
     }
     out[channel.id] = pos;
   }
   return out;
+}
+
+const DRAWN_AS: Record<ChartKind, string> = { tab: "tab", staff: "notation", "staff-tab": "notation + tab", drums: "" };
+
+/** A channel's name on a display: "Lyrics", "Chords", or its part ("Rhythm guitar"). */
+export function channelName(c: RowChannel): string {
+  if (c.kind === "lyrics") return "Lyrics";
+  if (c.kind === "chords") return "Chords";
+  const name = c.id.replace(/-/g, " ");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** The name and, for a part, how it's drawn, for a pane's label: "Rhythm guitar · tab". */
+export function channelTitle(c: RowChannel): string {
+  const drawn = c.kind === "figures" || c.kind === "score" ? DRAWN_AS[c.chart] : "";
+  return drawn ? `${channelName(c)} · ${drawn}` : channelName(c);
 }

@@ -11,11 +11,11 @@
 
 import { songSlug } from "../core/dsongl/index.js";
 import type { Song } from "../core/dsongl/types.js";
-import type { ChartSpec, ChordsSpec, ScoreSpec } from "../manifest.js";
+import { chartStyle, type ChartSpec, type ChordsSpec, type ScoreSpec } from "../manifest.js";
 import { transposeSteps, type TransposeSpec } from "../build/transpose.js";
 import { mapScore, songSections, type MappedBar, type SongSection } from "./bar-map.js";
 import { chordName, transposeChord } from "./chord-label.js";
-import { grooveChart, type GrooveChart } from "./grooves.js";
+import { figureChart, unrepeatedSections, type FigureChart } from "./figures.js";
 import { chordBeats, type ChordTiming } from "./chord-timeline.js";
 import { parseLab } from "./lab.js";
 import { readScoreInfo, type ScoreInfo } from "./score-info.js";
@@ -26,8 +26,13 @@ export interface BuiltChart extends ChartSpec {
   /** The score track's own name, for labeling. */
   trackName: string;
   bars: MappedBar[];
-  /** Drum charts: the part as groove letters, section by section. */
-  grooves?: GrooveChart;
+  /** How it's drawn: `chart` (its figures) or `score` (every bar). See chartStyle. */
+  style: "chart" | "score";
+  /** Chart style: the part as figure letters, section by section. */
+  figures?: FigureChart;
+  /** Chart style: the sections drawn bar by bar anyway, by index (the manifest's
+   *  scoreSections, and those no bar repeats in). */
+  sectionsAsScore?: number[];
 }
 
 export interface ChartsFile {
@@ -95,8 +100,20 @@ export function buildChartsFile(
       );
       continue;
     }
-    const grooves = chart.kind === "drums" ? grooveChart(score.bars, score.info.signatures[chart.track] ?? [], sections) : undefined;
-    charts.push({ ...chart, source: spec.file, trackName: track.name, bars: score.bars, ...(grooves ? { grooves } : {}) });
+    const style = chartStyle(chart);
+    const figures = style === "chart" ? figureChart(score.bars, score.info.signatures[chart.track] ?? [], sections) : undefined;
+    // Sections the manifest names (every occurrence), and those no bar repeats in.
+    const sectionsAsScore = figures
+      ? [...new Set([...sections.flatMap((s, i) => (chart.scoreSections?.includes(s.name) ? [i] : [])), ...unrepeatedSections(figures)])].sort((a, b) => a - b)
+      : undefined;
+    charts.push({
+      ...chart,
+      style,
+      source: spec.file,
+      trackName: track.name,
+      bars: score.bars,
+      ...(figures ? { figures, sectionsAsScore } : {}),
+    });
   }
 
   let chords: ChartChord[] | undefined;

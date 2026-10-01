@@ -1,5 +1,5 @@
 /**
- * Drawing single bars of a score with alphaTab, in the browser.
+ * Drawing bars of a score with alphaTab, in the browser.
  *
  * alphaTab is large, so it loads only when a notation channel is first shown,
  * from the relay's /vendor/alphatab/ (its script and the Bravura music font).
@@ -13,7 +13,9 @@ declare global {
   }
 }
 
-import { barSettings } from "../../charts/notation-settings.js";
+import { chartSettings, detachRange, showStaves } from "../../charts/notation-settings.js";
+import type { ChartKind } from "../rows.js";
+import { placeDrawing, type NotationTarget } from "./pane-view.js";
 
 const BASE = "/vendor/alphatab/";
 let loading: Promise<any> | null = null;
@@ -52,19 +54,46 @@ function hex(color: string): string {
 }
 
 /**
- * Draw one bar (1-based) of one track into `el` (see barSettings), in `ink`
- * (a CSS color) on a clear background so it sits on the page like the text
- * around it. The prompter credits alphaTab once in its drawer instead of
- * under every bar. Resolves once the bar is drawn.
+ * Draw bars `start`… (`count` of them, 1-based) of one track into `el`, in
+ * the chart's kind (see chartSettings), in `ink` (a CSS color) on a clear
+ * background so it sits on the page like the text around it. The prompter
+ * credits alphaTab once in its drawer instead of under every drawing.
+ * alphaTab draws again when its container changes size, so `onDrawn` hears
+ * where the bars landed after every drawing; the promise resolves after the
+ * first.
  */
-export function renderBar(at: any, el: HTMLElement, score: any, track: number, bar: number, ink: string): Promise<void> {
-  const color = hex(ink);
-  const api = new at.AlphaTabApi(el, barSettings(bar, color, BASE + "font/"));
+export function renderRange(
+  at: any,
+  el: HTMLElement,
+  score: any,
+  track: number,
+  chart: ChartKind,
+  start: number,
+  count: number,
+  ink: string,
+  onDrawn: (drawing: { width: number; bars: { x: number; w: number }[] }) => void,
+): Promise<void> {
+  const api = new at.AlphaTabApi(el, chartSettings(chart, start, count, hex(ink), BASE + "font/"));
   const done = new Promise<void>((resolve) => {
     api.renderFinished.on(() => {
       el.querySelectorAll("text").forEach((t) => {
         if (/rendered by alphaTab/i.test(t.textContent ?? "")) t.remove();
       });
+      const system = api.renderer.boundsLookup?.staffSystems?.[0];
+      const bars = (system?.bars ?? []).map((b: any) => ({ x: b.realBounds.x, w: b.realBounds.w }));
+      // The drawing's width in the bounds' own units: its widest SVG, which
+      // alphaTab sizes before any CSS zoom (its container isn't sized yet).
+      let width = 0;
+      el.querySelectorAll("svg").forEach((svg) => {
+        width = Math.max(width, (parseFloat((svg.parentElement as HTMLElement)?.style.left || "0") || 0) + (parseFloat(svg.getAttribute("width") || "0") || 0));
+      });
+      onDrawn({ width, bars });
+      resolve();
+    });
+    // A drawing alphaTab can't finish leaves its space empty rather than
+    // holding up the page (e-ink waits for every drawing before paging).
+    api.error.on((e: unknown) => {
+      console.warn(`notation: bars ${start}–${start + count - 1} of track ${track}: ${e instanceof Error ? e.message : e}`);
       resolve();
     });
   });
@@ -72,14 +101,21 @@ export function renderBar(at: any, el: HTMLElement, score: any, track: number, b
   return done;
 }
 
-/** Draw each target's bar of `track` from the score at `scoreUrl`, in `ink`. */
+/** Draw each target's bars of `track` from the score at `scoreUrl`, in the chart's kind and `ink`. */
 export async function drawNotation(
-  targets: readonly { el: HTMLElement; scoreBar: number }[],
+  targets: readonly NotationTarget[],
   scoreUrl: string,
   track: number,
+  chart: ChartKind,
   ink: string,
 ): Promise<void> {
   if (!targets.length) return;
   const [at, score] = await Promise.all([loadAlphaTab(), loadScore(scoreUrl)]);
-  await Promise.all(targets.map((t) => renderBar(at, t.el, score, track, t.scoreBar, ink)));
+  showStaves(score, track, chart);
+  await Promise.all(
+    targets.map((t) => {
+      detachRange(score, track, t.start, t.count);
+      return renderRange(at, t.el, score, track, chart, t.start, t.count, ink, (d) => placeDrawing(t, d));
+    }),
+  );
 }

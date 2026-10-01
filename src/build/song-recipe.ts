@@ -96,6 +96,7 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     analyze: "wireit",
     smooth: "wireit",
     build: "wireit",
+    features: "wireit",
     bundle: "wireit",
   };
   if (canAlign) scripts.align = "wireit";
@@ -198,6 +199,16 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     dependencies: ["smooth"],
   };
 
+  // features: per-stem loudness, onsets, brightness and bands on the beat grid,
+  // for visuals. Deterministic and cheap (about a second a stem), so it follows
+  // the beatmap like build does rather than standing alone like beats.
+  const features = {
+    command: `npx tsx ${rel}/src/visuals/features-cli.ts ${manifest}`,
+    files: [manifest, beatmapJson, "stems/*.wav"],
+    output: ["*.beat-features.json", "stems/*.features.json"],
+    dependencies: ["smooth"],
+  };
+
   // bundle: render the mix + take-home bundle (REAPER; opt-in). render-bundle
   // also writes bundles/<slug>/ + .zip at the repo root, which wireit can't
   // declare as outputs (outside the package), so those stay side effects.
@@ -218,6 +229,7 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     analyze,
     smooth,
     build,
+    features,
     bundle,
   };
 

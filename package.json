@@ -30,6 +30,8 @@
     "init-manifest": "npx tsx src/authoring/init-manifest-cli.ts",
     "chords-draft": "npx tsx src/authoring/chords-draft-cli.ts",
     "generate": "npx tsx src/build/generate.ts",
+    "visuals:preview": "npx tsx src/visuals/preview-cli.ts",
+    "visuals:render": "npx tsx src/visuals/render-cli.ts",
     "build:songs": "npx tsx scripts/build-songs.ts",
     "realign-all": "npx tsx scripts/realign-all.ts",
     "bundle": "npx tsx src/build/bundle.ts",

@@ -15,30 +15,10 @@
       <div id="bar-beat" title="Bar (of the section's bars) : beat">–</div>
       <button id="drawer-btn" title="Display settings" aria-label="Display settings" aria-controls="drawer" aria-expanded="false">⚙</button>
     </div>
-    <!-- The song left to right, a block per section, filling as it plays. -->
-    <div id="song-map" aria-hidden="true"></div>
-  </header>
-
-  <!-- Settings and practice controls, out of the way of the lyrics. -->
-  <div id="drawer-scrim" hidden></div>
-  <aside id="drawer" aria-label="Display settings" aria-hidden="true">
-    <div class="drawer-head">
-      <span>Display</span>
-      <button id="drawer-close" aria-label="Close">✕</button>
-    </div>
-    <!-- Channel checkboxes, then settings for each channel that's on; built by the client. -->
-    <div id="drawer-channels"></div>
-    <section class="drawer-section">
-      <h2>Song</h2>
-      <div id="song-meta"></div>
-      <label>
-        Transport
-        <div id="transport-light" class="stopped" title="Transport state"></div>
-      </label>
-    </section>
-    <!-- Practice bundles only: the player, mix, loop and speed. -->
-    <section class="drawer-section" id="bundle-controls" hidden>
-      <h2>Playback</h2>
+    <!-- Practice bundles only: play, the mix, a section loop and the speed. -->
+    <div id="bundle-controls" hidden>
+      <button id="play-btn" title="Play / pause (space)" aria-label="Play">▶</button>
+      <span id="play-time">0:00</span>
       <div id="bundle-player"></div>
       <label>
         Loop
@@ -55,7 +35,21 @@
         <input type="range" id="speed-slider" min="0.5" max="1" step="0.05" value="1" title="Slow down (pitch preserved)">
         <span id="speed-value">100%</span>
       </label>
-    </section>
+    </div>
+    <!-- The song left to right, a block per section, filling as it plays. In
+         a bundle, clicking a section jumps to its start. -->
+    <div id="song-map" aria-hidden="true"></div>
+  </header>
+
+  <!-- Settings and practice controls, out of the way of the lyrics. -->
+  <div id="drawer-scrim" hidden></div>
+  <aside id="drawer" aria-label="Display settings" aria-hidden="true">
+    <div class="drawer-head">
+      <span>Display</span>
+      <button id="drawer-close" aria-label="Close">✕</button>
+    </div>
+    <!-- Channel checkboxes, then settings for each channel that's on; built by the client. -->
+    <div id="drawer-channels"></div>
     <section class="drawer-section">
       <h2>Reading</h2>
       <label>

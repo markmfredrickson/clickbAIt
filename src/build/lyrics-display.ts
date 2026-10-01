@@ -151,13 +151,17 @@ export function buildLyricsDisplay(
   const starts = sectionStarts(manifest.sections, manifest.timeSignature);
   // Bars ride along so a client can size the last section, which has no next
   // start beat to measure against.
-  const sections: DisplaySection[] = manifest.sections.map((s, i) => ({
-    name: s.name,
-    startBeat: starts[i],
-    bars: s.bars,
-    ...(s.meters?.length ? { barBeats: barBeats(s, manifest.timeSignature) } : {}),
-    ...(s.cue !== undefined ? { cue: s.cue } : {}),
-  }));
+  const sections: DisplaySection[] = manifest.sections.map((s, i) => {
+    const cueBeat = cueStart(manifest, starts, i);
+    return {
+      name: s.name,
+      startBeat: starts[i],
+      bars: s.bars,
+      ...(s.meters?.length ? { barBeats: barBeats(s, manifest.timeSignature) } : {}),
+      ...(s.cue !== undefined ? { cue: s.cue } : {}),
+      ...(cueBeat !== undefined ? { cueBeat } : {}),
+    };
+  });
 
   // Meter map, in REAPER measure order, so the client can turn measure.beat OSC
   // into a continuous beat even when a section changes meter (e.g. a 2/4
@@ -256,4 +260,25 @@ export function buildLyricsDisplay(
     words,
     display: { sections, lines },
   };
+}
+
+/**
+ * Where section `i`'s cue starts, if it has one, so a player can jump to the
+ * cue rather than the downbeat. An announced section (`cue: true`) speaks
+ * its name and counts in over the two bars before it (in those bars' own
+ * meters; before the song, the song's); a hand-placed cue starts at its
+ * earliest beat, less a beat for the name's lead-in.
+ */
+function cueStart(manifest: SongManifest, starts: readonly number[], i: number): number | undefined {
+  const s = manifest.sections[i];
+  const candidates: number[] = [];
+  if (s.cue) {
+    // The lengths of the bars before this section, nearest first.
+    const before = manifest.sections.slice(0, i).flatMap((p) => barBeats(p, manifest.timeSignature)).reverse();
+    while (before.length < 2) before.push(manifest.timeSignature[0]);
+    candidates.push(starts[i] - before[0] - before[1]);
+  }
+  const earliest = Math.min(...(s.cues ?? []).map((c) => c.at));
+  if (earliest < 0) candidates.push(starts[i] + earliest - 1);
+  return candidates.length ? Math.min(...candidates) : undefined;
 }

@@ -50,26 +50,29 @@ body {
   font-weight: 600;
 }
 
-#song-meta {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-}
-
 #header-bar {
   display: flex;
   align-items: center;
   gap: 1rem;
 }
 
+/* On a narrow screen the song's title gives way, never the section. */
 #now {
   flex: 1;
   min-width: 0;
+  display: flex;
   white-space: nowrap;
+}
+
+#song-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 #now-section {
+  flex-shrink: 0;
+  white-space: pre; /* keep the space in " : " */
   color: var(--accent);
 }
 
@@ -193,8 +196,56 @@ body {
 
 /* Only in bundle mode (the drawer's Playback section). The `hidden`
    attribute keeps it out of the live teleprompter. */
+/* Practice bundles: the playback controls, a line of the header. */
+#bundle-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+}
+
 #bundle-controls[hidden] {
   display: none;
+}
+
+#bundle-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-dim);
+}
+
+#bundle-player {
+  display: contents;
+}
+
+#play-btn {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  border: 1px solid var(--text-dim);
+  background: var(--section-bg);
+  color: var(--accent);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+#play-time {
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2em;
+}
+
+/* In a bundle, a section of the song map is a place to jump to (its cue),
+   and while the player is stopped, where it will play from has a ring. */
+.bundle #song-map .map-seg {
+  cursor: pointer;
+}
+
+#song-map .map-seg.ring {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 #bundle-controls select {
@@ -207,25 +258,6 @@ body {
 }
 
 #speed-slider { width: 70px; }
-
-/* ── Transport indicator ── */
-#transport-light {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  transition: background 0.2s;
-}
-
-#transport-light.playing {
-  background: #2d2;
-  box-shadow: 0 0 8px #2d2;
-}
-
-#transport-light.stopped {
-  background: #d33;
-  box-shadow: 0 0 8px #d33;
-}
 
 /* ── Panes: one per channel, stacked in the viewer's order ── */
 /* A pane shows a set number of its rows and turns them all at once (the

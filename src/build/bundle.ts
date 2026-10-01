@@ -13,12 +13,14 @@
  *   - <slug>.lyrics-display.json  — from `npm run generate` (the built display)
  *   - <slug>.rows.json            — also from generate: what the prompter's panes show
  *   - <slug>.charts.json          — optional; used only for a song built before rows files
+ *   - the score files drum charts come from, whose bars are drawn here as SVG
  *   - mix.opus | mix.ogg | mix.m4a | mix.wav — the rendered show mix
  *     (render the song's RPP in REAPER and save it into the song folder).
  *
  * Output: bundles/<slug>/ with index.html + style.css + teleprompter.js +
- *         song.json + the mix + README.txt. The display data is also inlined
- *         into index.html (window.__SONG_DATA__) so it works over file://.
+ *         song.json + the mix + README.txt. The display data (rows and drawn
+ *         staffs included) is also inlined into index.html
+ *         (window.__SONG_DATA__), with the music font, so it works over file://.
  */
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
@@ -27,6 +29,8 @@ import { buildClient } from "../teleprompter/build-client.js";
 import { SongManifestSchema } from "../manifest.js";
 import { bundleVariants, type BundleVariant } from "./bundle-variants.js";
 import { rowsFromDisplay } from "../teleprompter/build-rows.js";
+import { notationBars, notationCss, renderBars } from "../charts/notation-svg.js";
+import { ALPHATAB_DIR } from "../teleprompter/alphatab-files.js";
 
 function fail(msg: string): never {
   console.error("error: " + msg);
@@ -105,6 +109,19 @@ if (existsSync(rowsPath)) {
   songData.rows = rowsFromDisplay(songData, charts ? { chords: charts.chords, charts: charts.charts } : null);
 }
 
+// Drum staffs, drawn now: a bundle has no relay to serve alphaTab or the
+// score, so it carries each bar its drum charts show as SVG, by channel and
+// score bar, and the music font they're drawn in.
+let notationStyle = "";
+const drawnCharts = notationBars(songData.rows);
+if (drawnCharts.length) {
+  songData.notation = {};
+  for (const chart of drawnCharts) {
+    songData.notation[chart.id] = await renderBars(new Uint8Array(readFileSync(join(songDir, chart.source))), chart.track, chart.bars);
+  }
+  notationStyle = `  <style>${notationCss(new Uint8Array(readFileSync(join(ALPHATAB_DIR, "font/Bravura.woff2"))))}</style>\n`;
+}
+
 const clientDir = resolve(repoRoot, "src", "teleprompter", "client");
 if (!existsSync(clientDir)) fail(`teleprompter client dir missing: ${clientDir}`);
 
@@ -118,23 +135,25 @@ copyFileSync(join(clientDir, "teleprompter.js"), join(outDir, "teleprompter.js")
 for (const v of variants) copyFileSync(join(songDir, v.file), join(outDir, v.file));
 writeFileSync(join(outDir, "song.json"), JSON.stringify(songData, null, 2)); // for HTTP-served debugging
 
-// index.html — put the mix player in the drawer's Playback section, and inline the display
-// data before teleprompter.js so the bundle works when opened over file://.
+// index.html — put the mix in the header's playback controls (the page's own
+// play button drives it), and inline the display data before teleprompter.js
+// so the bundle works when opened over file://.
 const indexHtmlSrc = readFileSync(join(clientDir, "index.html"), "utf8");
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 const variantSelect = variants.length > 1
-  ? `    <label style="display:block;margin-top:0.5rem">Mix\n` +
+  ? `    <label>Mix\n` +
     `      <select id="mix-variant" title="Which parts play (click and cues always do)">\n` +
     variants.map((v) => `        <option value="${esc(v.file)}"${v === full ? " selected" : ""}>${esc(v.label)}</option>`).join("\n") + `\n` +
     `      </select>\n    </label>\n`
   : "";
 const audioTag =
   variantSelect +
-  `    <audio id="mix-audio" src="${esc(full.file)}" controls preload="auto" style="width:100%;margin-top:0.5rem"></audio>`;
+  `    <audio id="mix-audio" src="${esc(full.file)}" preload="auto"></audio>`;
 const songScript = `  <script>window.__SONG_DATA__ = ${JSON.stringify(songData)};</script>`;
 const indexHtml = indexHtmlSrc
   .replace(/<div id="bundle-player"><\/div>/, `<div id="bundle-player">\n${audioTag}\n      </div>`)
-  .replace(/(<script src="teleprompter\.js"><\/script>)/, `${songScript}\n  $1`);
+  .replace(/(<script src="teleprompter\.js"><\/script>)/, `${songScript}\n  $1`)
+  .replace(/<\/head>/, `${notationStyle}</head>`);
 writeFileSync(join(outDir, "index.html"), indexHtml);
 
 writeFileSync(
@@ -142,7 +161,8 @@ writeFileSync(
   `${songData.title} — practice bundle\n\n` +
     `How to use:\n` +
     `  1. Double-click index.html to open it in your browser.\n` +
-    `  2. Press play on the audio control; the lyrics scroll automatically.\n` +
+    `  2. Press play at the top (or the space bar); the display follows.\n` +
+    `     Click a section in the strip under the title to jump to it.\n` +
     (variants.length > 1
       ? `     "Mix" picks which parts play: the full mix, minus your own part\n` +
         `     (practice against the rest of the band), or click only. The audio\n` +

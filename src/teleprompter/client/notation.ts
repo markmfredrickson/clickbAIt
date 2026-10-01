@@ -13,6 +13,8 @@ declare global {
   }
 }
 
+import { barSettings } from "../../charts/notation-settings.js";
+
 const BASE = "/vendor/alphatab/";
 let loading: Promise<any> | null = null;
 
@@ -50,35 +52,14 @@ function hex(color: string): string {
 }
 
 /**
- * Draw one bar (1-based) of one track into `el`: the notes only, without the
- * score's titles, tempo, markers, text or dynamics, in `ink` (a CSS color)
- * on a clear background so it sits on the page like the text around it. The
- * prompter credits alphaTab once in its drawer instead of under every bar.
- * Resolves once the bar is drawn.
+ * Draw one bar (1-based) of one track into `el` (see barSettings), in `ink`
+ * (a CSS color) on a clear background so it sits on the page like the text
+ * around it. The prompter credits alphaTab once in its drawer instead of
+ * under every bar. Resolves once the bar is drawn.
  */
 export function renderBar(at: any, el: HTMLElement, score: any, track: number, bar: number, ink: string): Promise<void> {
   const color = hex(ink);
-  const api = new at.AlphaTabApi(el, {
-    core: { fontDirectory: BASE + "font/", useWorkers: false, enableLazyLoading: false, engine: "svg" },
-    display: {
-      startBar: bar, barCount: 1, layoutMode: "horizontal", staveProfile: "score", scale: 1.1,
-      // alphaTab's default is 35px all round; a chart wants its bars close together.
-      padding: [4, 4],
-      resources: {
-        staffLineColor: color, barSeparatorColor: color, barNumberColor: color,
-        mainGlyphColor: color, secondaryGlyphColor: color, scoreInfoColor: color,
-      },
-    },
-    notation: {
-      elements: {
-        scoreTitle: false, scoreSubTitle: false, scoreArtist: false, scoreAlbum: false,
-        scoreWords: false, scoreMusic: false, scoreWordsAndMusic: false, scoreCopyright: false,
-        guitarTuning: false, trackNames: false,
-        effectTempo: false, effectMarker: false, effectText: false, effectDynamics: false,
-      },
-    },
-    player: { enablePlayer: false },
-  });
+  const api = new at.AlphaTabApi(el, barSettings(bar, color, BASE + "font/"));
   const done = new Promise<void>((resolve) => {
     api.renderFinished.on(() => {
       el.querySelectorAll("text").forEach((t) => {

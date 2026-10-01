@@ -66,7 +66,6 @@ import { drawNotation } from "./notation.js";
 
   // ── DOM refs ──
   const titleEl = document.getElementById("song-title");
-  const metaEl = document.getElementById("song-meta");
   const container = document.getElementById("panes");
   const statusEl = document.getElementById("connection-status");
   const beatDisplay = document.getElementById("beat-display");
@@ -74,6 +73,7 @@ import { drawNotation } from "./notation.js";
   const barBeatEl = document.getElementById("bar-beat");
   const songMapEl = document.getElementById("song-map");
   let mapFills = [];  // section index -> its fill element in the song map
+  let ringed = -1;    // bundle: the section the player was sent to, ringed until it plays
 
   // Sections with their meters and names, for the header's Section and Bar:Beat.
   let metered = [];
@@ -83,12 +83,13 @@ import { drawNotation } from "./notation.js";
   const offsetValue = document.getElementById("offset-value");
   const scrollModeBtn = document.getElementById("scroll-mode-btn");
   const darkModeBtn = document.getElementById("dark-mode-btn");
-  const transportLight = document.getElementById("transport-light");
   const bundleControls = document.getElementById("bundle-controls");
   const loopFrom = document.getElementById("loop-from") as HTMLSelectElement;
   const loopTo = document.getElementById("loop-to") as HTMLSelectElement;
   const speedSlider = document.getElementById("speed-slider") as HTMLInputElement;
   const speedValue = document.getElementById("speed-value");
+  const playBtn = document.getElementById("play-btn");
+  const playTime = document.getElementById("play-time");
   const drawer = document.getElementById("drawer");
   const drawerBtn = document.getElementById("drawer-btn");
   const drawerScrim = document.getElementById("drawer-scrim");
@@ -197,7 +198,6 @@ import { drawNotation } from "./notation.js";
   // ── Init ──
   function renderWaiting() {
     titleEl.textContent = "Waiting for song…";
-    metaEl.textContent = "Start playback in REAPER, or load a region matching a song slug.";
     nowSectionEl.textContent = "";
     barBeatEl.textContent = "–";
     metered = [];
@@ -205,7 +205,7 @@ import { drawNotation } from "./notation.js";
     doc = null;
     renderSongMap();
     document.title = "clickbAIt: One Simple Track";
-    container.innerHTML = '<div class="waiting-message">No song loaded yet.</div>';
+    container.innerHTML = '<div class="waiting-message">No song loaded yet. Start playback in REAPER, or load a region matching a song slug.</div>';
     panes = [];
   }
 
@@ -265,6 +265,10 @@ import { drawNotation } from "./notation.js";
       fill.style.width = (done * 100) + "%";
       fill.parentNode.classList.toggle("past", i < p.section);
       fill.parentNode.classList.toggle("now", i === p.section);
+      // While a bundle's player is stopped, ring where it will play from:
+      // the section it was sent to, else the one it's in.
+      const paused = document.body.classList.contains("paused");
+      fill.parentNode.classList.toggle("ring", paused && i === (ringed >= 0 ? ringed : p.section));
     });
   }
 
@@ -278,9 +282,14 @@ import { drawNotation } from "./notation.js";
     }
     statusEl.textContent = "Bundle mode";
     statusEl.className = "connected";
-    audio.addEventListener("play",  function () { transportLight.className = "playing"; });
-    audio.addEventListener("pause", function () { transportLight.className = "stopped"; });
-    audio.addEventListener("ended", function () { transportLight.className = "stopped"; });
+    function playing(on: boolean) {
+      document.body.classList.toggle("paused", !on);
+      playBtn.textContent = on ? "❚❚" : "▶";
+      playBtn.setAttribute("aria-label", on ? "Pause" : "Play");
+    }
+    audio.addEventListener("play",  function () { ringed = -1; playing(true); });
+    audio.addEventListener("pause", function () { playing(false); });
+    audio.addEventListener("ended", function () { playing(false); });
 
     setupBundleControls(audio);
 
@@ -300,17 +309,52 @@ import { drawNotation } from "./notation.js";
         } else if (curve) {
           clock.emit(curve.toBeat(audio.currentTime || 0));
         }
+        showTime(audio.currentTime || 0);
       }
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
   }
 
-  // Loop + slow-down controls, shown only in bundle mode (they act on the
-  // <audio> element; live/OSC mode has no such clock to steer).
+  let shownSecond = -1;
+  function showTime(seconds: number) {
+    const whole = Math.floor(seconds);
+    if (whole === shownSecond) return;
+    shownSecond = whole;
+    playTime.textContent = Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
+  }
+
+  // Playback controls in the header, shown only in bundle mode (they act on
+  // the <audio> element; live/OSC mode has no such clock to steer).
   function setupBundleControls(audio: HTMLAudioElement) {
     if (!bundleControls) return;
     bundleControls.hidden = false;
+    document.body.classList.add("bundle", "paused");
+
+    function togglePlay() {
+      if (audio.paused) audio.play().catch(function () {});
+      else audio.pause();
+    }
+    playBtn.addEventListener("click", togglePlay);
+    // Space plays and pauses, except while typing in a control.
+    document.addEventListener("keydown", function (e) {
+      const t = e.target as HTMLElement;
+      if (e.key !== " " || (t && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(t.tagName))) return;
+      e.preventDefault();
+      togglePlay();
+    });
+    // A click on a section of the song map jumps to its cue (its name and
+    // count-in), or its start when it has none, a hair inside: a seek can
+    // land just short of where it's sent.
+    songMapEl.addEventListener("click", function (e) {
+      const seg = (e.target as HTMLElement).closest(".map-seg");
+      const i = seg ? Array.prototype.indexOf.call(songMapEl.children, seg) : -1;
+      if (i < 0 || !curve || !metered[i]) return;
+      const s = song.display.sections[i];
+      ringed = i;
+      audio.currentTime = Math.max(0, curve.toTime(s.cueBeat !== undefined ? s.cueBeat : s.startBeat) + 0.03);
+      if (audio.paused) clock.emit(curve.toBeat(audio.currentTime));
+    });
 
     // Mix variant (full / minus-<part> / click only): the bundle inlines one
     // <option> per rendered file. Every variant is the same render length, so
@@ -381,11 +425,6 @@ import { drawNotation } from "./notation.js";
     metered = sectionMeters(song);
     sectionNames = song.display.sections.map(function (s) { return s.name; });
     renderSongMap();
-    const parts = [];
-    if (song.artist) parts.push(song.artist);
-    if (song.key) parts.push("Key: " + song.key);
-    parts.push(song.bpm + " BPM");
-    metaEl.textContent = parts.join(" · ");
     document.title = song.title + " — clickbAIt: One Simple Track";
 
     // Sizes and rows in the URL are by channel id, known only now.
@@ -430,9 +469,12 @@ import { drawNotation } from "./notation.js";
       const perPage = rowsOf(channel);
       const pane: Pane = { channel, view, el, rowsEl, perPage, pages: panePages(channel.rows, perPage), page: -1, litRow: -1, litItem: -1 };
       panes.push(pane);
-      // Staffs draw once alphaTab and the score load (not in a bundle, which
-      // has no relay to serve them); the pane is sized again when they do.
-      if (channel.kind === "drums" && view.notation.length && !song.bundle) {
+      // A bundle carries its staffs drawn; live, they draw once alphaTab and
+      // the score load, and the pane is sized again when they do.
+      const drawn = song.notation && song.notation[channel.id];
+      if (drawn) {
+        view.notation.forEach(function (t) { t.el.innerHTML = drawn[t.scoreBar] || ""; });
+      } else if (channel.kind === "drums" && view.notation.length && !song.bundle) {
         const ink = getComputedStyle(document.body).color;
         drawNotation(view.notation, "/charts/source/" + encodeURIComponent(channel.id), channel.track, ink)
           .then(function () { if (gen === generation) sizePane(pane); })
@@ -497,8 +539,6 @@ import { drawNotation } from "./notation.js";
       let msg;
       try { msg = JSON.parse(event.data); } catch (e) { return; }
       if (msg.type === "position") clock.emit(msg.beat);
-      else if (msg.type === "stop") transportLight.className = "stopped";
-      else if (msg.type === "play") transportLight.className = "playing";
       else if (msg.type === "song-changed") loadSong();
       else if (msg.type === "show-state") applyShowState(msg.state);
     };

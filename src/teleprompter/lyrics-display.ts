@@ -69,6 +69,8 @@ export interface DisplaySection {
    *  their own (manifest `meters`); else every bar is the section's meter. */
   barBeats?: number[];
   cue?: boolean;
+  /** Where the section's cue (its name and count-in) starts, when it has one. */
+  cueBeat?: number;
 }
 
 /**

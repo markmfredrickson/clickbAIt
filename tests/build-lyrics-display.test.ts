@@ -127,7 +127,7 @@ describe("buildLyricsDisplay", () => {
     });
     const out = buildLyricsDisplay(m, align);
     expect(out.display.sections).toEqual([
-      { name: "Chorus 1", startBeat: 0, bars: 16, cue: true },
+      { name: "Chorus 1", startBeat: 0, bars: 16, cue: true, cueBeat: -8 },
       { name: "Instrumental", startBeat: 64, bars: 20 },
     ]);
   });
@@ -150,6 +150,29 @@ describe("buildLyricsDisplay", () => {
       { fromMeasure: 1, beatsPerBar: 4, beatsBefore: 0 },
       { fromMeasure: 2, beatsPerBar: 2, beatsBefore: 4 },
       { fromMeasure: 3, beatsPerBar: 4, beatsBefore: 6 },
+    ]);
+  });
+
+  it("gives a cued section the beat its cue starts, for jumping to it", () => {
+    const align = mkAlign([["A", 1000, 1100]]);
+    const m = mkManifest({
+      sections: [
+        { name: "Intro", bars: 4, cue: true },
+        { name: "Verse", bars: 4, meters: [{ bar: 4, timeSignature: [2, 4] }] },
+        // Announced: the name and count fill the two bars before it (a 4/4 bar, then the 2/4 bar).
+        { name: "Chorus", bars: 4, cue: true },
+        // A hand-placed cue two bars out starts there, less a beat for the name's lead-in.
+        { name: "Bridge", bars: 4, cues: [{ at: -8, label: "Bridge" }, { at: -4, label: "1" }] },
+        { name: "Outro", bars: 2 },
+      ],
+    });
+    const out = buildLyricsDisplay(m, align);
+    expect(out.display.sections.map((x) => [x.name, x.startBeat, x.cueBeat])).toEqual([
+      ["Intro", 0, -8], // in the count-in, in the song's meter
+      ["Verse", 16, undefined],
+      ["Chorus", 30, 24],
+      ["Bridge", 46, 37],
+      ["Outro", 62, undefined],
     ]);
   });
 

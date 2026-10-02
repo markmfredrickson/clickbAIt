@@ -55,6 +55,8 @@ export interface SceneState {
 
 export interface SceneClock {
   at(t: number): SceneState;
+  /** Project seconds of `beat`. */
+  timeOf(beat: number): number;
 }
 
 export function sceneClock(timing: SceneTiming, sections: readonly SceneSection[], features?: SceneFeatures): SceneClock {
@@ -76,6 +78,7 @@ export function sceneClock(timing: SceneTiming, sections: readonly SceneSection[
   };
 
   return {
+    timeOf: (beat) => curve.toTime(beat),
     at(t) {
       const beat = curve.toBeat(t);
       const pos = songPosition(metered, beat, countInBeatsPerBar);

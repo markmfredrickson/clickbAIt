@@ -24,7 +24,8 @@
 //                             beat = beats into the section, progress = 0..1 through it
 //   s.next                    { name, inBeats } for the next section, or null in the last
 //
-// Also on `song`: width, height, and sections (each { name, start, end, bars, beatsPerBar }).
+// Also on `song`: width, height, sections (each { name, start, end, bars, beatsPerBar }),
+// and timeOf(beat), the project seconds of a beat, for cutting on beats.
 //
 // Preview while editing:  npm run visuals:preview -- <manifest> [--scene this-file]
 // Render to video:        npm run visuals:render -- <manifest> [--scene this-file]

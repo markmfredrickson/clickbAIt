@@ -90,6 +90,7 @@ export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<Mou
     height: o.height,
     sections: o.sections,
     now: () => now,
+    timeOf: (beat: number) => clock.timeOf(beat),
     clip(name: string, at: (s: SceneState) => number | null): SceneClip {
       const info = o.media?.[name];
       if (!info) throw new Error(`no clip "${name}" in media/media.json; clips: ${Object.keys(o.media ?? {}).join(", ") || "none"}`);

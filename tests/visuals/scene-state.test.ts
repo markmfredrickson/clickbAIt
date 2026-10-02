@@ -73,6 +73,12 @@ describe("sceneClock", () => {
     expect(() => s.f("drums", "wobble" as never)).toThrow(/wobble/);
   });
 
+  it("gives the time of any beat, for cutting on beats", () => {
+    expect(clock.timeOf(8)).toBeCloseTo(timeOf(8));
+    expect(clock.timeOf(-2)).toBeCloseTo(0);
+    expect(clock.at(clock.timeOf(17.5)).beat).toBeCloseTo(17.5);
+  });
+
   it("gives the same state for the same time", () => {
     expect(JSON.stringify(clock.at(7.3))).toBe(JSON.stringify(clock.at(7.3)));
   });

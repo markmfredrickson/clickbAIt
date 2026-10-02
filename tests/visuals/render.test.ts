@@ -72,6 +72,12 @@ describe.skipIf(!hasChrome || !hasFfmpeg)("renderScene (headless Chrome + ffmpeg
     await expect(renderScene({ scene, timing, sections, fps: FPS, width: 64, height: 36, out: join(dir, "c.mp4") })).rejects.toThrow(/bass/);
   });
 
+  it("runs on past the song by the tail asked for", async () => {
+    const out = join(dir, "tail.mp4");
+    await renderScene({ scene: flash, timing, sections, fps: FPS, width: 64, height: 36, out, tail: 2 });
+    expect(brightness(out).length).toBe(15 * FPS);
+  }, 60_000);
+
   it("renders the same frames twice", async () => {
     const again = join(dir, "b.mp4");
     await renderScene({ scene: flash, timing, sections, fps: FPS, width: 64, height: 36, out: again });

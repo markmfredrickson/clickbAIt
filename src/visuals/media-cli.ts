@@ -4,11 +4,14 @@
  *   npm run media -- add <source> --song <manifest> --name <clip> [--in 5:00 --out 5:10]
  *                        [--from <page url> | --from own] [--license <id>] [--by <name>]
  *   npm run media -- sheet <source> [--every 5] [--out <dir>]
+ *   npm run media -- analyze <clip>... --song <manifest>
  *
  * <source> is an Internet Archive item (`archive:<id>` or its archive.org URL)
  * or a file you downloaded or shot. `add` cuts the clip into the song's
  * `media/` and records its source and license in `media/media.json`. `sheet`
- * makes a contact sheet for picking in and out points.
+ * makes a contact sheet for picking in and out points. `analyze` finds each
+ * clip's shots (cuts) and strikes (sudden flares, like a hammer landing) and
+ * records them, for scenes to cut on.
  */
 
 import { execFile } from "node:child_process";
@@ -16,7 +19,7 @@ import { existsSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { tmpdir } from "node:os";
-import { addMedia, archiveLicense, contactSheet, describeSource, formatTime, parseTime } from "./media.js";
+import { addMedia, analyzeMedia, archiveLicense, contactSheet, describeSource, formatTime, parseTime } from "./media.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -35,6 +38,7 @@ const [command, source] = positionals;
 const usage = () => {
   console.error("usage: npm run media -- add <source> --song <manifest> --name <clip> [--in t --out t] [--from url|own] [--license id] [--by name]");
   console.error("       npm run media -- sheet <source> [--every 5] [--out dir]");
+  console.error("       npm run media -- analyze <clip>... --song <manifest>");
   process.exit(1);
 };
 if (!command || !source) usage();
@@ -47,6 +51,13 @@ if (command === "add") {
   const span = values.in || values.out ? { start: parseTime(values.in ?? "0"), end: parseTime(values.out ?? "99:59:59") } : undefined;
   const record = await addMedia(song, values.name!, src, span);
   console.error(`${record.file}: ${record.duration.toFixed(1)} s, ${record.width}x${record.height} at ${record.fps} fps, ${record.license}`);
+} else if (command === "analyze") {
+  if (!values.song) usage();
+  const song = statSync(resolve(values.song!)).isDirectory() ? resolve(values.song!) : dirname(resolve(values.song!));
+  for (const name of positionals.slice(1)) {
+    const { shots, strikes } = await analyzeMedia(song, name);
+    console.error(`${name}: ${shots.length} shots, ${strikes.length} strikes${strikes.length ? " at " + strikes.map((t) => t.toFixed(2)).join(" ") : ""}`);
+  }
 } else if (command === "sheet") {
   let input = source;
   let title = source;

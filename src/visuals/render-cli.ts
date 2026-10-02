@@ -19,11 +19,16 @@ import { readMedia } from "./media.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { scene: { type: "string" }, fps: { type: "string", default: "30" }, size: { type: "string", default: "1920x1080" } },
+  options: {
+    scene: { type: "string" },
+    fps: { type: "string", default: "30" },
+    size: { type: "string", default: "1920x1080" },
+    tail: { type: "string", default: "0" },
+  },
 });
 const manifestPath = positionals[0];
 if (!manifestPath) {
-  console.error("usage: npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080]");
+  console.error("usage: npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080] [--tail seconds]");
   process.exit(1);
 }
 const dir = dirname(resolve(manifestPath));
@@ -45,6 +50,7 @@ await renderScene({
   features: existsSync(file(".beat-features.json")) ? json(".beat-features.json") : undefined,
   media: readMedia(dirname(scene)).clips,
   fps: Number(values.fps),
+  tail: Number(values.tail),
   width,
   height,
   out,

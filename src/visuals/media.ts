@@ -118,7 +118,7 @@ export interface MediaRecord {
   title?: string;
   added: string;
 }
-export type MediaFile = { clips: Record<string, MediaRecord & ClipInfo> };
+export type MediaFile = { clips: Record<string, MediaRecord & ClipInfo & { shots?: Shot[]; strikes?: number[] }> };
 
 export function readMedia(songDir: string): MediaFile {
   const path = join(songDir, "media", "media.json");
@@ -242,4 +242,82 @@ ${tiles.map((t) => `<figure><img src="${t.file}" loading="lazy"><figcaption>${fo
 `,
   );
   return { tiles };
+}
+
+export interface Shot {
+  start: number;
+  end: number;
+}
+
+/**
+ * The shots in a clip: ffmpeg's scene-change score per frame, a cut wherever
+ * it passes `threshold`. Cuts closer than a quarter second merge (old film
+ * flickers), so a dissolve or a flash doesn't read as a run of cuts.
+ */
+export async function findShots(clip: string, threshold = 10): Promise<Shot[]> {
+  const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-i", clip, "-an", "-vf", `scdet=threshold=${threshold}`, "-f", "null", "-"], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const cuts: number[] = [];
+  for (const m of stderr.matchAll(/lavfi\.scd\.time: ([\d.]+)/g)) {
+    const t = Number(m[1]);
+    if (t < 0.1) continue;
+    if (cuts.length && t - cuts[cuts.length - 1] < 0.25) continue;
+    cuts.push(t);
+  }
+  const { duration } = await probe(clip);
+  const starts = [0, ...cuts];
+  return starts.map((start, i) => ({ start, end: starts[i + 1] ?? duration }));
+}
+
+/** Mean brightness (0–255) of every frame. */
+async function frameBrightness(clip: string): Promise<{ fps: number; levels: number[] }> {
+  const { fps } = await probe(clip);
+  const { stdout } = await run("ffmpeg", ["-v", "error", "-i", clip, "-vf", "scale=32:24,format=gray", "-f", "rawvideo", "-"], {
+    encoding: "buffer",
+    maxBuffer: 512 * 1024 * 1024,
+  });
+  const px = 32 * 24;
+  const levels: number[] = [];
+  for (let i = 0; i + px <= stdout.length; i += px) {
+    let sum = 0;
+    for (let j = i; j < i + px; j++) sum += stdout[j];
+    levels.push(sum / px);
+  }
+  return { fps, levels };
+}
+
+/**
+ * Moments of impact: frames where the picture suddenly flares brighter than
+ * the frames just before it, as sparks burst when a drop hammer lands. Each
+ * strike is the frame of the jump; flares closer than 0.2 s are one strike.
+ */
+export async function findStrikes(clip: string, minRise = 25): Promise<number[]> {
+  const { fps, levels } = await frameBrightness(clip);
+  const rise = levels.map((v, n) => {
+    const before = levels.slice(Math.max(0, n - 5), n).sort((a, b) => a - b);
+    return before.length ? v - before[before.length >> 1] : 0;
+  });
+  const strikes: number[] = [];
+  for (let n = 1; n < rise.length; n++) {
+    const peak = rise[n] >= minRise && rise[n] >= rise[n - 1] && rise[n] >= (rise[n + 1] ?? 0);
+    if (!peak) continue;
+    const t = n / fps;
+    if (strikes.length && t - strikes[strikes.length - 1] < 0.2) continue;
+    strikes.push(t);
+  }
+  return strikes;
+}
+
+/** Find a clip's shots and strikes and keep them in its `media/media.json` record. */
+export async function analyzeMedia(songDir: string, name: string): Promise<{ shots: Shot[]; strikes: number[] }> {
+  const media = readMedia(songDir);
+  const record = media.clips[name];
+  if (!record) throw new Error(`no clip "${name}" in ${join(songDir, "media", "media.json")}`);
+  const file = join(songDir, record.file);
+  const shots = await findShots(file);
+  const strikes = await findStrikes(file);
+  media.clips[name] = { ...record, shots, strikes };
+  writeFileSync(join(songDir, "media", "media.json"), JSON.stringify(media, null, 2) + "\n");
+  return { shots, strikes };
 }

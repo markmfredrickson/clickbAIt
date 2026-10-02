@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { archiveLicense, describeSource, parseTime, cutClip, addMedia, contactSheet } from "../../src/visuals/media.js";
+import { archiveLicense, describeSource, parseTime, cutClip, addMedia, contactSheet, findShots, findStrikes, analyzeMedia } from "../../src/visuals/media.js";
 
 const hasFfmpeg = (() => {
   try {
@@ -147,5 +147,66 @@ describe.skipIf(!hasFfmpeg)("contactSheet (ffmpeg)", () => {
     const tile = gray(join(out, sheet.tiles[3].file));
     expect(diff(tile, gray(source, 6))).toBeLessThan(diff(tile, gray(source, 5)));
     expect(diff(tile, gray(source, 6))).toBeLessThan(diff(tile, gray(source, 7)));
+  });
+});
+
+describe.skipIf(!hasFfmpeg)("findShots and findStrikes (ffmpeg)", () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "shots-"));
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("finds hard cuts, and doesn't count a dissolve as a run of cuts", async () => {
+    // Three shots with hard cuts at 2 s and 4 s, then a 1 s dissolve into a fourth from 6 s.
+    const clip = join(dir, "cuts.mp4");
+    const src = (pattern: string, d: number) => ["-f", "lavfi", "-i", `${pattern}${pattern.includes("=") ? ":" : "="}s=160x120:r=25:d=${d}`];
+    execFileSync("ffmpeg", [
+      "-v", "error",
+      ...src("testsrc", 2), ...src("smptebars", 2), ...src("color=c=red", 3), ...src("rgbtestsrc", 3),
+      "-filter_complex",
+      "[0][1][2]concat=n=3,format=yuv420p,settb=1/25[a];[3]format=yuv420p,settb=1/25[b];[a][b]xfade=transition=fade:duration=1:offset=6,format=yuv420p",
+      clip,
+    ]);
+    const shots = await findShots(clip);
+    const starts = shots.map((s) => s.start);
+    expect(starts[0]).toBe(0);
+    expect(starts.some((t) => Math.abs(t - 2) <= 0.04)).toBe(true);
+    expect(starts.some((t) => Math.abs(t - 4) <= 0.04)).toBe(true);
+    expect(starts.filter((t) => t > 5.9 && t < 7.1).length).toBeLessThanOrEqual(1);
+    expect(shots.at(-1)!.end).toBeCloseTo(9, 1);
+  });
+
+  it("finds each burst of light as a strike, at its frame", async () => {
+    // Dark gray, with a white flash that decays, starting at frames 20, 55 and 90 (25 fps).
+    const clip = join(dir, "strikes.mp4");
+    execFileSync("ffmpeg", [
+      "-v", "error", "-f", "lavfi", "-i", "color=gray:s=160x120:r=25:d=5",
+      "-vf", "geq=lum='40+200*(between(N,20,24)*exp(-(N-20)/2)+between(N,55,59)*exp(-(N-55)/2)+between(N,90,94)*exp(-(N-90)/2))':cb=128:cr=128",
+      "-pix_fmt", "yuv420p", clip,
+    ]);
+    const strikes = await findStrikes(clip);
+    expect(strikes.map((t) => Math.round(t * 25))).toEqual([20, 55, 90]);
+  });
+});
+
+describe.skipIf(!hasFfmpeg)("analyzeMedia (ffmpeg)", () => {
+  it("records a clip's shots and strikes beside its source", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "analyze-"));
+    try {
+      const raw = join(dir, "raw.mp4");
+      execFileSync("ffmpeg", [
+        "-v", "error", "-f", "lavfi", "-i", "color=gray:s=160x120:r=25:d=4",
+        "-vf", "geq=lum='40+200*(between(N,30,34)*exp(-(N-30)/2))':cb=128:cr=128", "-pix_fmt", "yuv420p", raw,
+      ]);
+      await addMedia(dir, "flare", { kind: "file", file: raw, url: "own", license: "own" });
+      await analyzeMedia(dir, "flare");
+      const clip = JSON.parse(readFileSync(join(dir, "media", "media.json"), "utf8")).clips.flare;
+      expect(clip.strikes.map((t: number) => Math.round(t * 25))).toEqual([30]);
+      expect(clip.shots[0]).toMatchObject({ start: 0 });
+      expect(clip.license).toBe("own");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

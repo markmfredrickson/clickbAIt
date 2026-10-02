@@ -27,6 +27,10 @@ export interface HostClip {
   duration: number;
   width: number;
   height: number;
+  /** Shot boundaries in clip seconds, from `media analyze`. */
+  shots?: { start: number; end: number }[];
+  /** Clip seconds where something lands (a flare), from `media analyze`. */
+  strikes?: number[];
 }
 
 export interface HostSetup {
@@ -63,6 +67,8 @@ interface SceneClip {
   width: number;
   height: number;
   duration: number;
+  shots: { start: number; end: number }[];
+  strikes: number[];
 }
 
 declare const p5: new (sketch: (p: any) => void, node?: HTMLElement) => any;
@@ -101,7 +107,16 @@ export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<Mou
       video.muted = true;
       video.preload = "auto";
       video.pause();
-      const clip: SceneClip = { name, frame: el, visible: false, width: info.width, height: info.height, duration: info.duration };
+      const clip: SceneClip = {
+        name,
+        frame: el,
+        visible: false,
+        width: info.width,
+        height: info.height,
+        duration: info.duration,
+        shots: info.shots ?? [],
+        strikes: info.strikes ?? [],
+      };
       clips.push({ clip, info, at, video });
       return clip;
     },

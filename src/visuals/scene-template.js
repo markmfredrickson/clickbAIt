@@ -24,6 +24,11 @@
 //                             beat = beats into the section, progress = 0..1 through it
 //   s.next                    { name, inBeats } for the next section, or null in the last
 //
+// Footage: in setup, `const c = song.clip(name, (s) => clipSeconds or null)` opens a
+// clip from media/media.json; draw `p.image(c.frame, ...)` when `c.visible`.
+// c.shots ({ start, end } cuts) and c.strikes (moments of impact) come from
+// `npm run media -- analyze`.
+//
 // Also on `song`: width, height, sections (each { name, start, end, bars, beatsPerBar }),
 // and timeOf(beat), the project seconds of a beat, for cutting on beats.
 //

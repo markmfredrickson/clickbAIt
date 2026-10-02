@@ -29,6 +29,13 @@ export interface RenderOptions {
   tail?: number;
   /** Stop at this many project seconds instead of the song's end (a demo, a test). */
   until?: number;
+  /**
+   * A quick render for checking a scene: a fast encoder (the Mac's hardware
+   * one where there is one) instead of the near-lossless master encode.
+   */
+  draft?: boolean;
+  /** The song's mix, muxed in as AAC so the file plays anywhere. */
+  audio?: string;
   /** Called after each frame, for progress. */
   onFrame?: (i: number, total: number) => void;
 }
@@ -39,6 +46,22 @@ const MAX_RANGE = 8 * 1024 * 1024;
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;background:#000;overflow:hidden}</style>
 <script src="/p5.min.js"></script><script src="/host.js"></script></head><body></body></html>`;
+
+const encoders = new Map<string, Promise<boolean>>();
+/** Whether this ffmpeg has `name` (and, for a hardware encoder, it actually opens). */
+function hasEncoder(name: string): Promise<boolean> {
+  if (!encoders.has(name)) {
+    encoders.set(
+      name,
+      new Promise((resolve) => {
+        const probe = spawn("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=s=128x72:d=0.1", "-c:v", name, "-f", "null", "-"], { stdio: "ignore" });
+        probe.on("error", () => resolve(false));
+        probe.on("close", (code) => resolve(code === 0));
+      }),
+    );
+  }
+  return encoders.get(name)!;
+}
 
 /** Project seconds of every whole beat from the start of the video to its end. */
 export function beatTimes(timing: SceneTiming, duration: number): number[] {
@@ -60,11 +83,17 @@ export async function renderScene(o: RenderOptions): Promise<void> {
   const total = Math.round(duration * o.fps);
   const keys = beatTimes(o.timing, duration).map((t) => t.toFixed(4)).join(",");
 
+  const video = o.draft
+    ? (await hasEncoder("h264_videotoolbox"))
+      ? ["-c:v", "h264_videotoolbox", "-b:v", String(Math.round((o.width * o.height * o.fps) / 6)), "-allow_sw", "1"]
+      : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-x264-params", "scenecut=0"]
+    : ["-c:v", "libx264", "-crf", "18", "-x264-params", "scenecut=0"];
   const ffmpeg = spawn("ffmpeg", [
     "-v", "error", "-y",
     "-f", "image2pipe", "-framerate", String(o.fps), "-c:v", "mjpeg", "-i", "-",
-    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18",
-    "-force_key_frames", keys, "-x264-params", "scenecut=0",
+    ...(o.audio ? ["-i", o.audio, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "160k"] : []),
+    ...video, "-pix_fmt", "yuv420p",
+    "-force_key_frames", keys,
     "-movflags", "+faststart", o.out,
   ], { stdio: ["pipe", "ignore", "pipe"] });
   let stderr = "";

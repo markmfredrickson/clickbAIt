@@ -1,7 +1,12 @@
 /**
- * Render a song's scene to `<slug>.visuals.mp4` beside the manifest.
+ * Render a song's scene beside the manifest.
  *
- *   npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080]
+ *   npm run visuals:render -- <manifest.song.json> [--draft] [--scene file] [--tail s] [--until s] [--out file]
+ *
+ * By default it writes the gig master, `<slug>.visuals.mp4`: 1080p, encoded
+ * near-lossless, no audio. `--draft` writes `<slug>.visuals-draft.mp4` for
+ * checking a scene or sharing it: 720p, a fast (hardware where possible)
+ * encoder, with the song's mix in as AAC.
  *
  * Reads the build's own outputs: `<slug>.lyrics-display.json` for the
  * project-time curve, `<slug>.rows.json` for the sections and
@@ -22,15 +27,17 @@ const { values, positionals } = parseArgs({
   options: {
     scene: { type: "string" },
     fps: { type: "string", default: "30" },
-    size: { type: "string", default: "1920x1080" },
+    size: { type: "string" },
     tail: { type: "string", default: "0" },
     until: { type: "string" },
+    draft: { type: "boolean", default: false },
+    audio: { type: "string" },
     out: { type: "string" },
   },
 });
 const manifestPath = positionals[0];
 if (!manifestPath) {
-  console.error("usage: npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080] [--tail seconds] [--until seconds] [--out file]");
+  console.error("usage: npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080] [--tail seconds] [--until seconds] [--out file] [--draft] [--audio file]");
   process.exit(1);
 }
 const dir = dirname(resolve(manifestPath));
@@ -41,8 +48,11 @@ const json = (suffix: string) => JSON.parse(readFileSync(file(suffix), "utf8"));
 
 const scene = values.scene ? resolve(values.scene) : file(".scene.js");
 if (!existsSync(scene)) throw new Error(`no scene at ${scene}`);
-const [width, height] = values.size!.split("x").map(Number);
-const out = values.out ? resolve(values.out) : file(".visuals.mp4");
+// A draft is 720p with the mix in, to check a scene or share it; the full
+// render is the 1080p gig master.
+const [width, height] = (values.size ?? (values.draft ? "1280x720" : "1920x1080")).split("x").map(Number);
+const out = values.out ? resolve(values.out) : file(values.draft ? ".visuals-draft.mp4" : ".visuals.mp4");
+const audio = values.audio ? resolve(values.audio) : values.draft && existsSync(file(".opus")) ? file(".opus") : undefined;
 
 const started = Date.now();
 await renderScene({
@@ -54,6 +64,8 @@ await renderScene({
   fps: Number(values.fps),
   tail: Number(values.tail),
   until: values.until ? Number(values.until) : undefined,
+  draft: values.draft,
+  audio,
   width,
   height,
   out,

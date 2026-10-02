@@ -91,3 +91,37 @@ describe.skipIf(!hasChrome || !hasFfmpeg)("renderScene (headless Chrome + ffmpeg
     expect(md5(again)).toBe(md5(video));
   }, 60_000);
 });
+
+describe.skipIf(!hasChrome || !hasFfmpeg)("renderScene draft (headless Chrome + ffmpeg)", () => {
+  let dir: string;
+  let video: string;
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), "draft-"));
+    // 14 s of mono silence, standing in for the song's mix.
+    const audio = join(dir, "mix.wav");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "14", audio]);
+    video = join(dir, "draft.mp4");
+    await renderScene({ scene: flash, timing, sections, fps: FPS, width: 128, height: 72, out: video, draft: true, audio });
+  }, 60_000);
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("carries the song's audio as AAC, so it plays anywhere", () => {
+    const streams = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,codec_name", "-of", "csv=p=0", video]).toString();
+    expect(streams).toMatch(/aac,audio/);
+    expect(streams).toMatch(/h264,video/);
+  });
+
+  it("keeps a keyframe on every beat", () => {
+    const keys = probe(video, "-skip_frame nokey -show_entries frame=pts_time").trim().split("\n").map(Number);
+    for (let b = -2; b < 24; b++) {
+      const t = 1 + b / 2;
+      expect(keys.some((k) => Math.abs(k - t) < 0.5 / FPS), `beat ${b} at ${t}s`).toBe(true);
+    }
+  });
+
+  it("draws the same moments as a full render", () => {
+    const lit = brightness(video).flatMap((v, i) => (v > 128 ? [i] : []));
+    expect(lit[0]).toBeGreaterThanOrEqual(89);
+    expect(lit[0]).toBeLessThanOrEqual(91);
+  });
+});

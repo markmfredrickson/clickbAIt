@@ -94,6 +94,8 @@ export async function renderScene(o: RenderOptions): Promise<void> {
     ...(o.audio ? ["-i", o.audio, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "160k"] : []),
     ...video, "-pix_fmt", "yuv420p",
     "-force_key_frames", keys,
+    // The file ends with the picture: a mix that runs longer (an early stop) is cut.
+    "-t", duration.toFixed(3),
     "-movflags", "+faststart", o.out,
   ], { stdio: ["pipe", "ignore", "pipe"] });
   let stderr = "";

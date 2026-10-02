@@ -119,6 +119,13 @@ describe.skipIf(!hasChrome || !hasFfmpeg)("renderScene draft (headless Chrome + 
     }
   });
 
+  it("ends with the picture when it stops early, not with the mix", async () => {
+    const short = join(dir, "short.mp4");
+    await renderScene({ scene: flash, timing, sections, fps: FPS, width: 128, height: 72, out: short, draft: true, audio: join(dir, "mix.wav"), until: 5 });
+    const duration = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", short]).toString());
+    expect(duration).toBeCloseTo(5, 0);
+  }, 60_000);
+
   it("draws the same moments as a full render", () => {
     const lit = brightness(video).flatMap((v, i) => (v > 128 ? [i] : []));
     expect(lit[0]).toBeGreaterThanOrEqual(89);

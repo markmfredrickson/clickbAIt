@@ -78,6 +78,12 @@ describe.skipIf(!hasChrome || !hasFfmpeg)("renderScene (headless Chrome + ffmpeg
     expect(brightness(out).length).toBe(15 * FPS);
   }, 60_000);
 
+  it("stops early when asked to", async () => {
+    const out = join(dir, "until.mp4");
+    await renderScene({ scene: flash, timing, sections, fps: FPS, width: 64, height: 36, out, until: 5 });
+    expect(brightness(out).length).toBe(5 * FPS);
+  }, 60_000);
+
   it("renders the same frames twice", async () => {
     const again = join(dir, "b.mp4");
     await renderScene({ scene: flash, timing, sections, fps: FPS, width: 64, height: 36, out: again });

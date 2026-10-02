@@ -24,11 +24,13 @@ const { values, positionals } = parseArgs({
     fps: { type: "string", default: "30" },
     size: { type: "string", default: "1920x1080" },
     tail: { type: "string", default: "0" },
+    until: { type: "string" },
+    out: { type: "string" },
   },
 });
 const manifestPath = positionals[0];
 if (!manifestPath) {
-  console.error("usage: npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080] [--tail seconds]");
+  console.error("usage: npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080] [--tail seconds] [--until seconds] [--out file]");
   process.exit(1);
 }
 const dir = dirname(resolve(manifestPath));
@@ -40,7 +42,7 @@ const json = (suffix: string) => JSON.parse(readFileSync(file(suffix), "utf8"));
 const scene = values.scene ? resolve(values.scene) : file(".scene.js");
 if (!existsSync(scene)) throw new Error(`no scene at ${scene}`);
 const [width, height] = values.size!.split("x").map(Number);
-const out = file(".visuals.mp4");
+const out = values.out ? resolve(values.out) : file(".visuals.mp4");
 
 const started = Date.now();
 await renderScene({
@@ -51,6 +53,7 @@ await renderScene({
   media: readMedia(dirname(scene)).clips,
   fps: Number(values.fps),
   tail: Number(values.tail),
+  until: values.until ? Number(values.until) : undefined,
   width,
   height,
   out,

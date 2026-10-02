@@ -27,6 +27,8 @@ export interface RenderOptions {
   out: string;
   /** Seconds to keep rendering past the song's end, for a fade or ring-out. */
   tail?: number;
+  /** Stop at this many project seconds instead of the song's end (a demo, a test). */
+  until?: number;
   /** Called after each frame, for progress. */
   onFrame?: (i: number, total: number) => void;
 }
@@ -53,7 +55,8 @@ export function beatTimes(timing: SceneTiming, duration: number): number[] {
 export async function renderScene(o: RenderOptions): Promise<void> {
   const last = o.sections[o.sections.length - 1];
   if (!last) throw new Error("renderScene: the song has no sections");
-  const duration = new Curve(o.timing.curve).toTime(last.end) + (o.tail ?? 0);
+  const full = new Curve(o.timing.curve).toTime(last.end) + (o.tail ?? 0);
+  const duration = o.until === undefined ? full : Math.min(full, o.until);
   const total = Math.round(duration * o.fps);
   const keys = beatTimes(o.timing, duration).map((t) => t.toFixed(4)).join(",");
 

@@ -5,7 +5,7 @@
  *
  * By default it writes the gig master, `<slug>.visuals.mp4`: 1080p, encoded
  * near-lossless, no audio. `--draft` writes `<slug>.visuals-draft.mp4` for
- * checking a scene or sharing it: 720p, a fast (hardware where possible)
+ * checking a scene: 360p, the whole song, a fast (hardware where possible)
  * encoder, with the song's mix in as AAC.
  *
  * Reads the build's own outputs: `<slug>.lyrics-display.json` for the
@@ -48,9 +48,9 @@ const json = (suffix: string) => JSON.parse(readFileSync(file(suffix), "utf8"));
 
 const scene = values.scene ? resolve(values.scene) : file(".scene.js");
 if (!existsSync(scene)) throw new Error(`no scene at ${scene}`);
-// A draft is 720p with the mix in, to check a scene or share it; the full
-// render is the 1080p gig master.
-const [width, height] = (values.size ?? (values.draft ? "1280x720" : "1920x1080")).split("x").map(Number);
+// A draft is 360p with the mix in, the whole song, to check a scene quickly;
+// the full render is the 1080p gig master.
+const [width, height] = (values.size ?? (values.draft ? "640x360" : "1920x1080")).split("x").map(Number);
 const out = values.out ? resolve(values.out) : file(values.draft ? ".visuals-draft.mp4" : ".visuals.mp4");
 const audio = values.audio ? resolve(values.audio) : values.draft && existsSync(file(".opus")) ? file(".opus") : undefined;
 

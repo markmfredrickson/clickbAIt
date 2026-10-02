@@ -64,6 +64,9 @@ export async function renderScene(o: RenderOptions): Promise<void> {
     ffmpeg.on("error", reject);
     ffmpeg.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${stderr}`))));
   });
+  // If the scene throws, ffmpeg then fails for want of frames; the scene's error
+  // is the one to report, so don't let this rejection go unhandled meanwhile.
+  finished.catch(() => {});
 
   const { chromium } = await import("@playwright/test");
   const browser = await chromium.launch({ channel: "chrome" });

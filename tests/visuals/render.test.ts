@@ -67,6 +67,11 @@ describe.skipIf(!hasChrome || !hasFfmpeg)("renderScene (headless Chrome + ffmpeg
     }
   });
 
+  it("reports the scene's own error when it throws", async () => {
+    const scene = join(import.meta.dirname, "../fixtures/visuals/throws.scene.js");
+    await expect(renderScene({ scene, timing, sections, fps: FPS, width: 64, height: 36, out: join(dir, "c.mp4") })).rejects.toThrow(/bass/);
+  });
+
   it("renders the same frames twice", async () => {
     const again = join(dir, "b.mp4");
     await renderScene({ scene: flash, timing, sections, fps: FPS, width: 64, height: 36, out: again });

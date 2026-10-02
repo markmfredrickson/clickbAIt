@@ -84,6 +84,17 @@ describe.skipIf(!hasChrome || !hasFfmpeg)("renderScene (headless Chrome + ffmpeg
     expect(brightness(out).length).toBe(5 * FPS);
   }, 60_000);
 
+  it("renders a window of the song when asked to start late", async () => {
+    const out = join(dir, "window.mp4");
+    await renderScene({ scene: flash, timing, sections, fps: FPS, width: 64, height: 36, out, from: 8, until: 10 });
+    const y = brightness(out);
+    expect(y.length).toBe(2 * FPS);
+    // Beat 16 is at 9.0 s, so 1 s into the window.
+    const lit = y.flatMap((v, i) => (v > 128 ? [i] : []));
+    expect(lit[0]).toBeGreaterThanOrEqual(9);
+    expect(lit[0]).toBeLessThanOrEqual(11);
+  }, 60_000);
+
   it("renders the same frames twice", async () => {
     const again = join(dir, "b.mp4");
     await renderScene({ scene: flash, timing, sections, fps: FPS, width: 64, height: 36, out: again });

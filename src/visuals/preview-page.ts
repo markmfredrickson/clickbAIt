@@ -18,6 +18,7 @@ interface Song {
   sections: SceneSection[];
   features?: SceneFeatures;
   media?: HostSetup["media"];
+  lines?: HostSetup["lines"];
 }
 
 const config = (window as any).previewConfig as Config;

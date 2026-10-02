@@ -1,7 +1,7 @@
 /**
  * Render a song's scene beside the manifest.
  *
- *   npm run visuals:render -- <manifest.song.json> [--draft] [--scene file] [--tail s] [--until s] [--out file]
+ *   npm run visuals:render -- <manifest.song.json> [--draft] [--scene file] [--tail s] [--from s] [--until s] [--out file]
  *
  * By default it writes the gig master, `<slug>.visuals.mp4`: 1080p, encoded
  * near-lossless, no audio. `--draft` writes `<slug>.visuals-draft.mp4` for
@@ -30,6 +30,7 @@ const { values, positionals } = parseArgs({
     size: { type: "string" },
     tail: { type: "string", default: "0" },
     until: { type: "string" },
+    from: { type: "string" },
     draft: { type: "boolean", default: false },
     audio: { type: "string" },
     out: { type: "string" },
@@ -64,6 +65,8 @@ await renderScene({
   fps: Number(values.fps),
   tail: Number(values.tail),
   until: values.until ? Number(values.until) : undefined,
+  from: values.from ? Number(values.from) : undefined,
+  lines: json(".rows.json").channels?.find((c: { kind: string }) => c.kind === "lyrics")?.rows,
   draft: values.draft,
   audio,
   width,

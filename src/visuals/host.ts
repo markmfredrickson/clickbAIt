@@ -18,7 +18,7 @@
  * `clip.frame` when `clip.visible`.
  */
 
-import { sceneClock, type SceneFeatures, type SceneSection, type SceneState, type SceneTiming } from "./scene-state.js";
+import { sceneClock, type SceneFeatures, type SceneLine, type SceneSection, type SceneState, type SceneTiming } from "./scene-state.js";
 
 /** What a scene needs to know about a clip in `media/media.json`. */
 export interface HostClip {
@@ -38,6 +38,8 @@ export interface HostSetup {
   timing: SceneTiming;
   sections: SceneSection[];
   features?: SceneFeatures;
+  /** The sung lines, from the lyrics channel of `rows.json`. */
+  lines?: SceneLine[];
   media?: Record<string, HostClip>;
   /** Base URL that clip files resolve against (the scene's folder). */
   mediaBase?: string;
@@ -89,7 +91,7 @@ async function seekExactly(video: HTMLVideoElement, t: number): Promise<void> {
 
 /** Import the scene and run its setup inside `parent`. Rejects if either fails. */
 export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<MountedScene> {
-  const clock = sceneClock(o.timing, o.sections, o.features);
+  const clock = sceneClock(o.timing, o.sections, o.features, o.lines);
   let now: SceneState = clock.at(0);
   let p: any;
   // A clip's video loads the first time a frame needs it and is let go once

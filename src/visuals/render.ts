@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { basename, dirname, join, normalize } from "node:path";
 import { Curve } from "../core/curve.js";
-import type { SceneFeatures, SceneSection, SceneTiming } from "./scene-state.js";
+import type { SceneFeatures, SceneLine, SceneSection, SceneTiming } from "./scene-state.js";
 import type { HostClip, HostSetup } from "./host.js";
 import { P5_MIN, bundlePage } from "./page-assets.js";
 
@@ -19,6 +19,7 @@ export interface RenderOptions {
   timing: SceneTiming;
   sections: SceneSection[];
   features?: SceneFeatures;
+  lines?: SceneLine[];
   /** Clips from `media/media.json`, by name; files resolve against the scene's folder. */
   media?: Record<string, HostClip>;
   fps: number;
@@ -29,6 +30,8 @@ export interface RenderOptions {
   tail?: number;
   /** Stop at this many project seconds instead of the song's end (a demo, a test). */
   until?: number;
+  /** Start at this many project seconds: with `until`, a window of the song to try something on. */
+  from?: number;
   /**
    * A quick render for checking a scene: a fast encoder (the Mac's hardware
    * one where there is one) instead of the near-lossless master encode.
@@ -80,8 +83,13 @@ export async function renderScene(o: RenderOptions): Promise<void> {
   if (!last) throw new Error("renderScene: the song has no sections");
   const full = new Curve(o.timing.curve).toTime(last.end) + (o.tail ?? 0);
   const duration = o.until === undefined ? full : Math.min(full, o.until);
-  const total = Math.round(duration * o.fps);
-  const keys = beatTimes(o.timing, duration).map((t) => t.toFixed(4)).join(",");
+  const from = o.from ?? 0;
+  const first = Math.round(from * o.fps);
+  const total = Math.round(duration * o.fps) - first;
+  if (total <= 0) throw new Error(`renderScene: nothing to render from ${from} s to ${duration} s`);
+  // Keyframe times are in the file's own time, which starts at `from`.
+  const keys = beatTimes(o.timing, duration).filter((t) => t >= from).map((t) => (t - from).toFixed(4)).join(",") || "0";
+  const length = total / o.fps;
 
   const video = o.draft
     ? (await hasEncoder("h264_videotoolbox"))
@@ -91,11 +99,11 @@ export async function renderScene(o: RenderOptions): Promise<void> {
   const ffmpeg = spawn("ffmpeg", [
     "-v", "error", "-y",
     "-f", "image2pipe", "-framerate", String(o.fps), "-c:v", "mjpeg", "-i", "-",
-    ...(o.audio ? ["-i", o.audio, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "160k"] : []),
+    ...(o.audio ? ["-ss", from.toFixed(3), "-i", o.audio, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "160k"] : []),
     ...video, "-pix_fmt", "yuv420p",
     "-force_key_frames", keys,
     // The file ends with the picture: a mix that runs longer (an early stop) is cut.
-    "-t", duration.toFixed(3),
+    "-t", length.toFixed(3),
     "-movflags", "+faststart", o.out,
   ], { stdio: ["pipe", "ignore", "pipe"] });
   let stderr = "";
@@ -157,6 +165,7 @@ export async function renderScene(o: RenderOptions): Promise<void> {
       timing: o.timing,
       sections: o.sections,
       features: o.features,
+      lines: o.lines,
       media: o.media,
       mediaBase: `${ORIGIN}/scene/`,
       exactClips: true,
@@ -167,7 +176,7 @@ export async function renderScene(o: RenderOptions): Promise<void> {
 
     for (let i = 0; i < total; i++) {
       if (errors.length) throw new Error(`scene error: ${errors[0]}`);
-      const url: string = await page.evaluate((t) => (window as any).sceneHost.frame(t), i / o.fps);
+      const url: string = await page.evaluate((t) => (window as any).sceneHost.frame(t), (first + i) / o.fps);
       const jpeg = Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
       if (!ffmpeg.stdin.write(jpeg)) await new Promise((r) => ffmpeg.stdin.once("drain", r));
       o.onFrame?.(i, total);

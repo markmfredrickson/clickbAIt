@@ -117,6 +117,7 @@ export async function startPreview(o: PreviewOptions): Promise<Preview> {
     sections: JSON.parse(readFileSync(o.rows, "utf8")).sections,
     features: o.features && existsSync(o.features) ? JSON.parse(readFileSync(o.features, "utf8")) : undefined,
     media: readMedia(sceneDir).clips,
+    lines: JSON.parse(readFileSync(o.rows, "utf8")).channels?.find((c: { kind: string }) => c.kind === "lyrics")?.rows,
   });
 
   const server = createServer((req, res) => {

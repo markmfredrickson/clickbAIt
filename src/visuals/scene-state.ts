@@ -35,6 +35,20 @@ export interface SceneFeatures {
   stems: Record<string, Pick<NormalFeatures, Feature>>;
 }
 
+/** A sung line, as the lyrics channel of `rows.json` carries it, in beats. */
+export interface SceneLine {
+  start: number;
+  end: number;
+  items: { text: string; start: number; end: number }[];
+}
+
+export interface StateLine {
+  index: number;
+  start: number;
+  end: number;
+  words: SceneLine["items"];
+}
+
 export interface SceneState {
   /** Project seconds. */
   t: number;
@@ -49,6 +63,10 @@ export interface SceneState {
   measure: number;
   section: { index: number; name: string; beat: number; progress: number } | null;
   next: { name: string; inBeats: number } | null;
+  /** The line being sung, and how far through it (0..1), or null between lines. */
+  line: (StateLine & { progress: number }) | null;
+  /** The next line to start, for fading a card in ahead of it. */
+  nextLine: StateLine | null;
   /** A stem's feature (0..1) at `beat`, or now. */
   f(stem: string, feature: Feature, beat?: number): number;
 }
@@ -59,7 +77,8 @@ export interface SceneClock {
   timeOf(beat: number): number;
 }
 
-export function sceneClock(timing: SceneTiming, sections: readonly SceneSection[], features?: SceneFeatures): SceneClock {
+export function sceneClock(timing: SceneTiming, sections: readonly SceneSection[], features?: SceneFeatures, lines: readonly SceneLine[] = []): SceneClock {
+  const asLine = (i: number): StateLine => ({ index: i, start: lines[i].start, end: lines[i].end, words: lines[i].items });
   const curve = new Curve(timing.curve);
   const metered: MeteredSection[] = sections.map((s) => ({
     startBeat: s.start,
@@ -94,6 +113,14 @@ export function sceneClock(timing: SceneTiming, sections: readonly SceneSection[
         measure: pos.measure,
         section: s ? { index: pos.section, name: s.name, beat: beat - s.start, progress: (beat - s.start) / (s.end - s.start) } : null,
         next: following ? { name: following.name, inBeats: following.start - beat } : null,
+        line: (() => {
+          const i = lines.findIndex((l) => beat >= l.start && beat < l.end);
+          return i < 0 ? null : { ...asLine(i), progress: (beat - lines[i].start) / (lines[i].end - lines[i].start) };
+        })(),
+        nextLine: (() => {
+          const i = lines.findIndex((l) => l.start > beat);
+          return i < 0 ? null : asLine(i);
+        })(),
         f: (stem, feature, b = beat) => read(stem, feature, b),
       };
     },

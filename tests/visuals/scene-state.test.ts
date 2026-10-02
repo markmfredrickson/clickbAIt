@@ -83,3 +83,27 @@ describe("sceneClock", () => {
     expect(JSON.stringify(clock.at(7.3))).toBe(JSON.stringify(clock.at(7.3)));
   });
 });
+
+describe("sceneClock lyric lines", () => {
+  // Two lines of made-up words, in beats.
+  const lines = [
+    { start: 4, end: 6, items: [{ text: "ONE", start: 4, end: 4.5 }, { text: "TWO", start: 4.5, end: 6 }] },
+    { start: 10, end: 12, items: [{ text: "THREE", start: 10, end: 12 }] },
+  ];
+  const clock = sceneClock(timing, sections, features(), lines);
+
+  it("gives the line being sung, its words, and how far through it we are", () => {
+    const s = clock.at(timeOf(5));
+    expect(s.line).toMatchObject({ index: 0, start: 4, end: 6 });
+    expect(s.line!.words.map((w) => w.text)).toEqual(["ONE", "TWO"]);
+    expect(s.line!.progress).toBeCloseTo(0.5);
+  });
+
+  it("gives no line between lines", () => {
+    expect(clock.at(timeOf(8)).line).toBeNull();
+  });
+
+  it("lets a scene look up any line, for fading a card in ahead of it", () => {
+    expect(clock.at(timeOf(8)).nextLine).toMatchObject({ index: 1, start: 10 });
+  });
+});

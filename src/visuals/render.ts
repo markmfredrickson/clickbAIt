@@ -10,7 +10,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { basename, dirname, join, normalize } from "node:path";
 import { Curve } from "../core/curve.js";
 import type { SceneFeatures, SceneSection, SceneTiming } from "./scene-state.js";
-import type { HostSetup } from "./host.js";
+import type { HostClip, HostSetup } from "./host.js";
 import { P5_MIN, bundlePage } from "./page-assets.js";
 
 export interface RenderOptions {
@@ -19,6 +19,8 @@ export interface RenderOptions {
   timing: SceneTiming;
   sections: SceneSection[];
   features?: SceneFeatures;
+  /** Clips from `media/media.json`, by name; files resolve against the scene's folder. */
+  media?: Record<string, HostClip>;
   fps: number;
   width: number;
   height: number;
@@ -86,7 +88,20 @@ export async function renderScene(o: RenderOptions): Promise<void> {
       if (path.startsWith("/scene/")) {
         const file = normalize(join(sceneDir, path.slice("/scene/".length)));
         if (file.startsWith(sceneDir) && existsSync(file)) {
-          return send(readFileSync(file), file.endsWith(".js") ? "application/javascript" : "application/octet-stream");
+          const body = readFileSync(file);
+          const type = file.endsWith(".js") ? "application/javascript" : file.endsWith(".mp4") ? "video/mp4" : "application/octet-stream";
+          // Video seeks need byte ranges.
+          const range = route.request().headers()["range"]?.match(/^bytes=(\d+)-(\d*)$/);
+          if (range) {
+            const start = Number(range[1]);
+            const end = range[2] ? Math.min(Number(range[2]), body.length - 1) : body.length - 1;
+            return route.fulfill({
+              status: 206,
+              body: body.subarray(start, end + 1),
+              headers: { "Content-Type": type, "Content-Range": `bytes ${start}-${end}/${body.length}`, "Accept-Ranges": "bytes" },
+            });
+          }
+          return route.fulfill({ status: 200, body, headers: { "Content-Type": type, "Accept-Ranges": "bytes" } });
         }
       }
       return route.fulfill({ status: 404, body: "" });
@@ -98,6 +113,9 @@ export async function renderScene(o: RenderOptions): Promise<void> {
       timing: o.timing,
       sections: o.sections,
       features: o.features,
+      media: o.media,
+      mediaBase: `${ORIGIN}/scene/`,
+      exactClips: true,
       width: o.width,
       height: o.height,
     };

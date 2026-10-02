@@ -32,6 +32,7 @@
     "generate": "npx tsx src/build/generate.ts",
     "visuals:preview": "npx tsx src/visuals/preview-cli.ts",
     "visuals:render": "npx tsx src/visuals/render-cli.ts",
+    "media": "npx tsx src/visuals/media-cli.ts",
     "build:songs": "npx tsx scripts/build-songs.ts",
     "realign-all": "npx tsx scripts/realign-all.ts",
     "bundle": "npx tsx src/build/bundle.ts",

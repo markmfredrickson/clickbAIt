@@ -15,6 +15,7 @@ import { parseArgs } from "node:util";
 import { SongManifestSchema } from "../manifest.js";
 import { toSlug } from "../core/dsongl/slug.js";
 import { renderScene } from "./render.js";
+import { readMedia } from "./media.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -42,6 +43,7 @@ await renderScene({
   timing: json(".lyrics-display.json"),
   sections: json(".rows.json").sections,
   features: existsSync(file(".beat-features.json")) ? json(".beat-features.json") : undefined,
+  media: readMedia(dirname(scene)).clips,
   fps: Number(values.fps),
   width,
   height,

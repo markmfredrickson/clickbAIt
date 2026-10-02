@@ -13,6 +13,7 @@ import { existsSync, readFileSync, statSync, createReadStream, watch, type FSWat
 import { basename, dirname, extname, join, normalize } from "node:path";
 import type { AddressInfo } from "node:net";
 import { P5_MIN, bundlePage } from "./page-assets.js";
+import { readMedia } from "./media.js";
 
 export interface PreviewOptions {
   /** The scene module. Files beside it are served too, and watched. */
@@ -115,6 +116,7 @@ export async function startPreview(o: PreviewOptions): Promise<Preview> {
     timing: { curve: JSON.parse(readFileSync(o.timing, "utf8")).curve },
     sections: JSON.parse(readFileSync(o.rows, "utf8")).sections,
     features: o.features && existsSync(o.features) ? JSON.parse(readFileSync(o.features, "utf8")) : undefined,
+    media: readMedia(sceneDir).clips,
   });
 
   const server = createServer((req, res) => {
@@ -147,6 +149,7 @@ export async function startPreview(o: PreviewOptions): Promise<Preview> {
 
   // Saves arrive as a burst of events; settle before telling the page.
   const data = new Set([o.timing, o.rows, o.features].filter(Boolean).map((f) => basename(f!)));
+  const mediaRecord = join("media", "media.json");
   const pending = new Map<string, NodeJS.Timeout>();
   const settle = (event: "scene" | "song") => {
     clearTimeout(pending.get(event));
@@ -155,10 +158,12 @@ export async function startPreview(o: PreviewOptions): Promise<Preview> {
   const watchers: FSWatcher[] = [];
   const watchDir = (dir: string) =>
     watchers.push(
-      watch(dir, (_kind, name) => {
+      watch(dir, { recursive: dir === sceneDir }, (_kind, name) => {
         if (!name) return;
-        if (dir === dirname(o.timing) && data.has(String(name))) settle("song");
-        else if (dir === sceneDir) settle("scene");
+        const file = String(name);
+        if (dir === dirname(o.timing) && data.has(file)) settle("song");
+        else if (dir === sceneDir && file === mediaRecord) settle("song");
+        else if (dir === sceneDir && !file.includes("/")) settle("scene");
       }),
     );
   watchDir(sceneDir);

@@ -17,6 +17,7 @@ interface Song {
   timing: SceneTiming;
   sections: SceneSection[];
   features?: SceneFeatures;
+  media?: HostSetup["media"];
 }
 
 const config = (window as any).previewConfig as Config;
@@ -36,7 +37,13 @@ const showError = (e: unknown) => (errorBox.textContent = e instanceof Error ? `
 
 async function load(): Promise<void> {
   const v = ++version;
-  const setup: HostSetup = { sceneUrl: `/scene/${config.scene}?v=${Date.now()}`, ...song, width: config.width, height: config.height };
+  const setup: HostSetup = {
+    sceneUrl: `/scene/${config.scene}?v=${Date.now()}`,
+    ...song,
+    mediaBase: `${location.origin}/scene/`,
+    width: config.width,
+    height: config.height,
+  };
   let next: MountedScene | undefined;
   try {
     next = await mountScene(setup, stage);

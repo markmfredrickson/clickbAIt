@@ -6,7 +6,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { basename, dirname, join, normalize } from "node:path";
 import { Curve } from "../core/curve.js";
 import type { SceneFeatures, SceneSection, SceneTiming } from "./scene-state.js";
@@ -32,6 +32,8 @@ export interface RenderOptions {
 }
 
 const ORIGIN = "http://visuals.local";
+/** The most of a video file one response carries; the player asks for more as it goes. */
+const MAX_RANGE = 8 * 1024 * 1024;
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <style>html,body{margin:0;background:#000;overflow:hidden}</style>
 <script src="/p5.min.js"></script><script src="/host.js"></script></head><body></body></html>`;
@@ -90,20 +92,26 @@ export async function renderScene(o: RenderOptions): Promise<void> {
       if (path.startsWith("/scene/")) {
         const file = normalize(join(sceneDir, path.slice("/scene/".length)));
         if (file.startsWith(sceneDir) && existsSync(file)) {
-          const body = readFileSync(file);
           const type = file.endsWith(".js") ? "application/javascript" : file.endsWith(".mp4") ? "video/mp4" : "application/octet-stream";
-          // Video seeks need byte ranges.
+          if (type !== "video/mp4") return route.fulfill({ status: 200, body: readFileSync(file), headers: { "Content-Type": type } });
+          // Video: serve byte ranges, read from disk a piece at a time, so a
+          // song's worth of HD clips never sits in memory at once.
+          const size = statSync(file).size;
           const range = route.request().headers()["range"]?.match(/^bytes=(\d+)-(\d*)$/);
-          if (range) {
-            const start = Number(range[1]);
-            const end = range[2] ? Math.min(Number(range[2]), body.length - 1) : body.length - 1;
-            return route.fulfill({
-              status: 206,
-              body: body.subarray(start, end + 1),
-              headers: { "Content-Type": type, "Content-Range": `bytes ${start}-${end}/${body.length}`, "Accept-Ranges": "bytes" },
-            });
+          const start = range ? Number(range[1]) : 0;
+          const end = Math.min(range?.[2] ? Number(range[2]) : size - 1, start + MAX_RANGE - 1, size - 1);
+          const body = Buffer.alloc(end - start + 1);
+          const fd = openSync(file, "r");
+          try {
+            readSync(fd, body, 0, body.length, start);
+          } finally {
+            closeSync(fd);
           }
-          return route.fulfill({ status: 200, body, headers: { "Content-Type": type, "Accept-Ranges": "bytes" } });
+          return route.fulfill({
+            status: 206,
+            body,
+            headers: { "Content-Type": type, "Content-Range": `bytes ${start}-${end}/${size}`, "Accept-Ranges": "bytes" },
+          });
         }
       }
       return route.fulfill({ status: 404, body: "" });

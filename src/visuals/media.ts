@@ -24,6 +24,8 @@ export const LICENSES = {
   "cc-by-sa": { credit: true },
   pexels: { credit: false },
   own: { credit: false },
+  // The Library of Congress's statement for items it knows of no restrictions on.
+  "no-known-restrictions": { credit: false },
 } as const;
 export type License = keyof typeof LICENSES;
 
@@ -31,6 +33,7 @@ const isLicense = (s: string): s is License => s in LICENSES;
 
 export type Source =
   | { kind: "archive"; id: string }
+  | { kind: "loc"; id: string }
   | { kind: "file"; file: string; url: string; license: License; by?: string };
 
 export interface SourceFlags {
@@ -61,6 +64,8 @@ export function archiveLicense(metadata: { licenseurl?: string; [k: string]: unk
 export function describeSource(source: string, flags: SourceFlags): Source {
   const archive = source.match(/^archive:(.+)$/) ?? source.match(/^https?:\/\/(?:www\.)?archive\.org\/details\/([^/?#]+)/);
   if (archive) return { kind: "archive", id: archive[1] };
+  const loc = source.match(/^loc:(.+)$/) ?? source.match(/^https?:\/\/(?:www\.)?loc\.gov\/item\/([^/?#]+)/);
+  if (loc) return { kind: "loc", id: loc[1] };
 
   const from = flags.from;
   if (!from) throw new Error(`say where ${source} came from: --from <page url>, or --from own for footage you shot`);
@@ -96,12 +101,20 @@ async function probe(file: string): Promise<ClipInfo> {
  * most 1080 lines, with a keyframe at least every 5 frames so a scene can seek
  * to any frame quickly.
  */
-export async function cutClip(input: string, out: string, span?: { start: number; end: number }): Promise<ClipInfo> {
+export interface Crop {
+  w: number;
+  h: number;
+  x: number;
+  y: number;
+}
+
+export async function cutClip(input: string, out: string, span?: { start: number; end: number }, opts: { crop?: Crop } = {}): Promise<ClipInfo> {
+  const crop = opts.crop ? `crop=${opts.crop.w}:${opts.crop.h}:${opts.crop.x}:${opts.crop.y},` : "";
   await run("ffmpeg", [
     "-v", "error", "-y",
     ...(span ? ["-ss", String(span.start), "-to", String(span.end)] : []),
     "-i", input,
-    "-an", "-vf", "scale=-2:'min(ih,1080)'",
+    "-an", "-vf", `${crop}scale=-2:'min(ih,1080)'`,
     "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-g", "5",
     "-movflags", "+faststart", out,
   ]);
@@ -158,11 +171,13 @@ export async function addMedia(songDir: string, name: string, source: Source, sp
   const got =
     source.kind === "archive"
       ? await fetchArchive(songDir, source.id)
-      : { local: source.file, license: source.license, title: undefined, source: { ...source, file: basename(source.file) } };
+      : source.kind === "loc"
+        ? await fetchLoc(songDir, source.id)
+        : { local: source.file, license: source.license, title: undefined, source: { ...source, file: basename(source.file) } };
 
   mkdirSync(join(songDir, "media"), { recursive: true });
   const file = `media/${name}.mp4`;
-  const info = await cutClip(got.local, join(songDir, file), span);
+  const info = await cutClip(got.local, join(songDir, file), span, source.kind === "loc" ? { crop: await detectCrop(got.local) } : {});
   const record: MediaRecord & ClipInfo = {
     file,
     source: got.source,
@@ -320,4 +335,242 @@ export async function analyzeMedia(songDir: string, name: string): Promise<{ sho
   media.clips[name] = { ...record, shots, strikes };
   writeFileSync(join(songDir, "media", "media.json"), JSON.stringify(media, null, 2) + "\n");
   return { shots, strikes };
+}
+
+// ── The Library of Congress ──────────────────────────────────────────────────
+
+/**
+ * The license an LoC item's rights statement grants, if it's one we accept:
+ * the Library's statements that it knows of no copyright or other
+ * restrictions (its film collections) or believes the item is public domain
+ * (Chronicling America's newspapers).
+ */
+export function locLicense(rights: string[] | string | undefined): License {
+  const text = (Array.isArray(rights) ? rights.join(" ") : rights ?? "").replace(/<[^>]+>/g, " ");
+  if (/not aware of any U\.S\. copyright or other restrictions/i.test(text)) return "no-known-restrictions";
+  if (/believes that the newspapers .* are in the public domain or have no known copyright restrictions/i.test(text)) return "no-known-restrictions";
+  throw new Error(`the item's rights statement doesn't say it's free to use: "${text.slice(0, 160).trim()}"`);
+}
+
+/** Download an LoC item's video once, into `media/.sources/`. */
+async function fetchLoc(songDir: string, id: string) {
+  const res = await fetch(`https://www.loc.gov/item/${encodeURIComponent(id)}/?fo=json`);
+  if (!res.ok) throw new Error(`loc.gov: no item ${id} (${res.status})`);
+  const j = await res.json();
+  const item = j.item ?? {};
+  const license = locLicense(item.rights);
+  const files: { mimetype?: string; url?: string }[] = (j.resources ?? []).flatMap((r: any) => (r.files ?? []).flat());
+  const video = files.find((f) => f.mimetype === "video/mp4" && f.url);
+  if (!video) throw new Error(`loc.gov: item ${id} has no mp4`);
+
+  const dir = join(songDir, "media", ".sources");
+  mkdirSync(dir, { recursive: true });
+  const local = join(dir, `loc-${id}.mp4`);
+  if (!existsSync(local)) {
+    const dl = await fetch(video.url!);
+    if (!dl.ok || !dl.body) throw new Error(`loc.gov: couldn't download ${video.url} (${dl.status})`);
+    await pipeline(Readable.fromWeb(dl.body as any), createWriteStream(local));
+  }
+  return {
+    local,
+    license,
+    title: item.title as string | undefined,
+    source: { kind: "loc", id, file: video.url, url: `https://www.loc.gov/item/${id}/`, rights: "no known restrictions (Library of Congress)" },
+  };
+}
+
+// ── Matching footage between copies ──────────────────────────────────────────
+
+/**
+ * The picture inside any black bars (pillarbox or letterbox): the box most
+ * keyframes agree on, so a dark scene or one bright frame doesn't move it.
+ */
+export async function detectCrop(file: string): Promise<Crop> {
+  const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-skip_frame", "nokey", "-i", file, "-an", "-vf", "cropdetect=limit=24:round=2:reset=1:skip=0", "-f", "null", "-"], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const all = [...stderr.matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+  if (!all.length) {
+    const { width, height } = await probe(file);
+    return { w: width, h: height, x: 0, y: 0 };
+  }
+  const counts = new Map<string, number>();
+  for (const m of all) counts.set(m[0], (counts.get(m[0]) ?? 0) + 1);
+  const box = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+  const [w, h, x, y] = box.slice(5).split(":").map(Number);
+  return { w, h, x, y };
+}
+
+/** Small grayscale frames for comparing copies. */
+interface Thumbs {
+  /** Each frame normalized to mean 0, spread 1, so exposure differences between scans don't count. */
+  frames: Float32Array[];
+  /** Frames with almost no detail (black, a blank card): they match anything, so they don't count. */
+  flat: boolean[];
+}
+
+const FLAT_SPREAD = 6;
+
+async function thumbs(file: string, fps: number, crop?: Crop, window?: { start: number; length: number }): Promise<Thumbs> {
+  const W = 32;
+  const H = 24;
+  const vf = `${crop ? `crop=${crop.w}:${crop.h}:${crop.x}:${crop.y},` : ""}fps=${fps},scale=${W}:${H},format=gray`;
+  const { stdout } = await run("ffmpeg", [
+    "-v", "error",
+    ...(window ? ["-ss", String(Math.max(0, window.start)), "-t", String(window.length)] : []),
+    "-i", file, "-an", "-vf", vf, "-f", "rawvideo", "-",
+  ], { encoding: "buffer", maxBuffer: 1024 * 1024 * 1024 });
+  const px = W * H;
+  const frames: Float32Array[] = [];
+  const flat: boolean[] = [];
+  for (let i = 0; i + px <= stdout.length; i += px) {
+    const f = new Float32Array(px);
+    let mean = 0;
+    for (let j = 0; j < px; j++) mean += f[j] = stdout[i + j];
+    mean /= px;
+    let sd = 0;
+    for (let j = 0; j < px; j++) sd += (f[j] -= mean) ** 2;
+    sd = Math.sqrt(sd / px);
+    for (let j = 0; j < px; j++) f[j] /= sd || 1;
+    frames.push(f);
+    flat.push(sd < FLAT_SPREAD);
+  }
+  return { frames, flat };
+}
+
+/**
+ * Offset (in frames of `hay`) where `needle` matches best, by mean absolute
+ * difference over the needle's detailed frames, searching offsets in `range`.
+ */
+function bestOffset(needle: Thumbs, hay: Thumbs, range: [number, number] = [0, Infinity]): number {
+  const counted = needle.frames.map((_, k) => k).filter((k) => !needle.flat[k]);
+  if (counted.length === 0) throw new Error("the clip has no detail to match on (all black or blank)");
+  let best = Math.max(0, range[0]);
+  let bestScore = Infinity;
+  const last = Math.min(range[1], hay.frames.length - needle.frames.length);
+  for (let o = Math.max(0, range[0]); o <= last; o++) {
+    let score = 0;
+    for (const k of counted) {
+      const a = needle.frames[k];
+      const b = hay.frames[o + k];
+      for (let j = 0; j < a.length; j++) score += Math.abs(a[j] - b[j]);
+      if (score >= bestScore) break;
+    }
+    if (score < bestScore) {
+      bestScore = score;
+      best = o;
+    }
+  }
+  return best;
+}
+
+const COARSE_FPS = 8;
+const FINE_FPS = 48;
+
+const slice = (t: Thumbs, from: number, to: number): Thumbs => ({ frames: t.frames.slice(from, to), flat: t.flat.slice(from, to) });
+
+/**
+ * Where `clip` starts in `source`, another copy of the same film (a different
+ * scan, size or frame rate). A coarse pass over the source, then a fine one
+ * around the best match, both skipping the clip's black or blank frames.
+ * `near` limits the search to `within` seconds of a time; pass
+ * `sourceThumbs` to reuse the coarse pass across clips.
+ */
+export async function findSpan(
+  clip: string,
+  source: string,
+  opts: { sourceCrop?: Crop; sourceThumbs?: Thumbs; near?: { time: number; within: number } } = {},
+): Promise<number> {
+  const clipCrop = await detectCrop(clip);
+  const sourceCrop = opts.sourceCrop ?? (await detectCrop(source));
+  const hay = opts.sourceThumbs ?? (await thumbs(source, COARSE_FPS, sourceCrop));
+  const all = await thumbs(clip, COARSE_FPS, clipCrop);
+  // Match on 6 s of the clip, starting at its first detailed frame.
+  const lead = Math.max(0, all.flat.indexOf(false));
+  const needle = slice(all, lead, lead + COARSE_FPS * 6);
+  const range: [number, number] | undefined = opts.near
+    ? [Math.floor((opts.near.time - opts.near.within) * COARSE_FPS), Math.ceil((opts.near.time + opts.near.within) * COARSE_FPS)]
+    : undefined;
+  const coarse = (bestOffset(needle, hay, range) - lead) / COARSE_FPS;
+
+  // Fine pass on 2 s from the same detailed point, around the coarse match.
+  const leadTime = lead / COARSE_FPS;
+  const fineNeedle = slice(await thumbs(clip, FINE_FPS, clipCrop, { start: leadTime, length: 2 }), 0, FINE_FPS * 2);
+  const from = Math.max(0, coarse + leadTime - 0.5);
+  const fineHay = await thumbs(source, FINE_FPS, sourceCrop, { start: from, length: 1 + 2.5 });
+  return from + bestOffset(fineNeedle, fineHay) / FINE_FPS - leadTime;
+}
+
+/**
+ * Re-cut clips from a better copy of their film: find each clip's span in the
+ * new source, cut it there (without the new copy's black bars), and record the
+ * new source, keeping the old one as `replaces`.
+ *
+ * Clips cut from the same old source should all move by about the same
+ * amount. One that moves by more than 30 s from the others' median is
+ * searched again near where they put it, and the log says so.
+ */
+export async function upgradeMedia(
+  songDir: string,
+  names: string[],
+  source: Source,
+  log: (s: string) => void = () => {},
+  opts: { near?: { time: number; within: number } } = {},
+): Promise<void> {
+  const got =
+    source.kind === "archive"
+      ? await fetchArchive(songDir, source.id)
+      : source.kind === "loc"
+        ? await fetchLoc(songDir, source.id)
+        : { local: source.file, license: source.license, title: undefined, source: { ...source, file: basename(source.file) } };
+  const crop = await detectCrop(got.local);
+  log(`source ${basename(got.local)}: picture ${crop.w}x${crop.h} at ${crop.x},${crop.y}`);
+  const sourceThumbs = await thumbs(got.local, COARSE_FPS, crop);
+
+  const media = readMedia(songDir);
+  const found = new Map<string, number>();
+  for (const name of names) {
+    const old = media.clips[name];
+    if (!old) throw new Error(`no clip "${name}" in media/media.json`);
+    found.set(name, await findSpan(join(songDir, old.file), got.local, { sourceCrop: crop, sourceThumbs, near: opts.near }));
+  }
+
+  const origin = (name: string) => JSON.stringify(media.clips[name].source.url ?? media.clips[name].source.id ?? "");
+  for (const name of names) {
+    const siblings = names.filter((n) => n !== name && origin(n) === origin(name));
+    if (siblings.length < 2) continue;
+    const shifts = siblings.map((n) => found.get(n)! - media.clips[n].in).sort((a, b) => a - b);
+    const median = shifts[shifts.length >> 1];
+    const shift = found.get(name)! - media.clips[name].in;
+    if (Math.abs(shift - median) > 30) {
+      const expected = media.clips[name].in + median;
+      const again = await findSpan(join(songDir, media.clips[name].file), got.local, { sourceCrop: crop, sourceThumbs, near: { time: expected, within: 30 } });
+      log(`${name}: matched at ${formatTime(found.get(name)!)}, but the clips beside it put it near ${formatTime(expected)}; searched there and found ${formatTime(again)}`);
+      found.set(name, again);
+    }
+  }
+
+  for (const name of names) {
+    const old = media.clips[name];
+    const start = found.get(name)!;
+    const length = old.out - old.in;
+    const info = await cutClip(got.local, join(songDir, old.file), { start, end: start + length }, { crop });
+    const shots = await findShots(join(songDir, old.file));
+    const strikes = await findStrikes(join(songDir, old.file));
+    media.clips[name] = {
+      ...old,
+      source: got.source,
+      in: start,
+      out: start + length,
+      license: got.license,
+      ...(got.title ? { title: got.title } : {}),
+      replaces: { source: old.source, in: old.in, out: old.out },
+      added: new Date().toISOString().slice(0, 10),
+      ...info,
+      shots,
+      strikes,
+    } as MediaFile["clips"][string];
+    writeFileSync(join(songDir, "media", "media.json"), JSON.stringify(media, null, 2) + "\n");
+    log(`${name}: ${formatTime(old.in)} in the old copy is ${formatTime(start)} (${start.toFixed(2)} s) in the new, ${info.width}x${info.height} at ${info.fps} fps`);
+  }
 }

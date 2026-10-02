@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { archiveLicense, describeSource, parseTime, cutClip, addMedia, contactSheet, findShots, findStrikes, analyzeMedia } from "../../src/visuals/media.js";
+import { archiveLicense, describeSource, parseTime, cutClip, addMedia, contactSheet, findShots, findStrikes, analyzeMedia, locLicense, detectCrop, findSpan } from "../../src/visuals/media.js";
 
 const hasFfmpeg = (() => {
   try {
@@ -208,5 +208,64 @@ describe.skipIf(!hasFfmpeg)("analyzeMedia (ffmpeg)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Library of Congress sources", () => {
+  it("knows an item by id or URL", () => {
+    expect(describeSource("loc:2022600183", {})).toEqual({ kind: "loc", id: "2022600183" });
+    expect(describeSource("https://www.loc.gov/item/2022600183/?loclr=blogloc", {})).toEqual({ kind: "loc", id: "2022600183" });
+  });
+
+  it("accepts the Library's no-known-restrictions statements, for film and for newspapers", () => {
+    expect(locLicense(["<p>The Library of Congress is not aware of any U.S. copyright or other restrictions in the vast majority of motion pictures in these collections.</p>"])).toBe("no-known-restrictions");
+    expect(locLicense(["The Library of Congress believes that the newspapers in Chronicling America are in the public domain or have no known copyright restrictions."])).toBe("no-known-restrictions");
+  });
+
+  it("refuses an item without one", () => {
+    expect(() => locLicense(["Rights status not evaluated."])).toThrow(/rights/);
+    expect(() => locLicense(undefined)).toThrow(/rights/);
+  });
+});
+
+describe.skipIf(!hasFfmpeg)("finding a clip in a better copy (ffmpeg)", () => {
+  let dir: string;
+  let better: string;
+  let clip: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "upgrade-"));
+    // The better copy: 20 s of moving test pattern at 24 fps, 4:3 pillarboxed into 16:9.
+    better = join(dir, "better.mp4");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=480x360:r=24:d=20", "-vf", "pad=640:360:80:0", "-pix_fmt", "yuv420p", better]);
+    // The clip we have: 7.5–10.5 s of the same film, smaller and at 30 fps, without the bars.
+    clip = join(dir, "clip.mp4");
+    execFileSync("ffmpeg", ["-v", "error", "-ss", "7.5", "-t", "3", "-i", better, "-vf", "crop=480:360:80:0,scale=320:240,fps=30", "-pix_fmt", "yuv420p", clip]);
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("finds the bars around 4:3 film in a 16:9 frame", async () => {
+    expect(await detectCrop(better)).toEqual({ w: 480, h: 360, x: 80, y: 0 });
+  });
+
+  it("finds where the clip starts in the better copy", async () => {
+    const start = await findSpan(clip, better);
+    expect(Math.abs(start - 7.5)).toBeLessThanOrEqual(1 / 24);
+  });
+
+  it("isn't fooled by a clip that starts on black", async () => {
+    // 2 s of black, then 12–15 s of the film; the better copy has black at 0–3 s too.
+    const dark = join(dir, "dark.mp4");
+    const darkSource = join(dir, "dark-source.mp4");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=black:s=640x360:r=24:d=3", "-i", better, "-filter_complex", "[0]format=yuv420p[a];[1]format=yuv420p[b];[a][b]concat=n=2", "-pix_fmt", "yuv420p", darkSource]);
+    execFileSync("ffmpeg", ["-v", "error", "-ss", "13", "-t", "5", "-i", darkSource, "-f", "lavfi", "-i", "color=black:s=640x360:r=24:d=2", "-filter_complex", "[1]format=yuv420p[k];[0]format=yuv420p[f];[k][f]concat=n=2", "-pix_fmt", "yuv420p", dark]);
+    // The clip starts 2 s before 13 s of the source.
+    const start = await findSpan(dark, darkSource);
+    expect(Math.abs(start - 11)).toBeLessThanOrEqual(1 / 24);
+  });
+
+  it("cuts without the bars when asked to crop", async () => {
+    const out = join(dir, "cropped.mp4");
+    const info = await cutClip(better, out, { start: 7.5, end: 10.5 }, { crop: await detectCrop(better) });
+    expect(info).toMatchObject({ width: 480, height: 360, fps: 24 });
   });
 });

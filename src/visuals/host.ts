@@ -71,6 +71,9 @@ interface SceneClip {
   strikes: number[];
 }
 
+/** Seconds of song a clip can go unused before its video is let go. */
+const RELEASE_AFTER = 20;
+
 declare const p5: new (sketch: (p: any) => void, node?: HTMLElement) => any;
 
 /** Resolve once the element has fired `event`. */
@@ -89,7 +92,38 @@ export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<Mou
   const clock = sceneClock(o.timing, o.sections, o.features);
   let now: SceneState = clock.at(0);
   let p: any;
-  const clips: { clip: SceneClip; info: HostClip; at: (s: SceneState) => number | null; video: HTMLVideoElement }[] = [];
+  // A clip's video loads the first time a frame needs it and is let go once
+  // the song has gone RELEASE_AFTER seconds without it, so a song with many
+  // HD clips never holds them all in memory.
+  interface Entry {
+    clip: SceneClip;
+    info: HostClip;
+    at: (s: SceneState) => number | null;
+    video: HTMLVideoElement;
+    url: string;
+    loading?: Promise<void>;
+    loaded: boolean;
+    lastUsed: number;
+  }
+  const clips: Entry[] = [];
+  const load = (e: Entry): Promise<void> =>
+    (e.loading ??= new Promise<void>((resolve, reject) => {
+      e.video.preload = "auto";
+      e.video.src = e.url;
+      e.video.load();
+      once(e.video, "loadeddata").then(() => {
+        e.loaded = true;
+        resolve();
+      });
+      once(e.video, "error").then(() => reject(new Error(`couldn't load clip ${e.info.file}`)));
+    }));
+  const release = (e: Entry) => {
+    e.video.pause();
+    e.video.removeAttribute("src");
+    e.video.load();
+    e.loaded = false;
+    e.loading = undefined;
+  };
 
   const song = {
     width: o.width,
@@ -101,11 +135,11 @@ export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<Mou
       const info = o.media?.[name];
       if (!info) throw new Error(`no clip "${name}" in media/media.json; clips: ${Object.keys(o.media ?? {}).join(", ") || "none"}`);
       if (!p) throw new Error("song.clip must be called in setup");
-      const el = p.createVideo(new URL(info.file, o.mediaBase ?? location.href).href);
+      const url = new URL(info.file, o.mediaBase ?? location.href).href;
+      const el = p.createVideo(url);
       el.hide();
       const video = el.elt as HTMLVideoElement;
       video.muted = true;
-      video.preload = "auto";
       video.pause();
       const clip: SceneClip = {
         name,
@@ -117,7 +151,9 @@ export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<Mou
         shots: info.shots ?? [],
         strikes: info.strikes ?? [],
       };
-      clips.push({ clip, info, at, video });
+      const entry: Entry = { clip, info, at, video, url, loaded: false, lastUsed: -Infinity };
+      release(entry); // nothing loads until a frame needs it
+      clips.push(entry);
       return clip;
     },
   };
@@ -151,16 +187,6 @@ export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<Mou
         };
       }, holder);
     });
-    await Promise.all(
-      clips.map(({ video, info }) =>
-        video.readyState >= 2
-          ? undefined
-          : Promise.race([
-              once(video, "loadeddata"),
-              once(video, "error").then(() => Promise.reject(new Error(`couldn't load clip ${info.file}`))),
-            ]),
-      ),
-    );
   } catch (e) {
     teardown();
     throw e;
@@ -176,14 +202,28 @@ export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<Mou
     async draw(t) {
       now = clock.at(t);
       await Promise.all(
-        clips.map(async ({ clip, info, at, video }) => {
+        clips.map(async (e) => {
+          const { clip, info, at, video } = e;
           const want = at(now);
-          clip.visible = want !== null && want >= 0 && want < info.duration;
-          if (!clip.visible) return;
+          const needed = want !== null && want >= 0 && want < info.duration;
+          if (!needed) {
+            clip.visible = false;
+            if (e.loaded && Math.abs(t - e.lastUsed) > RELEASE_AFTER) release(e);
+            return;
+          }
+          e.lastUsed = t;
           // Aim at the middle of the frame, so rounding never picks its neighbor.
           const target = (Math.floor(want! * info.fps + 1e-6) + 0.5) / info.fps;
-          if (o.exactClips) await seekExactly(video, target);
-          else if (!video.seeking && Math.abs(video.currentTime - target) > 0.5 / info.fps) video.currentTime = target;
+          if (o.exactClips) {
+            await load(e);
+            await seekExactly(video, target);
+            clip.visible = true;
+          } else {
+            // The preview never waits: until the clip has loaded it just isn't shown.
+            load(e).catch(() => {});
+            clip.visible = e.loaded;
+            if (e.loaded && !video.seeking && Math.abs(video.currentTime - target) > 0.5 / info.fps) video.currentTime = target;
+          }
         }),
       );
       await instance.redraw();

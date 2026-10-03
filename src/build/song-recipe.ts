@@ -69,6 +69,11 @@ export const SCORE_GLOBS = ["*.gp", "*.gp3", "*.gp4", "*.gp5", "*.gpx", "*.music
 /** Chord files (manifest `chords`), named `<slug>.chords.lab` so the build sees edits. */
 export const CHORD_FILE_GLOB = "*.chords.lab";
 
+/** What every visuals render reads: the scene, the timing, the stems' features, the footage. */
+export const RENDER_FILES = ["*.scene.js", "*.lyrics-display.json", "*.rows.json", "*.beat-features.json", "footage/footage.json", "footage/*.mp4"];
+/** What the timing half of generate writes. */
+export const TIMING_OUTPUT = ["*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**"];
+
 /**
  * Build the per-song wireit unit (the parsed package.json object). Callers
  * JSON.stringify it. Task commands are CWD-relative to the song folder; paths
@@ -202,7 +207,7 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   const timing = {
     command: `npx tsx ${rel}/src/build/generate.ts ${manifest} --part timing`,
     files: generateFiles,
-    output: ["*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**"],
+    output: TIMING_OUTPUT,
     dependencies: ["smooth"],
   };
 
@@ -211,7 +216,7 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   // it (images, outlines) needs those added to `files` here, by hand.
   const render = {
     command: `npx tsx ${rel}/src/visuals/render-cli.ts ${manifest} --skip-without-scene`,
-    files: ["*.scene.js", "*.lyrics-display.json", "*.rows.json", "*.beat-features.json", "footage/footage.json", "footage/*.mp4"],
+    files: RENDER_FILES,
     output: ["*.visuals.mp4"],
     dependencies: ["timing", "features"],
   };
@@ -262,4 +267,38 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   };
 
   return { name: `clickbait-song-${slug}`, private: true, scripts, wireit };
+}
+
+type Task = { command: string; files?: string[]; output?: string[]; dependencies?: string[] };
+
+/**
+ * Upgrade a recipe written before the render task (one `build` running all of
+ * generate) to timing → render → build, as `songRecipe` writes it now. The
+ * song's own tasks and build inputs are kept. `extra` adds what the scene loads
+ * beside it (`files`) and tasks that make those files (`dependencies`).
+ */
+export function addVisualsTasks(
+  recipe: Record<string, unknown>,
+  extra: { files?: string[]; dependencies?: string[] },
+): Record<string, unknown> {
+  const scripts = { ...(recipe.scripts as Record<string, string>) };
+  const wireit = { ...(recipe.wireit as Record<string, Task>) };
+  if (wireit.render || wireit.timing) throw new Error("this recipe already has the timing and render tasks");
+  if (!wireit.features) throw new Error("the render reads the stems' features; add a features task first");
+  const build = wireit.build;
+  const m = build?.command.match(/^npx tsx (\S+)\/src\/build\/generate\.ts (\S+\.song\.json)$/);
+  if (!m) throw new Error(`can't read the build command: ${build?.command}`);
+  const [, rel, manifest] = m;
+
+  wireit.timing = { command: `${build.command} --part timing`, files: build.files, output: TIMING_OUTPUT, dependencies: build.dependencies };
+  wireit.render = {
+    command: `npx tsx ${rel}/src/visuals/render-cli.ts ${manifest} --skip-without-scene`,
+    files: [...RENDER_FILES, ...(extra.files ?? [])],
+    output: ["*.visuals.mp4"],
+    dependencies: ["timing", "features", ...(extra.dependencies ?? [])],
+  };
+  wireit.build = { command: `${build.command} --part project`, files: build.files, output: ["*.RPP"], dependencies: ["timing", "render"] };
+  scripts.timing = "wireit";
+  scripts.render = "wireit";
+  return { ...recipe, scripts, wireit };
 }

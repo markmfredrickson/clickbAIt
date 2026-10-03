@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdtempSync, readdirSync, writeFileSync } fro
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { songRecipe } from "../src/build/song-recipe.js";
+import { songRecipe, addVisualsTasks } from "../src/build/song-recipe.js";
 import { buildRpp } from "../src/build/rpp.js";
 import { findGigVideo } from "../src/build/gig-video.js";
 import { song, span, bars } from "@clickbait/dsongl";
@@ -114,4 +114,52 @@ describe("render-cli --skip-without-scene", () => {
     expect(readdirSync(dir).some((f) => f.endsWith(".mp4"))).toBe(false);
     expect(existsSync(join(dir, "count-test.song.json"))).toBe(true);
   }, 60_000);
+});
+
+describe("addVisualsTasks: upgrading a recipe written before the render task", () => {
+  const legacy = () => ({
+    name: "clickbait-song-pink-pony-club",
+    private: true,
+    scripts: { align: "wireit", build: "wireit", features: "wireit", bundle: "wireit", skyline: "wireit" },
+    wireit: {
+      align: { command: "align ...", output: ["stems/source_vocals.align.json"] },
+      build: {
+        command: "npx tsx ../../../src/build/generate.ts pink-pony-club.song.json",
+        files: ["pink-pony-club.song.json", "*.beatmap.json"],
+        output: ["*.RPP", "*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**"],
+        dependencies: ["align"],
+      },
+      features: { command: "features ...", output: ["*.beat-features.json"] },
+      bundle: { command: "bundle ...", output: ["*.opus"] },
+      skyline: { command: "trace ...", output: ["skyline/la-skyline.json"] },
+    },
+  });
+
+  it("splits build into timing → render → build and keeps the song's own tasks", () => {
+    const r = addVisualsTasks(legacy(), { files: ["fonts/*.ttf", "skyline/la-skyline.json"], dependencies: ["skyline"] }) as ReturnType<typeof legacy> & {
+      wireit: Record<string, { command: string; files?: string[]; output?: string[]; dependencies?: string[] }>;
+    };
+    const { timing, render, build, skyline } = r.wireit;
+    expect(r.scripts).toMatchObject({ timing: "wireit", render: "wireit", skyline: "wireit" });
+    expect(timing.command).toBe("npx tsx ../../../src/build/generate.ts pink-pony-club.song.json --part timing");
+    expect(timing.files).toEqual(["pink-pony-club.song.json", "*.beatmap.json"]);
+    expect(timing.dependencies).toEqual(["align"]);
+    expect(render.command).toBe("npx tsx ../../../src/visuals/render-cli.ts pink-pony-club.song.json --skip-without-scene");
+    expect(render.files).toEqual(expect.arrayContaining(["*.scene.js", "*.lyrics-display.json", "fonts/*.ttf", "skyline/la-skyline.json"]));
+    expect(render.dependencies).toEqual(["timing", "features", "skyline"]);
+    expect(build.command).toBe("npx tsx ../../../src/build/generate.ts pink-pony-club.song.json --part project");
+    expect(build.output).toEqual(["*.RPP"]);
+    expect(build.dependencies).toEqual(["timing", "render"]);
+    expect(skyline.command).toBe("trace ...");
+  });
+
+  it("refuses a recipe with no features task, which the render needs", () => {
+    const r = legacy();
+    delete (r.wireit as Record<string, unknown>).features;
+    expect(() => addVisualsTasks(r, {})).toThrow(/features/);
+  });
+
+  it("refuses a recipe that already has the render task", () => {
+    expect(() => addVisualsTasks(addVisualsTasks(legacy(), {}), {})).toThrow(/already/);
+  });
 });

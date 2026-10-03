@@ -146,6 +146,9 @@ export interface BuildOptions {
   /** RENDER_PATTERN override (default: the song slug), so a variant renders to
    *  its own file, e.g. `<slug>.minus-drums`. */
   renderName?: string;
+  /** The visuals render for the gig (see gig-video.ts): placed on a Visuals
+   *  track from project time 0, since the render is already in project time. */
+  video?: { file: string; seconds: number };
 }
 
 /** Track options (mainsend/hwout/mute/gain) for a generated track from a rig
@@ -532,6 +535,25 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
         muted: muteTracks.has(trackName),
       }));
     });
+  }
+
+  // Visuals: the scene's render plays 1:1 from project time 0 in REAPER's video
+  // window, following the playhead through jumps and loops. No send to master.
+  if (opts.video) {
+    const item = [
+      `    <ITEM`,
+      `      POSITION 0`,
+      `      LENGTH ${fmt(opts.video.seconds)}`,
+      `      LOOP 0`,
+      `      ALLTAKES 0`,
+      `      NAME "Visuals"`,
+      `      GUID ${newGuid()}`,
+      `      <SOURCE VIDEO`,
+      `        FILE ${JSON.stringify(opts.video.file)}`,
+      `      >`,
+      `    >`,
+    ].join("\n");
+    rppLines.push(buildTrack("Visuals", 1, item, { mainsend: "0 0" }));
   }
 
   // Record tracks (band block + drum feeds) from the rig. Each records from a

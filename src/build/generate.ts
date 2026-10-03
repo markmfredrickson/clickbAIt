@@ -26,6 +26,7 @@ import { buildRows } from "../teleprompter/build-rows.js";
 import { drawNotation } from "../charts/notation-svg.js";
 import { parseNotes, type Note } from "../teleprompter/card.js";
 import { songRecipe } from "./song-recipe.js";
+import { findGigVideo, videoSeconds } from "./gig-video.js";
 import { extractSections } from "./sections.js";
 import { cueOnset } from "./cue-onset.js";
 import { pCenterSeconds, type AlignChar } from "./pcenter.js";
@@ -38,6 +39,10 @@ const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").repla
 // Flags (practice-bundle variant renders; see bundle-variants.ts):
 //   --mute-stems drums,bass   mute those stem tracks (keys of sources.stems.files)
 //   --render-name <name>      RENDER_PATTERN override (default: the song slug)
+//   --part timing|project     write only one half (default both). The recipe runs
+//                             `timing` (cues, lyrics-display, rows, charts), then the
+//                             visuals render from those, then `project` (the RPP), so
+//                             the RPP always carries a render of the current timing.
 const flags: Record<string, string> = {};
 const positional: string[] = [];
 for (let i = 2; i < process.argv.length; i++) {
@@ -47,13 +52,20 @@ for (let i = 2; i < process.argv.length; i++) {
 }
 const manifestPath = positional[0];
 if (!manifestPath) {
-  console.error("usage: npx tsx src/build/generate.ts <manifest.song.json> [out-dir] [--mute-stems a,b] [--render-name name]");
+  console.error("usage: npx tsx src/build/generate.ts <manifest.song.json> [out-dir] [--mute-stems a,b] [--render-name name] [--part timing|project]");
   process.exit(1);
 }
 const dir = dirname(resolve(manifestPath));
 const outDir = positional[1] ? resolve(positional[1]) : dir;
 const muteTracks = (flags["mute-stems"] ?? "").split(",").filter(Boolean).map(stemTrackName);
 const renderName = flags["render-name"] || undefined;
+const part = flags.part || undefined;
+if (part !== undefined && part !== "timing" && part !== "project") {
+  console.error(`--part is timing or project, not "${part}"`);
+  process.exit(1);
+}
+const writeTiming = part !== "project";
+const writeProject = part !== "timing";
 
 const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
 // Resolve the beat-map: if it points at an external <source>.beatmap.json, load
@@ -220,8 +232,12 @@ for (const e of events) {
   if (v !== undefined) cueOnsets[sl] = v;
 }
 
-const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, clickDropBeat, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets, muteTracks, renderName });
 const slug = songSlug(song);
+// The gig video goes on the live project only; a --render-name project is an
+// audio render (a practice-bundle mix), which has no use for it.
+const videoFile = writeProject && !renderName ? findGigVideo(dir, slug) : undefined;
+const video = videoFile ? { file: videoFile, seconds: videoSeconds(videoFile) } : undefined;
+const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, clickDropBeat, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets, muteTracks, renderName, video });
 // Emit RELATIVE media paths so the project folder is self-contained and portable
 // (REAPER resolves paths against the .RPP's own folder). In-folder media —
 // cues/, stems/, source — drop the outDir prefix; the shared click samples
@@ -229,13 +245,13 @@ const slug = songSlug(song);
 const rppRel = rpp
   .split(outDir + "/").join("")
   .split(clickDir + "/").join(relative(outDir, clickDir) + "/");
-writeFileSync(join(outDir, `${slug}.RPP`), rppRel);
+if (writeProject) writeFileSync(join(outDir, `${slug}.RPP`), rppRel);
 
 // Build stamp — which clickbait produced this output. A gitignored sidecar (a
 // build OUTPUT, not a manifest field: `build` must never write its own input, or
 // it self-invalidates the wireit cache like the old smooth-rewrites-manifest bug).
 // No tracked churn; travels with the song folder / bundle for reproducibility.
-writeFileSync(
+if (writeProject) writeFileSync(
   join(outDir, `${slug}.build.json`),
   JSON.stringify({ clickbait: clickbaitVersion, generatedAt: new Date().toISOString(), node: process.version }, null, 2) + "\n",
 );
@@ -246,7 +262,7 @@ let display: ReturnType<typeof buildLyricsDisplay> | undefined;
 if (manifest.lyrics.alignment) {
   const align = JSON.parse(readFileSync(join(dir, manifest.lyrics.alignment.file), "utf8")) as AlignInput;
   display = buildLyricsDisplay(manifest, align, { renderOffsetBeats: paddingBeats });
-  writeFileSync(join(outDir, `${slug}.lyrics-display.json`), JSON.stringify(display, null, 2));
+  if (writeTiming) writeFileSync(join(outDir, `${slug}.lyrics-display.json`), JSON.stringify(display, null, 2));
   lyricsMsg = `${display.words.length} words, ${display.display.lines.length} lines`;
 }
 
@@ -263,7 +279,7 @@ if (manifest.charts?.length || manifest.chords) {
       bpm: manifest.bpm,
     },
   });
-  writeFileSync(join(outDir, `${slug}.charts.json`), JSON.stringify(chartsFile, null, 2));
+  if (writeTiming) writeFileSync(join(outDir, `${slug}.charts.json`), JSON.stringify(chartsFile, null, 2));
   lyricsMsg += `; ${chartsFile.charts.length} chart(s)`;
   if (chartsFile.chords) lyricsMsg += `; ${chartsFile.chords.length} chord(s)`;
 }
@@ -291,10 +307,10 @@ const rows = buildRows({
   ...(notes ? { notes } : {}),
 });
 // Charts' notation, drawn now, so every display shows the same drawings.
-if (chartsFile?.charts.length) {
+if (writeTiming && chartsFile?.charts.length) {
   rows.notation = await drawNotation(rows, (path) => (existsSync(join(dir, path)) ? new Uint8Array(readFileSync(join(dir, path))) : null));
 }
-writeFileSync(join(outDir, `${slug}.rows.json`), JSON.stringify(rows, null, 2));
+if (writeTiming) writeFileSync(join(outDir, `${slug}.rows.json`), JSON.stringify(rows, null, 2));
 
 // Scaffold the per-song build unit — a package.json wireit recipe — but ONLY if
 // it doesn't already exist. The recipe is AUTHORED (you tune --min-bpm/--max-bpm,
@@ -344,7 +360,12 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !ex
   writeFileSync(pkgPath, JSON.stringify(unit, null, 2) + "\n");
 }
 
-console.error(`wrote ${slug}.RPP + ${slug}.lyrics-display.json + ${slug}.rows.json (${lyricsMsg}) + cues/ in ${outDir}`);
+const wrote = [
+  ...(writeProject ? [`${slug}.RPP${video ? " (with the visuals)" : ""}`] : []),
+  ...(writeTiming ? [`${slug}.lyrics-display.json + ${slug}.rows.json (${lyricsMsg})`] : []),
+  "cues/",
+];
+console.error(`wrote ${wrote.join(" + ")} in ${outDir}`);
 
 // Timekeeping QC: check each actual STRETCH SEGMENT (marker to marker) against
 // the constant tempo. Non-strided sections = per-beat; strided sections =

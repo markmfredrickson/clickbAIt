@@ -1,7 +1,7 @@
 /**
  * Render a song's scene beside the manifest.
  *
- *   npm run visuals:render -- <manifest.song.json> [--draft] [--scene file] [--tail s] [--from s] [--until s] [--out file]
+ *   npm run visuals:render -- <manifest.song.json> [--draft] [--scene file] [--tail s] [--from s] [--until s] [--out file] [--skip-without-scene]
  *
  * By default it writes the gig master, `<slug>.visuals.mp4`: 1080p, encoded
  * near-lossless, no audio. `--draft` writes `<slug>.visuals-draft.mp4` for
@@ -34,11 +34,12 @@ const { values, positionals } = parseArgs({
     draft: { type: "boolean", default: false },
     audio: { type: "string" },
     out: { type: "string" },
+    "skip-without-scene": { type: "boolean", default: false },
   },
 });
 const manifestPath = positionals[0];
 if (!manifestPath) {
-  console.error("usage: npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080] [--tail seconds] [--until seconds] [--out file] [--draft] [--audio file]");
+  console.error("usage: npx tsx src/visuals/render-cli.ts <manifest.song.json> [--scene file] [--fps 30] [--size 1920x1080] [--tail seconds] [--until seconds] [--out file] [--draft] [--audio file] [--skip-without-scene]");
   process.exit(1);
 }
 const dir = dirname(resolve(manifestPath));
@@ -48,7 +49,14 @@ const file = (suffix: string) => join(dir, `${slug}${suffix}`);
 const json = (suffix: string) => JSON.parse(readFileSync(file(suffix), "utf8"));
 
 const scene = values.scene ? resolve(values.scene) : file(".scene.js");
-if (!existsSync(scene)) throw new Error(`no scene at ${scene}`);
+if (!existsSync(scene)) {
+  // The song recipe's render task runs for every song; most have no scene.
+  if (values["skip-without-scene"]) {
+    console.error(`no scene at ${scene}; nothing to render`);
+    process.exit(0);
+  }
+  throw new Error(`no scene at ${scene}`);
+}
 // A draft is 360p with the mix in, the whole song, to check a scene quickly;
 // the full render is the 1080p gig master.
 const [width, height] = (values.size ?? (values.draft ? "640x360" : "1920x1080")).split("x").map(Number);

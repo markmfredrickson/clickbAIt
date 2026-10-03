@@ -7,8 +7,10 @@
  *   Analysis (input: source.m4a) — split, lookup, lyrics-txt, beats, align.
  *     `npm run analyze` fans these out. Each caches on its inputs.
  *   ── you author the manifest here (`npm run init-manifest` writes the first cut) ──
- *   Build (input: the manifest) — smooth, build (generate), bundle.
- *     `npm run build` assembles the RPP; `-- bundle` renders audio.
+ *   Build (input: the manifest) — smooth, timing, render, build, bundle.
+ *     `npm run build` writes the timing files, renders the visuals when the song
+ *     has a scene, then assembles the RPP with the video on it; `-- bundle`
+ *     renders audio.
  *
  * `init-manifest` and `beats` are STANDALONE one-shots, never build dependencies:
  *   - `beats` so a hand-tuned detection (narrowed --min/--max-bpm, --start/--until)
@@ -95,6 +97,8 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     "init-manifest": "wireit",
     analyze: "wireit",
     smooth: "wireit",
+    timing: "wireit",
+    render: "wireit",
     build: "wireit",
     features: "wireit",
     bundle: "wireit",
@@ -184,19 +188,41 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     output: [beatmapJson],
   };
 
-  // build: assemble the RPP + lyrics-display + spoken cues (this is generate).
-  // Depends ONLY on smooth. The analysis tasks (split/lookup/lyrics-txt/align)
-  // are prep run by `analyze`, NOT build deps — build consumes their output as
+  // generate's inputs. The analysis tasks (split/lookup/lyrics-txt/align) are
+  // prep run by `analyze`, NOT build deps — the build consumes their output as
   // file inputs (the align.json glob, the beatmap), so it re-runs when they
   // change but never drags the network `lookup` (which is uncacheable) or the
   // slow `align` into every build. Same standalone philosophy as `beats`.
-  const build = {
-    command: `npx tsx ${rel}/src/build/generate.ts ${manifest}`,
-    // Score files and chord files are chart sources (manifest `charts`,
-    // `chords`); the build maps them into <slug>.charts.json.
-    files: [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`, ...SCORE_GLOBS, CHORD_FILE_GLOB, NOTES_FILE_GLOB],
-    output: ["*.RPP", "*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**"],
+  // Score files and chord files are chart sources (manifest `charts`, `chords`);
+  // the build maps them into <slug>.charts.json.
+  const generateFiles = [manifest, beatmapJson, "stems/*.align.json", `${rel}/default.json`, ...SCORE_GLOBS, CHORD_FILE_GLOB, NOTES_FILE_GLOB];
+
+  // timing: the project-time files (lyrics-display, rows, charts) and the spoken
+  // cues — everything the visuals render reads.
+  const timing = {
+    command: `npx tsx ${rel}/src/build/generate.ts ${manifest} --part timing`,
+    files: generateFiles,
+    output: ["*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**"],
     dependencies: ["smooth"],
+  };
+
+  // render: the scene's gig master, <slug>.visuals.mp4, in project time. A song
+  // without a <slug>.scene.js renders nothing. A scene that loads files beside
+  // it (images, outlines) needs those added to `files` here, by hand.
+  const render = {
+    command: `npx tsx ${rel}/src/visuals/render-cli.ts ${manifest} --skip-without-scene`,
+    files: ["*.scene.js", "*.lyrics-display.json", "*.rows.json", "*.beat-features.json", "footage/footage.json", "footage/*.mp4"],
+    output: ["*.visuals.mp4"],
+    dependencies: ["timing", "features"],
+  };
+
+  // build: the RPP, after the render, so its Visuals track always plays a render
+  // of the current timing.
+  const build = {
+    command: `npx tsx ${rel}/src/build/generate.ts ${manifest} --part project`,
+    files: generateFiles,
+    output: ["*.RPP"],
+    dependencies: ["timing", "render"],
   };
 
   // features: per-stem loudness, onsets, brightness and bands on the beat grid,
@@ -228,6 +254,8 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     "init-manifest": initManifest,
     analyze,
     smooth,
+    timing,
+    render,
     build,
     features,
     bundle,

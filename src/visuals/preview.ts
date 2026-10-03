@@ -126,7 +126,11 @@ export async function startPreview(o: PreviewOptions): Promise<Preview> {
       if (path === "/") return void res.writeHead(200, { "Content-Type": "text/html" }).end(page(o));
       if (path === "/preview.js") return void res.writeHead(200, { "Content-Type": TYPES[".js"] }).end(script);
       if (path === "/p5.min.js") return void res.writeHead(200, { "Content-Type": TYPES[".js"] }).end(readFileSync(P5_MIN));
-      if (path === "/song.json") return void res.writeHead(200, { "Content-Type": TYPES[".json"], "Cache-Control": "no-store" }).end(JSON.stringify(song()));
+      // Read the song before sending headers: a build may be rewriting its files.
+      if (path === "/song.json") {
+        const body = JSON.stringify(song());
+        return void res.writeHead(200, { "Content-Type": TYPES[".json"], "Cache-Control": "no-store" }).end(body);
+      }
       if (path === "/audio") return sendFile(res, o.audio, req.headers.range);
       if (path === "/events") {
         res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
@@ -144,7 +148,8 @@ export async function startPreview(o: PreviewOptions): Promise<Preview> {
       }
       res.writeHead(404).end();
     } catch (e) {
-      res.writeHead(500, { "Content-Type": "text/plain" }).end(String(e));
+      if (res.headersSent) res.end();
+      else res.writeHead(500, { "Content-Type": "text/plain" }).end(String(e));
     }
   });
 

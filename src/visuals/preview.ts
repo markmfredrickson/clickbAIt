@@ -13,7 +13,7 @@ import { existsSync, readFileSync, statSync, createReadStream, watch, type FSWat
 import { basename, dirname, extname, join, normalize } from "node:path";
 import type { AddressInfo } from "node:net";
 import { P5_MIN, bundlePage } from "./page-assets.js";
-import { readMedia } from "./media.js";
+import { FOOTAGE_RECORD, readMedia } from "./media.js";
 
 export interface PreviewOptions {
   /** The scene module. Files beside it are served too, and watched. */
@@ -150,7 +150,7 @@ export async function startPreview(o: PreviewOptions): Promise<Preview> {
 
   // Saves arrive as a burst of events; settle before telling the page.
   const data = new Set([o.timing, o.rows, o.features].filter(Boolean).map((f) => basename(f!)));
-  const mediaRecord = join("media", "media.json");
+  const mediaRecord = FOOTAGE_RECORD;
   const pending = new Map<string, NodeJS.Timeout>();
   const settle = (event: "scene" | "song") => {
     clearTimeout(pending.get(event));

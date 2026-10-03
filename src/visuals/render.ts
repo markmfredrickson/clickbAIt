@@ -20,7 +20,7 @@ export interface RenderOptions {
   sections: SceneSection[];
   features?: SceneFeatures;
   lines?: SceneLine[];
-  /** Clips from `media/media.json`, by name; files resolve against the scene's folder. */
+  /** Clips from `footage/footage.json`, by name; files resolve against the scene's folder. */
   media?: Record<string, HostClip>;
   fps: number;
   width: number;
@@ -95,7 +95,9 @@ export async function renderScene(o: RenderOptions): Promise<void> {
     ? (await hasEncoder("h264_videotoolbox"))
       ? ["-c:v", "h264_videotoolbox", "-b:v", String(Math.round((o.width * o.height * o.fps) / 6)), "-allow_sw", "1"]
       : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-x264-params", "scenecut=0"]
-    : ["-c:v", "libx264", "-crf", "18", "-x264-params", "scenecut=0"];
+    : // veryfast: the same quality as the default preset at about three times the
+      // speed, which a busy scene needs to keep up with the browser.
+      ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-x264-params", "scenecut=0"];
   const ffmpeg = spawn("ffmpeg", [
     "-v", "error", "-y",
     "-f", "image2pipe", "-framerate", String(o.fps), "-c:v", "mjpeg", "-i", "-",

@@ -25,7 +25,7 @@
 //   s.next                    { name, inBeats } for the next section, or null in the last
 //
 // Footage: in setup, `const c = song.clip(name, (s) => clipSeconds or null)` opens a
-// clip from media/media.json; draw `p.image(c.frame, ...)` when `c.visible`.
+// clip from footage/footage.json; draw `p.image(c.frame, ...)` when `c.visible`.
 // c.shots ({ start, end } cuts) and c.strikes (moments of impact) come from
 // `npm run media -- analyze`.
 //

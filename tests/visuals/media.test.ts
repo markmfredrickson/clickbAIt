@@ -109,16 +109,16 @@ describe.skipIf(!hasFfmpeg)("cutClip and addMedia (ffmpeg)", () => {
   it("records the clip's source, span and license beside it", async () => {
     const song = mkdtempSync(join(dir, "song-"));
     await addMedia(song, "counter", { kind: "file", file: source, url: "own", license: "own", by: "Mark" }, { start: 1, end: 3 });
-    const record = JSON.parse(readFileSync(join(song, "media", "media.json"), "utf8"));
+    const record = JSON.parse(readFileSync(join(song, "footage", "footage.json"), "utf8"));
     expect(record.clips.counter).toMatchObject({
-      file: "media/counter.mp4",
+      file: "footage/counter.mp4",
       source: { kind: "file", license: "own", by: "Mark" },
       in: 1,
       out: 3,
       license: "own",
       fps: 30,
     });
-    expect(Number(probe(join(song, "media", "counter.mp4"), "-count_frames", "-show_entries", "stream=nb_read_frames"))).toBe(60);
+    expect(Number(probe(join(song, "footage", "counter.mp4"), "-count_frames", "-show_entries", "stream=nb_read_frames"))).toBe(60);
   });
 });
 
@@ -201,7 +201,7 @@ describe.skipIf(!hasFfmpeg)("analyzeMedia (ffmpeg)", () => {
       ]);
       await addMedia(dir, "flare", { kind: "file", file: raw, url: "own", license: "own" });
       await analyzeMedia(dir, "flare");
-      const clip = JSON.parse(readFileSync(join(dir, "media", "media.json"), "utf8")).clips.flare;
+      const clip = JSON.parse(readFileSync(join(dir, "footage", "footage.json"), "utf8")).clips.flare;
       expect(clip.strikes.map((t: number) => Math.round(t * 25))).toEqual([30]);
       expect(clip.shots[0]).toMatchObject({ start: 0 });
       expect(clip.license).toBe("own");

@@ -1,6 +1,6 @@
 /**
  * Footage for scenes: `media add` cuts a clip from a source and records where
- * it came from and under what license in the song's `media/media.json`.
+ * it came from and under what license in the song's `footage/footage.json`.
  *
  * Only licenses that allow showing the clip at a paid gig are accepted, and
  * an unclear license is a refusal, never a guess. A clip goes into a scene
@@ -133,12 +133,20 @@ export interface MediaRecord {
 }
 export type MediaFile = { clips: Record<string, MediaRecord & ClipInfo & { shots?: Shot[]; strikes?: number[] }> };
 
+/**
+ * A song's footage folder. Not `media/`: REAPER keeps the band's recordings
+ * in `Media/`, and macOS folder names ignore case.
+ */
+export const FOOTAGE_DIR = "footage";
+export const FOOTAGE_RECORD = join(FOOTAGE_DIR, "footage.json");
+const recordPath = (songDir: string) => join(songDir, FOOTAGE_RECORD);
+
 export function readMedia(songDir: string): MediaFile {
-  const path = join(songDir, "media", "media.json");
+  const path = recordPath(songDir);
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { clips: {} };
 }
 
-/** Download an Internet Archive item's video once, into `media/.sources/`. */
+/** Download an Internet Archive item's video once, into `footage/.sources/`. */
 async function fetchArchive(songDir: string, id: string) {
   const res = await fetch(`https://archive.org/metadata/${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error(`archive.org: no item ${id} (${res.status})`);
@@ -149,7 +157,7 @@ async function fetchArchive(songDir: string, id: string) {
   const video = files.find((f) => f.format === "h.264") ?? files.find((f) => /mpeg4|h\.264/i.test(f.format ?? "")) ?? files.find((f) => /\.(mp4|mov|mpeg|ogv)$/i.test(f.name));
   if (!video) throw new Error(`archive.org: item ${id} has no video file`);
 
-  const dir = join(songDir, "media", ".sources");
+  const dir = join(songDir, FOOTAGE_DIR, ".sources");
   mkdirSync(dir, { recursive: true });
   const local = join(dir, `${id}${extname(video.name)}`);
   if (!existsSync(local)) {
@@ -165,7 +173,7 @@ async function fetchArchive(songDir: string, id: string) {
   };
 }
 
-/** Cut a clip from `source` into `media/<name>.mp4` and record it in `media/media.json`. */
+/** Cut a clip from `source` into `footage/<name>.mp4` and record it in `footage/footage.json`. */
 export async function addMedia(songDir: string, name: string, source: Source, span?: { start: number; end: number }): Promise<MediaRecord & ClipInfo> {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) throw new Error(`clip names are lowercase words with dashes: "${name}"`);
   const got =
@@ -175,8 +183,8 @@ export async function addMedia(songDir: string, name: string, source: Source, sp
         ? await fetchLoc(songDir, source.id)
         : { local: source.file, license: source.license, title: undefined, source: { ...source, file: basename(source.file) } };
 
-  mkdirSync(join(songDir, "media"), { recursive: true });
-  const file = `media/${name}.mp4`;
+  mkdirSync(join(songDir, FOOTAGE_DIR), { recursive: true });
+  const file = `${FOOTAGE_DIR}/${name}.mp4`;
   const info = await cutClip(got.local, join(songDir, file), span, source.kind === "loc" ? { crop: await detectCrop(got.local) } : {});
   const record: MediaRecord & ClipInfo = {
     file,
@@ -191,7 +199,7 @@ export async function addMedia(songDir: string, name: string, source: Source, sp
   };
   const media = readMedia(songDir);
   media.clips[name] = record;
-  writeFileSync(join(songDir, "media", "media.json"), JSON.stringify(media, null, 2) + "\n");
+  writeFileSync(recordPath(songDir), JSON.stringify(media, null, 2) + "\n");
   return record;
 }
 
@@ -324,16 +332,16 @@ export async function findStrikes(clip: string, minRise = 25): Promise<number[]>
   return strikes;
 }
 
-/** Find a clip's shots and strikes and keep them in its `media/media.json` record. */
+/** Find a clip's shots and strikes and keep them in its `footage/footage.json` record. */
 export async function analyzeMedia(songDir: string, name: string): Promise<{ shots: Shot[]; strikes: number[] }> {
   const media = readMedia(songDir);
   const record = media.clips[name];
-  if (!record) throw new Error(`no clip "${name}" in ${join(songDir, "media", "media.json")}`);
+  if (!record) throw new Error(`no clip "${name}" in ${recordPath(songDir)}`);
   const file = join(songDir, record.file);
   const shots = await findShots(file);
   const strikes = await findStrikes(file);
   media.clips[name] = { ...record, shots, strikes };
-  writeFileSync(join(songDir, "media", "media.json"), JSON.stringify(media, null, 2) + "\n");
+  writeFileSync(recordPath(songDir), JSON.stringify(media, null, 2) + "\n");
   return { shots, strikes };
 }
 
@@ -352,7 +360,7 @@ export function locLicense(rights: string[] | string | undefined): License {
   throw new Error(`the item's rights statement doesn't say it's free to use: "${text.slice(0, 160).trim()}"`);
 }
 
-/** Download an LoC item's video once, into `media/.sources/`. */
+/** Download an LoC item's video once, into `footage/.sources/`. */
 async function fetchLoc(songDir: string, id: string) {
   const res = await fetch(`https://www.loc.gov/item/${encodeURIComponent(id)}/?fo=json`);
   if (!res.ok) throw new Error(`loc.gov: no item ${id} (${res.status})`);
@@ -363,7 +371,7 @@ async function fetchLoc(songDir: string, id: string) {
   const video = files.find((f) => f.mimetype === "video/mp4" && f.url);
   if (!video) throw new Error(`loc.gov: item ${id} has no mp4`);
 
-  const dir = join(songDir, "media", ".sources");
+  const dir = join(songDir, FOOTAGE_DIR, ".sources");
   mkdirSync(dir, { recursive: true });
   const local = join(dir, `loc-${id}.mp4`);
   if (!existsSync(local)) {
@@ -531,7 +539,7 @@ export async function upgradeMedia(
   const found = new Map<string, number>();
   for (const name of names) {
     const old = media.clips[name];
-    if (!old) throw new Error(`no clip "${name}" in media/media.json`);
+    if (!old) throw new Error(`no clip "${name}" in ${FOOTAGE_RECORD}`);
     found.set(name, await findSpan(join(songDir, old.file), got.local, { sourceCrop: crop, sourceThumbs, near: opts.near }));
   }
 
@@ -570,7 +578,7 @@ export async function upgradeMedia(
       shots,
       strikes,
     } as MediaFile["clips"][string];
-    writeFileSync(join(songDir, "media", "media.json"), JSON.stringify(media, null, 2) + "\n");
+    writeFileSync(recordPath(songDir), JSON.stringify(media, null, 2) + "\n");
     log(`${name}: ${formatTime(old.in)} in the old copy is ${formatTime(start)} (${start.toFixed(2)} s) in the new, ${info.width}x${info.height} at ${info.fps} fps`);
   }
 }

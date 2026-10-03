@@ -23,12 +23,12 @@ let media: MediaFile["clips"];
 beforeAll(async () => {
   if (!hasChrome) return;
   dir = mkdtempSync(join(tmpdir(), "clip-"));
-  mkdirSync(join(dir, "media"));
+  mkdirSync(join(dir, "footage"));
   const raw = join(dir, "raw.mp4");
   execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=black:s=64x36:r=10:d=3", "-vf", "geq=lum='24+6*N':cb=128:cr=128", "-pix_fmt", "yuv420p", raw]);
-  const info = await cutClip(raw, join(dir, "media", "counter.mp4"));
-  media = { counter: { file: "media/counter.mp4", source: {}, in: 0, out: 3, license: "own", added: "", ...info } };
-  writeFileSync(join(dir, "media", "media.json"), JSON.stringify({ clips: media }));
+  const info = await cutClip(raw, join(dir, "footage", "counter.mp4"));
+  media = { counter: { file: "footage/counter.mp4", source: {}, in: 0, out: 3, license: "own", added: "", ...info } };
+  writeFileSync(join(dir, "footage", "footage.json"), JSON.stringify({ clips: media }));
   copyFileSync(join(import.meta.dirname, "../fixtures/visuals/clip.scene.js"), join(dir, "song.scene.js"));
 }, 60_000);
 afterAll(() => dir && rmSync(dir, { recursive: true, force: true }));

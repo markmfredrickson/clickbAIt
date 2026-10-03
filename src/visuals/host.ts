@@ -12,7 +12,7 @@
  * it and never from the wall clock (`millis`, `frameCount`), so a frame is
  * the same however it was reached.
  *
- * Footage: `song.clip(name, at)` in setup opens a clip from `media/media.json`;
+ * Footage: `song.clip(name, at)` in setup opens a clip from `footage/footage.json`;
  * `at(state)` says which clip second each frame wants (or null for none).
  * Before each frame the host seeks the clip there, and the scene draws
  * `clip.frame` when `clip.visible`.
@@ -20,7 +20,7 @@
 
 import { sceneClock, type SceneFeatures, type SceneLine, type SceneSection, type SceneState, type SceneTiming } from "./scene-state.js";
 
-/** What a scene needs to know about a clip in `media/media.json`. */
+/** What a scene needs to know about a clip in `footage/footage.json`. */
 export interface HostClip {
   file: string;
   fps: number;
@@ -135,7 +135,7 @@ export async function mountScene(o: HostSetup, parent: HTMLElement): Promise<Mou
     timeOf: (beat: number) => clock.timeOf(beat),
     clip(name: string, at: (s: SceneState) => number | null): SceneClip {
       const info = o.media?.[name];
-      if (!info) throw new Error(`no clip "${name}" in media/media.json; clips: ${Object.keys(o.media ?? {}).join(", ") || "none"}`);
+      if (!info) throw new Error(`no clip "${name}" in footage/footage.json; clips: ${Object.keys(o.media ?? {}).join(", ") || "none"}`);
       if (!p) throw new Error("song.clip must be called in setup");
       const url = new URL(info.file, o.mediaBase ?? location.href).href;
       const el = p.createVideo(url);

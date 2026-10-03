@@ -9,7 +9,7 @@
  *
  * <source> is an Internet Archive item (`archive:<id>` or its archive.org URL)
  * or a file you downloaded or shot. `add` cuts the clip into the song's
- * `media/` and records its source and license in `media/media.json`. `sheet`
+ * `footage/` and records its source and license in `footage/footage.json`. `sheet`
  * makes a contact sheet for picking in and out points. `analyze` finds each
  * clip's shots (cuts) and strikes (sudden flares, like a hammer landing) and
  * records them, for scenes to cut on. `upgrade` re-cuts clips from a better copy of

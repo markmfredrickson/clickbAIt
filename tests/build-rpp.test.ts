@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { resolve, dirname } from "path";
+import { resolve, dirname, join } from "path";
+import { mkdtempSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 import { buildRpp } from "../src/build/rpp.js";
 import { linearize } from "../src/build/linearize.js";
@@ -433,5 +435,78 @@ describe("buildRpp — practice-variant options", () => {
     expect(buildRpp(s, defaultOpts).rpp).toContain("RENDER_PATTERN test\n");
     expect(buildRpp(s, { ...defaultOpts, renderName: "test.minus-bass" }).rpp)
       .toContain("RENDER_PATTERN test.minus-bass\n");
+  });
+});
+
+describe("buildRpp — the last stem item never plays source past sourceEnd", () => {
+  // A 20 s silent WAV: long enough that the file length never caps an item, so
+  // only sourceEnd (or the song end) can. The content doesn't matter here.
+  const longWav = join(mkdtempSync(join(tmpdir(), "clickbait-rpp-")), "long.wav");
+  const rate = 8000;
+  const samples = 20 * rate;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write("RIFF", 0); wav.writeUInt32LE(36 + samples * 2, 4); wav.write("WAVE", 8);
+  wav.write("fmt ", 12); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 2, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write("data", 36); wav.writeUInt32LE(samples * 2, 40);
+  writeFileSync(longWav, wav);
+
+  // The recording plays at the song tempo (120 bpm): beat n at source n * 0.5 s.
+  const beatsThrough = (last: number) => Array.from({ length: last + 1 }, (_, n) => ({ time: n * 0.5 }));
+
+  /** The source second each stem item has reached when it ends: its last stretch
+   *  marker, plus the stretch-free (1:1) tail the item plays after that marker. */
+  const sourceAtEnd = (rpp: string) =>
+    rpp.split("<ITEM").slice(1)
+      .filter((block) => block.includes(`FILE ${longWav}`))
+      .map((block) => {
+        const pairs = [...block.matchAll(/^\s*SM (.*)$/gm)].flatMap((m) => m[1].split(" + "));
+        const [item, src] = pairs[pairs.length - 1].split(" ").map(Number);
+        return src + Number(block.match(/LENGTH ([\d.]+)/)![1]) - item;
+      });
+
+  it("stops a ring-out at sourceEnd instead of playing on into the recording", () => {
+    // Song ends on the bar-5 downbeat (beat 16 = source 8 s). sourceEnd keeps a
+    // quarter second of the final hit; the bar of ring-out must not play the
+    // recording's next bar (So Lonely: the fade-out would play after the hit).
+    const s = song("Test", 120,
+      span("A", bars(4)),
+      audio("Stem", longWav, { sourceEnd: 8.25 }),
+    );
+    const { rpp } = buildRpp(s, { ...defaultOpts, recordingBeats: beatsThrough(39), ringOutSec: 2 });
+    const ends = sourceAtEnd(rpp);
+    expect(ends).toHaveLength(1);
+    expect(ends[0]).toBeCloseTo(8.25, 6);
+  });
+
+  it("leaves a gap after the last clip silent instead of stretching the clip through it", () => {
+    // Two clips replay source 0–4 s (beats 0–7) at song beats 0 and 8; song
+    // beats 16–23 are a trailing silence clip (Dirty Work). The last clip must
+    // end at its sourceEnd, not run on to the song end.
+    const s = song("Test", 120,
+      span("A", bars(6)),
+      audio("Stem", longWav, { offset: 0, soffs: 0, sourceEnd: 4 }),
+      audio("Stem", longWav, { offset: 8, soffs: 0, sourceEnd: 4 }),
+    );
+    const { rpp } = buildRpp(s, { ...defaultOpts, recordingBeats: beatsThrough(39) });
+    expect(sourceAtEnd(rpp)).toEqual([expect.closeTo(4, 6), expect.closeTo(4, 6)]);
+  });
+
+  it("still plays a trailing smStride:0 outro 1:1 to the song end when there is no sourceEnd", () => {
+    // Beats 16–23 are a free outro: no stretch markers, and no detected beats
+    // after its downbeat (beat 16 = source 8 s). The item plays on from its last
+    // marker at 1:1 to the song end, beat 24 = source 12 s.
+    const s = song("Test", 120,
+      seq(span("A", bars(4)), span("Outro", bars(2))),
+      audio("Stem", longWav),
+    );
+    const { rpp } = buildRpp(s, {
+      ...defaultOpts,
+      recordingBeats: beatsThrough(16),
+      strideRanges: [{ startBeat: 16, endBeat: 24, stride: 0 }],
+    });
+    const ends = sourceAtEnd(rpp);
+    expect(ends).toHaveLength(1);
+    expect(ends[0]).toBeCloseTo(12, 6);
   });
 });

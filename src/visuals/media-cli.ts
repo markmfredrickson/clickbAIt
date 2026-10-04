@@ -2,7 +2,7 @@
  * Footage for a song's scene.
  *
  *   npm run media -- add <source> --song <manifest> --name <clip> [--in 5:00 --out 5:10]
- *                        [--from <page url> | --from own] [--license <id>] [--by <name>]
+ *                        [--from <page url> | --from own] [--license <id>] [--by <name>] [--crop w:h:x:y]
  *   npm run media -- sheet <source> [--every 5] [--out <dir>]
  *   npm run media -- analyze <clip>... --song <manifest>
  *   npm run media -- upgrade <clip>... --to <source> --song <manifest> [--near t]
@@ -33,6 +33,7 @@ const { values, positionals } = parseArgs({
     from: { type: "string" },
     license: { type: "string" },
     by: { type: "string" },
+    crop: { type: "string" },
     every: { type: "string", default: "5" },
     to: { type: "string" },
     near: { type: "string" },
@@ -54,7 +55,10 @@ if (command === "add") {
   const src = describeSource(source, { from: values.from, license: values.license, by: values.by });
   if (src.kind === "file" && !existsSync(src.file)) throw new Error(`no file at ${src.file}`);
   const span = values.in || values.out ? { start: parseTime(values.in ?? "0"), end: parseTime(values.out ?? "99:59:59") } : undefined;
-  const record = await addMedia(song, values.name!, src, span);
+  // --crop w:h:x:y keeps that part of the source's frame, e.g. a 16:9 band from a portrait clip.
+  const crop = values.crop?.match(/^(\d+):(\d+):(\d+):(\d+)$/);
+  if (values.crop && !crop) throw new Error(`--crop takes w:h:x:y in pixels, not "${values.crop}"`);
+  const record = await addMedia(song, values.name!, src, span, crop ? { crop: { w: +crop[1], h: +crop[2], x: +crop[3], y: +crop[4] } } : {});
   console.error(`${record.file}: ${record.duration.toFixed(1)} s, ${record.width}x${record.height} at ${record.fps} fps, ${record.license}`);
 } else if (command === "analyze") {
   if (!values.song) usage();

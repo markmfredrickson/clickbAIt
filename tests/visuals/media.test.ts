@@ -120,6 +120,12 @@ describe.skipIf(!hasFfmpeg)("cutClip and addMedia (ffmpeg)", () => {
     });
     expect(Number(probe(join(song, "footage", "counter.mp4"), "-count_frames", "-show_entries", "stream=nb_read_frames"))).toBe(60);
   });
+
+  it("crops a file when asked (a band from a portrait clip), and records the crop", async () => {
+    const song = mkdtempSync(join(dir, "song-"));
+    const info = await addMedia(song, "band", { kind: "file", file: source, url: "own", license: "own" }, undefined, { crop: { w: 320, h: 180, x: 0, y: 30 } });
+    expect(info).toMatchObject({ width: 320, height: 180, crop: { w: 320, h: 180, x: 0, y: 30 } });
+  });
 });
 
 describe.skipIf(!hasFfmpeg)("contactSheet (ffmpeg)", () => {

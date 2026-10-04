@@ -129,6 +129,8 @@ export interface MediaRecord {
   license: License;
   by?: string;
   title?: string;
+  /** The part of the source's frame kept, when it was cropped. */
+  crop?: Crop;
   added: string;
 }
 export type MediaFile = { clips: Record<string, MediaRecord & ClipInfo & { shots?: Shot[]; strikes?: number[] }> };
@@ -174,7 +176,7 @@ async function fetchArchive(songDir: string, id: string) {
 }
 
 /** Cut a clip from `source` into `footage/<name>.mp4` and record it in `footage/footage.json`. */
-export async function addMedia(songDir: string, name: string, source: Source, span?: { start: number; end: number }): Promise<MediaRecord & ClipInfo> {
+export async function addMedia(songDir: string, name: string, source: Source, span?: { start: number; end: number }, opts: { crop?: Crop } = {}): Promise<MediaRecord & ClipInfo> {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) throw new Error(`clip names are lowercase words with dashes: "${name}"`);
   const got =
     source.kind === "archive"
@@ -185,7 +187,8 @@ export async function addMedia(songDir: string, name: string, source: Source, sp
 
   mkdirSync(join(songDir, FOOTAGE_DIR), { recursive: true });
   const file = `${FOOTAGE_DIR}/${name}.mp4`;
-  const info = await cutClip(got.local, join(songDir, file), span, source.kind === "loc" ? { crop: await detectCrop(got.local) } : {});
+  const crop = opts.crop ?? (source.kind === "loc" ? await detectCrop(got.local) : undefined);
+  const info = await cutClip(got.local, join(songDir, file), span, crop ? { crop } : {});
   const record: MediaRecord & ClipInfo = {
     file,
     source: got.source,
@@ -194,6 +197,7 @@ export async function addMedia(songDir: string, name: string, source: Source, sp
     license: got.license,
     ...(source.kind === "file" && source.by ? { by: source.by } : {}),
     ...(got.title ? { title: got.title } : {}),
+    ...(opts.crop ? { crop: opts.crop } : {}),
     added: new Date().toISOString().slice(0, 10),
     ...info,
   };

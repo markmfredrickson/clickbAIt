@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { songRecipe, addVisualsTasks } from "../src/build/song-recipe.js";
 import { buildRpp } from "../src/build/rpp.js";
 import { findGigVideo } from "../src/build/gig-video.js";
-import { song, span, bars } from "@clickbait/dsongl";
+import { song, span, bars, audio } from "@clickbait/dsongl";
+import { RigSchema } from "../src/rig.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -64,6 +65,32 @@ describe("buildRpp: a Visuals track", () => {
     expect(track).toMatch(/<SOURCE VIDEO\n\s+FILE "\/songs\/x\/test\.visuals\.mp4"/);
   });
 
+  const trackNames = (rpp: string) => [...rpp.matchAll(/^    NAME "?(.+?)"?$/gm)].map(m => m[1]);
+  const visualsTrack = (rpp: string) => {
+    const start = rpp.indexOf("NAME Visuals\n");
+    return rpp.slice(start, rpp.indexOf("\n  >", start));
+  };
+  const video = { file: "/songs/x/test.visuals.mp4", seconds: 42.5 };
+
+  it("comes right after Click and Cues & Counts, ahead of the stems", () => {
+    const withStems = song("Test", 120, span("A", bars(4)), audio("Guitars", resolve(fixturesDir, "stems", "guitars.wav")));
+    const names = trackNames(buildRpp(withStems, { ...opts, video }).rpp);
+    expect(names.slice(0, 4)).toEqual(["Click", "Cues & Counts", "Visuals", "Stems"]);
+  });
+
+  it("sends to master, so the video's own sound effects reach the PA", () => {
+    expect(visualsTrack(buildRpp(s, { ...opts, video }).rpp)).toMatch(/MAINSEND 1 0/);
+  });
+
+  it("follows the rig's visuals route", () => {
+    const rig = RigSchema.parse({ generated: { visuals: { master: false, hwout: { mono: 21 }, muted: true, gain: 0.5 } } });
+    const track = visualsTrack(buildRpp(s, { ...opts, video, rig }).rpp);
+    expect(track).toMatch(/MAINSEND 0 0/);
+    expect(track).toMatch(/MUTESOLO 1 /);
+    expect(track).toMatch(/VOLPAN 0\.5 /);
+    expect(track).toMatch(/HWOUT 1044 /);
+  });
+
   it("has no Visuals track without a video", () => {
     expect(buildRpp(s, opts).rpp).not.toContain("NAME Visuals");
   });
@@ -80,6 +107,14 @@ describe("findGigVideo", () => {
   it("finds the gig master, <slug>.visuals.mp4", () => {
     writeFileSync(join(dir, "teardrop-massive-attack.visuals.mp4"), "");
     expect(findGigVideo(dir, "teardrop-massive-attack")).toBe(join(dir, "teardrop-massive-attack.visuals.mp4"));
+  });
+
+  it("finds an edited scene's master in visuals/", () => {
+    const song = mkdtempSync(join(tmpdir(), "gig-video-"));
+    mkdirSync(join(song, "visuals"));
+    writeFileSync(join(song, "visuals", "wicked-game-chris-isaak.visuals.mp4"), "");
+    writeFileSync(join(song, "visuals", "wicked-game-chris-isaak.visuals-review.mp4"), "");
+    expect(findGigVideo(song, "wicked-game-chris-isaak")).toBe(join(song, "visuals", "wicked-game-chris-isaak.visuals.mp4"));
   });
 });
 

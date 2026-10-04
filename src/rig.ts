@@ -21,7 +21,7 @@ const HwSchema = z.union([
 ]);
 export type Hw = z.infer<typeof HwSchema>;
 
-/** Routing for one of the generated tracks (click / cues / stems). */
+/** Routing for one of the generated tracks (click / cues / stems / visuals). */
 const RouteSchema = z.object({
   /** Send to master. false = the track only reaches its hwout. */
   master: z.boolean().default(true),
@@ -57,6 +57,7 @@ export const RigSchema = z.object({
       click: RouteSchema.optional(),
       cues: RouteSchema.optional(),
       stems: RouteSchema.optional(),
+      visuals: RouteSchema.optional(),
     })
     .optional(),
   /** A contiguous block of N mono round-trip record tracks (card 1..N),

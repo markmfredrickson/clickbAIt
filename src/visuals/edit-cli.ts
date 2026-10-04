@@ -256,7 +256,9 @@ function assemble(editPath: string) {
   }
   // The song's cut fades in from and out to black; the credits roll after it, under the same film.
   f += `${prev}fade=t=in:st=0:d=1.5,fade=t=out:st=${(t - 4).toFixed(3)}:d=4[song];`;
-  f += `[song][n${shots.length}]concat=n=2:v=1:a=0,${e.film.join(",")}[v];`;
+  // The film chain ends in 4:4:4 (blend, noise); the gig copy goes back to 4:2:0,
+  // which Macs decode in hardware, so REAPER can play it at the gig.
+  f += `[song][n${shots.length}]concat=n=2:v=1:a=0,${e.film.join(",")},format=yuv420p[v];`;
   const total = t + probe(".shots/credits.mp4").duration;
 
   const sounds = e.sounds ?? [];

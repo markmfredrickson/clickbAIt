@@ -1,7 +1,9 @@
 /**
  * The gig video for a song's REAPER project: the visuals render's master,
- * `<slug>.visuals.mp4`, beside the manifest. Drafts (`.visuals-draft.mp4`) and
- * hand-named copies ("Creep - visuals (50MB).mp4") are never picked up.
+ * `<slug>.visuals.mp4`, beside the manifest or, for an edited-footage scene, in
+ * visuals/. Drafts (`.visuals-draft.mp4`), the edited scene's review copy (which
+ * has the band in it) and hand-named copies ("Creep - visuals (50MB).mp4") are
+ * never picked up.
  *
  * The render is in project time from 0 (count-in included, stretched to the
  * click), so the build places it 1:1 at the start of the project.
@@ -12,8 +14,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 export function findGigVideo(dir: string, slug: string): string | undefined {
-  const file = join(dir, `${slug}.visuals.mp4`);
-  return existsSync(file) ? file : undefined;
+  return [join(dir, `${slug}.visuals.mp4`), join(dir, "visuals", `${slug}.visuals.mp4`)].find(f => existsSync(f));
 }
 
 /** The video's length in seconds, from ffprobe (the visuals already need ffmpeg). */

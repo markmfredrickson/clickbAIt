@@ -469,6 +469,30 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
     beat: -1, mainsend: cuesR.mainsend, hwout: cuesR.hwout, muted: cuesR.muted,
   }));
 
+  // Visuals: the scene's render plays 1:1 from project time 0 in REAPER's video
+  // window, following the playhead through jumps and loops. Its audio is the
+  // scene's sound effects (an edited scene's engine and wind), so by default it
+  // sends to master and reaches the PA.
+  if (opts.video) {
+    const item = [
+      `    <ITEM`,
+      `      POSITION 0`,
+      `      LENGTH ${fmt(opts.video.seconds)}`,
+      `      LOOP 0`,
+      `      ALLTAKES 0`,
+      `      NAME "Visuals"`,
+      `      GUID ${newGuid()}`,
+      `      <SOURCE VIDEO`,
+      `        FILE ${JSON.stringify(opts.video.file)}`,
+      `      >`,
+      `    >`,
+    ].join("\n");
+    const visualsR = routeOpts(opts.rig?.generated?.visuals, true);
+    rppLines.push(buildTrack("Visuals", visualsR.gain, item, {
+      mainsend: visualsR.mainsend, hwout: visualsR.hwout, muted: visualsR.muted,
+    }));
+  }
+
   // Audio tracks (stems, backing tracks, etc.)
   // Calculate project end time so audio items can be trimmed
   const lastSection = sections[sections.length - 1];
@@ -535,25 +559,6 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
         muted: muteTracks.has(trackName),
       }));
     });
-  }
-
-  // Visuals: the scene's render plays 1:1 from project time 0 in REAPER's video
-  // window, following the playhead through jumps and loops. No send to master.
-  if (opts.video) {
-    const item = [
-      `    <ITEM`,
-      `      POSITION 0`,
-      `      LENGTH ${fmt(opts.video.seconds)}`,
-      `      LOOP 0`,
-      `      ALLTAKES 0`,
-      `      NAME "Visuals"`,
-      `      GUID ${newGuid()}`,
-      `      <SOURCE VIDEO`,
-      `        FILE ${JSON.stringify(opts.video.file)}`,
-      `      >`,
-      `    >`,
-    ].join("\n");
-    rppLines.push(buildTrack("Visuals", 1, item, { mainsend: "0 0" }));
   }
 
   // Record tracks (band block + drum feeds) from the rig. Each records from a

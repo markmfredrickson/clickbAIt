@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { readScoreInfo } from "../../src/charts/score-info.js";
+import type * as alphaTab from "@coderline/alphatab";
+import { fixDrumNotes, loadScore, readScoreInfo } from "../../src/charts/score-info.js";
 
 // A synthetic 4-bar score (no copyrighted transcription in the repo):
 // guitar tab with markers "Intro" at bar 1 and "Verse" at bar 3, bass tab,
@@ -41,5 +42,45 @@ describe("readScoreInfo", () => {
 
   it("rejects a file it can't read, naming the file", () => {
     expect(() => readScoreInfo(new TextEncoder().encode("not a score"), "junk.gp5")).toThrow(/junk\.gp5/);
+  });
+});
+
+describe("loadScore", () => {
+  // Guitar Pro 5 stores a drum track's grace notes as fretted notes, the fret
+  // being the drum's MIDI number, and alphaTab reads them that way: a flam's
+  // grace note comes in as fret 38 on string 3 and draws far below the staff.
+  const graceAsFret = (track: alphaTab.model.Track) => {
+    const note = track.staves[0].bars[0].voices[0].beats[1].notes[0];
+    note.percussionArticulation = -1;
+    note.fret = 38;
+    note.string = 3;
+    return note;
+  };
+  const load = () => loadScore(new Uint8Array(readFileSync(FIXTURE)), "three-tracks.atex");
+
+  it("turns a fretted note on a drum staff back into the drum its fret names", () => {
+    const score = load();
+    const drums = score.tracks[2];
+    const note = graceAsFret(drums);
+    fixDrumNotes(score);
+    expect(note.isPercussion).toBe(true);
+    expect(drums.percussionArticulations[note.percussionArticulation].outputMidiNumber).toBe(38);
+  });
+
+  it("uses the MIDI number itself when the track has no articulation list, as a GP5 track doesn't", () => {
+    const score = load();
+    const drums = score.tracks[2];
+    drums.percussionArticulations = [];
+    const note = graceAsFret(drums);
+    fixDrumNotes(score);
+    expect(note.percussionArticulation).toBe(38);
+  });
+
+  it("leaves fretted notes on other tracks alone", () => {
+    const score = load();
+    const note = score.tracks[1].staves[0].bars[0].voices[0].beats[0].notes[0];
+    fixDrumNotes(score);
+    expect(note.isPercussion).toBe(false);
+    expect(note.fret).toBe(0);
   });
 });

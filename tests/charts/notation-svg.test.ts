@@ -33,6 +33,30 @@ describe("renderRanges", () => {
     expect(Object.keys(await renderRanges(tied, 0, "tab", [{ start: 2, count: 1 }]))).toEqual(["2+1"]);
   });
 
+  it("draws a bar that a legato slide comes into", async () => {
+    const slide = new TextEncoder().encode('\\track "G"\n\\staff {tabs}\n3.3.4 3.3.4 3.3.4 3.3{sl}.4 | 5.3.4 5.3.4 5.3.4 5.3.4 |');
+    expect(Object.keys(await renderRanges(slide, 0, "tab", [{ start: 2, count: 1 }]))).toEqual(["2+1"]);
+  });
+
+  it("draws bars that a chain of hammer-ons runs into from before them", async () => {
+    const chain = new TextEncoder().encode(
+      '\\track "G"\n\\staff {tabs}\n3.3.4 3.3.4 3.3{h}.4 5.3{h}.4 | 7.3{h}.4 5.3.4 5.3.4 5.3.4 | 3.3.4 3.3.4 3.3.4 3.3.4 |',
+    );
+    expect(Object.keys(await renderRanges(chain, 0, "tab", [{ start: 2, count: 2 }]))).toEqual(["2+2"]);
+  });
+
+  it("draws no key signature on a drum chart, but keeps it on a pitched staff", async () => {
+    const SHARP = "&#57954;"; // Bravura's sharp, U+E262
+    const inG = new TextEncoder().encode(
+      '\\track "G"\n\\staff {score}\n\\ks G C4.4 C4.4 C4.4 C4.4 |\n' +
+        '\\track "Drums"\n\\instrument percussion\n\\articulation defaults\n\\staff {score}\n\\ks G KickHit.4 SnareHit.4 KickHit.4 SnareHit.4 |',
+    );
+    const pitched = (await renderRanges(inG, 0, "staff", [{ start: 1, count: 1 }]))["1+1"];
+    const drums = (await renderRanges(inG, 1, "drums", [{ start: 1, count: 1 }]))["1+1"];
+    expect(pitched.svg).toContain(SHARP);
+    expect(drums.svg).not.toContain(SHARP);
+  });
+
   it("inks in the page's text color, so it reads in either theme", async () => {
     const { "1+1": d } = await renderRanges(SCORE, DRUMS, "drums", [{ start: 1, count: 1 }]);
     expect(d.svg).toContain('fill="currentColor"');

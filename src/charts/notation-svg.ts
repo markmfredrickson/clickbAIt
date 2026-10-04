@@ -15,6 +15,7 @@ import * as alphaTab from "@coderline/alphatab";
 import type { ChartKind, RowDocument } from "../teleprompter/rows.js";
 import { drawingKey, notationRanges, type Drawing } from "../teleprompter/drawings.js";
 import { chartSettings, detachRange, showStaves } from "./notation-settings.js";
+import { loadScore } from "./score-info.js";
 
 /** Drawn in this, then swapped for currentColor; nothing in a score uses it. */
 const SENTINEL = "#010203";
@@ -30,7 +31,7 @@ export async function renderRanges(
   chart: ChartKind,
   ranges: readonly { start: number; count: number }[],
 ): Promise<Record<string, Drawing>> {
-  const loaded = alphaTab.importer.ScoreLoader.loadScoreFromBytes(score, new alphaTab.Settings());
+  const loaded = loadScore(score, "");
   // A chart shows bars out of context, so their numbers only confuse.
   loaded.stylesheet.barNumberDisplay = alphaTab.model.BarNumberDisplay.Hide;
   showStaves(loaded, track, chart);

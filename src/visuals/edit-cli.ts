@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { SongManifestSchema } from "../manifest.js";
 import { toSlug } from "../core/dsongl/slug.js";
 import { readMedia } from "./media.js";
-import { barSeconds, checkRules, credits, layout, shotFiles, shotTiming, visualsPackage, type Edit, type ShotKind, type SoundCue } from "./edit.js";
+import { checkRules, credits, layout, prerollProblem, shotFiles, shotTiming, visualsPackage, type Edit, type ShotKind, type SoundCue } from "./edit.js";
 
 const ff = (...args: string[]) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 });
 const probe = (file: string) => {
@@ -41,7 +41,7 @@ function songOf(songDir: string) {
   const name = readdirSync(songDir).find(f => f.endsWith(".song.json"));
   if (!name) throw new Error(`no .song.json in ${songDir}`);
   const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(join(songDir, name), "utf8")));
-  return { title: manifest.title, artist: manifest.artist, slug: toSlug([manifest.title, manifest.artist].filter(Boolean).join("-")) };
+  return { title: manifest.title, artist: manifest.artist, preRollBars: manifest.preRollBars, slug: toSlug([manifest.title, manifest.artist].filter(Boolean).join("-")) };
 }
 
 /** `visuals/edit.json`, with its clips filled in from the song's `footage/footage.json`. */
@@ -240,6 +240,8 @@ function assemble(editPath: string) {
   const visualsDir = dirname(resolve(editPath));
   const e = readEdit(visualsDir);
   const song = songOf(dirname(visualsDir));
+  const problem = prerollProblem(e, song.preRollBars);
+  if (problem) throw new Error(problem);
   const shots = layout(e);
   const fps = e.output.fps;
   const xd = e.dissolve;
@@ -278,11 +280,11 @@ function assemble(editPath: string) {
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", gig,
   );
   // The review copy: the same picture, with the band under the sound effects.
+  // The show track's mix starts at project time 0, which is the edit's time 0.
   const music = `../${song.slug}.opus`;
-  const delay = Math.round((e.musicAt ?? 0) * barSeconds(e) * 1000);
   ff(
     "-i", gig, "-i", music,
-    "-filter_complex", `[1:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${delay}:all=1[m];[0:a][m]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.89:attack=5:release=80[a]`,
+    "-filter_complex", `[1:a]aresample=48000,aformat=channel_layouts=stereo[m];[0:a][m]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.89:attack=5:release=80[a]`,
     "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", review,
   );
   console.error(`${gig} and ${review}: ${total.toFixed(1)} s (${t.toFixed(1)} s of song, then credits)`);

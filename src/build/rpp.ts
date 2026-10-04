@@ -146,6 +146,10 @@ export interface BuildOptions {
   /** RENDER_PATTERN override (default: the song slug), so a variant renders to
    *  its own file, e.g. `<slug>.minus-drums`. */
   renderName?: string;
+  /** The manifest's preRollBars: whole bars before the downbeat. When it is
+   *  longer than the slug (and any pickup room), the extra bars come first, as a
+   *  lead with no click or cues, e.g. for a video's scene before the song. */
+  preRollBars?: number;
   /** The visuals render for the gig (see gig-video.ts): placed on a Visuals
    *  track from project time 0, since the render is already in project time. */
   video?: { file: string; seconds: number };
@@ -181,7 +185,11 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   const slugBars = Math.max(2, Math.ceil(titleDur / barSeconds) + 1);
   const slugBeats = slugBars * beatsPerBar;
 
-  const { events, paddingBeats } = linearize(song, { withPadding: true, minPaddingBeats: slugBeats });
+  // A preRollBars longer than the padding adds a lead before the slug: the title,
+  // the slug region and the click all start after it.
+  const basePadding = linearize(song, { withPadding: true, minPaddingBeats: slugBeats }).paddingBeats;
+  const { events, paddingBeats } = linearize(song, { withPadding: true, minPaddingBeats: Math.max(slugBeats, (opts.preRollBars ?? 0) * beatsPerBar) });
+  const leadBeats = paddingBeats - basePadding;
   const rawSections = extractSections(song);
   // Apply the same padding shift to sections
   const sections = rawSections.map(s => ({ ...s, beat: s.beat + paddingBeats }));
@@ -264,9 +272,9 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   // Named with the song slug so REAPER's /lastregion/name OSC message lets the
   // teleprompter identify the song on tab switch.
   {
-    const slugEndSec = curve.toTime(slugBeats);
+    const slugEndSec = curve.toTime(leadBeats + slugBeats);
     regionLines.push(
-      `MARKER ${regionId} ${fmt(0)} ${rppStr(slug)} 1 0 1 B ${newGuid()} 0 1`
+      `MARKER ${regionId} ${fmt(curve.toTime(leadBeats))} ${rppStr(slug)} 1 0 1 B ${newGuid()} 0 1`
     );
     regionLines.push(
       `MARKER ${regionId} ${fmt(slugEndSec)} "" 1`
@@ -304,9 +312,9 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   const trackItems: AudioItem[] = [];
   const cueNames = new Set<string>();
 
-  // Title cue at beat 0 (within the auto-slug region)
+  // Title cue at the start of the slug region
   cueNames.add(song.title);
-  trackItems.push({ position: 0, length: titleDur, file: titleFile });
+  trackItems.push({ position: curve.toTime(leadBeats), length: titleDur, file: titleFile });
 
   // (Section names are no longer announced 2 bars ahead — the name now leads the
   // count-in bar as a pickup; see the count-in loop below.)
@@ -456,7 +464,7 @@ export function buildRpp(song: Song, opts: BuildOptions): RppProject {
   }
 
   // Click track (SOURCE CLICK — follows tempo map automatically)
-  const clickItemContent = buildClickItem(song, sections, tempoMap, curve, opts, clickDropSec);
+  const clickItemContent = buildClickItem(song, sections, tempoMap, curve, opts, curve.toTime(leadBeats), clickDropSec);
   const clickR = routeOpts(opts.rig?.generated?.click, true);
   rppLines.push(buildTrack("Click", clickR.gain, clickItemContent, {
     beat: -1, playoffs: "0 1", nchan: 2,
@@ -590,6 +598,7 @@ function buildClickItem(
   tempoMap: { beat: number; bpm: number }[],
   curve: Curve,
   opts: BuildOptions,
+  startSec: number,
   clickDropSec?: number,
 ): string {
   const masterTs = song.timeSignature;
@@ -607,9 +616,9 @@ function buildClickItem(
 
   const lines: string[] = [];
   lines.push(`    <ITEM`);
-  lines.push(`      POSITION 0`);
+  lines.push(`      POSITION ${fmt(startSec)}`);
   lines.push(`      SNAPOFFS 0`);
-  lines.push(`      LENGTH ${fmt(totalSeconds)}`);
+  lines.push(`      LENGTH ${fmt(totalSeconds - startSec)}`);
   lines.push(`      LOOP 1`);
   lines.push(`      ALLTAKES 0`);
   lines.push(`      FADEIN 1 0 0 1 0 0 0`);

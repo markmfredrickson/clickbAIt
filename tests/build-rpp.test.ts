@@ -88,6 +88,38 @@ describe("buildRpp", () => {
     expect(rpp).toContain(`PROJOFFS 0 ${-paddingBars} 0`);
   });
 
+  describe("preRollBars: a lead before the slug", () => {
+    // 120 BPM 4/4: a bar is 2 s. The fixture title fits a 2-bar slug.
+    const s = song("Test", 120, span("Intro", bars(4)));
+    const titleItem = (rpp: string) => {
+      const i = rpp.indexOf("test.wav");
+      const item = rpp.lastIndexOf("<ITEM", i);
+      return Number(rpp.slice(item, i).match(/POSITION ([\d.]+)/)![1]);
+    };
+    const clickPosition = (rpp: string) => {
+      const i = rpp.indexOf('NAME "Click source"');
+      return Number(rpp.slice(rpp.lastIndexOf("<ITEM", i), i).match(/POSITION ([\d.]+)/)![1]);
+    };
+    const slugRegion = (rpp: string) => Number(rpp.match(/^  MARKER 1 ([\d.]+) \S+ 1 0 1 B/m)![1]);
+
+    it("pads to preRollBars, with the extra bars ahead of the title, the slug and the click", () => {
+      const { rpp, paddingBeats } = buildRpp(s, { ...defaultOpts, preRollBars: 8 });
+      expect(paddingBeats).toBe(32);
+      expect(rpp).toContain("PROJOFFS 0 -8 0");
+      expect(slugRegion(rpp)).toBeCloseTo(12, 6); // 6 bars of lead
+      expect(titleItem(rpp)).toBeCloseTo(12, 6);
+      expect(clickPosition(rpp)).toBeCloseTo(12, 6);
+    });
+
+    it("changes nothing when preRollBars fits inside the slug", () => {
+      const { rpp, paddingBeats } = buildRpp(s, { ...defaultOpts, preRollBars: 1 });
+      expect(paddingBeats).toBe(8);
+      expect(slugRegion(rpp)).toBe(0);
+      expect(titleItem(rpp)).toBe(0);
+      expect(clickPosition(rpp)).toBe(0);
+    });
+  });
+
   it("includes region markers for sections", () => {
     const s = song("Test", 120,
       seq(

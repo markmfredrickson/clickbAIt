@@ -86,8 +86,6 @@ export interface Edit {
   saturation?: Record<string, number>;
   /** Filled from `footage/footage.json` when the edit is read; not written in edit.json. */
   clips: Record<string, Clip>;
-  /** Bars into the edit where the show track's audio starts (the review cut's band). */
-  musicAt?: number;
   sections: EditSection[];
   /** Sound effects baked into the video's audio (the car), in edit seconds. */
   sounds?: SoundCue[];
@@ -111,6 +109,13 @@ export function barSeconds(e: Pick<Edit, "bpm" | "beatsPerBar">): number {
 }
 
 /** Every shot on the bar grid, in order. The bars must fill preroll + song + ring-out. */
+/** The edit starts at the show track's time 0, so its preroll must be the
+ *  manifest's preRollBars; a mismatch would put the picture off the song. */
+export function prerollProblem(e: Pick<Edit, "preRollBars">, manifestPreRollBars: number): string | undefined {
+  if (e.preRollBars === manifestPreRollBars) return undefined;
+  return `edit.json has preRollBars ${e.preRollBars} but the manifest has ${manifestPreRollBars}; the picture would be ${Math.abs(e.preRollBars - manifestPreRollBars)} bar(s) off the song`;
+}
+
 export function layout(e: Edit): PlacedShot[] {
   const bar = barSeconds(e);
   const shots: PlacedShot[] = [];

@@ -237,7 +237,7 @@ const slug = songSlug(song);
 // audio render (a practice-bundle mix), which has no use for it.
 const videoFile = writeProject && !renderName ? findGigVideo(dir, slug) : undefined;
 const video = videoFile ? { file: videoFile, seconds: videoSeconds(videoFile) } : undefined;
-const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, clickDropBeat, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets, muteTracks, renderName, video });
+const { rpp, paddingBeats } = buildRpp(song, { cueDir, countDir: cueDir, clickDir, rig, strideRanges, ringOutSec, clickDropBeat, introLeadSource, introMarkers, recordingBeats: beats, cueOnsets, muteTracks, renderName, video, preRollBars: manifest.preRollBars });
 // Emit RELATIVE media paths so the project folder is self-contained and portable
 // (REAPER resolves paths against the .RPP's own folder). In-folder media —
 // cues/, stems/, source — drop the outDir prefix; the shared click samples

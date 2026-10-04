@@ -512,7 +512,10 @@ export const SongManifestSchema = z
      * Whole bars of count-in/cue lead-in before the song's downbeat. The
      * pre-roll lives at positive time but NEGATIVE beats (see
      * docs/timing-frames.md): it sets the song curve's `t0` (downbeat at
-     * `preRollBars` bars in) and REAPER's `PROJOFFS` measure offset. Default 0.
+     * `preRollBars` bars in) and REAPER's `PROJOFFS` measure offset. The build
+     * pads to at least the slug (title + count-in) and any pickup room; bars
+     * beyond that come first, as a lead with no click or cues (a video's scene
+     * before the song). Default 0.
      */
     preRollBars: z.number().int().nonnegative().default(0),
 

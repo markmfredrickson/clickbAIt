@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as alphaTab from "@coderline/alphatab";
 import { loadScore } from "../../src/charts/score-info.js";
-import { doubleTime } from "../../src/charts/double-time.js";
+import { doubleTime, toGuitarPro } from "../../src/charts/double-time.js";
 
 // A score written in half time (Sugar, We're Goin Down at 82) rewritten at
 // the tempo the band counts (164): every bar becomes two 4/4 bars and every
@@ -108,12 +108,31 @@ KickHit.4 SnareHit.4 KickHit.4 SnareHit.4`;
 
   it("reads back the same after writing a Guitar Pro file", () => {
     const score = doubled(GUITAR('\\section "Intro" 0.6.1 | 0.6.4 3.6.2 0.6.4'));
-    const settings = new alphaTab.Settings();
-    const bytes = new alphaTab.exporter.Gp7Exporter().export(score, settings);
-    const back = alphaTab.importer.ScoreLoader.loadScoreFromBytes(bytes, settings);
+    const back = alphaTab.importer.ScoreLoader.loadScoreFromBytes(toGuitarPro(score), new alphaTab.Settings());
     expect(back.masterBars.length).toBe(4);
     expect(back.masterBars[0].section?.text).toBe("Intro");
     expect(back.tempo).toBe(164);
     expect(beats(back)).toEqual(beats(score));
+  });
+
+  it("keeps each drum on its drum when a track without a drum list is written", () => {
+    // A Guitar Pro 5 drum track has no drum list; each note names its drum by id.
+    const score = tex(`\\tempo 82
+\\track "Drums"
+\\instrument percussion
+\\articulation defaults
+\\staff {score}
+(KickHit HiHatClosed).4 (SnareHit HiHatClosed).4 (KickHit HiHatClosed).4 (SnareHit HiHatOpen).4`);
+    const track = score.tracks[0];
+    const ids = track.staves[0].bars[0].voices[0].beats.map((b) => b.notes.map((n) => track.percussionArticulations[n.percussionArticulation].id));
+    for (const beat of track.staves[0].bars[0].voices[0].beats) {
+      for (const n of beat.notes) n.percussionArticulation = track.percussionArticulations[n.percussionArticulation].id;
+    }
+    track.percussionArticulations = [];
+
+    const back = alphaTab.importer.ScoreLoader.loadScoreFromBytes(toGuitarPro(doubleTime(score)), new alphaTab.Settings());
+    const list = back.tracks[0].percussionArticulations;
+    const drums = back.tracks[0].staves[0].bars.flatMap((bar) => bar.voices[0].beats.map((b) => b.notes.map((n) => list[n.percussionArticulation].id)));
+    expect(drums).toEqual(ids);
   });
 });

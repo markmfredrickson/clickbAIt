@@ -106,6 +106,15 @@ describe.skipIf(!hasFfmpeg)("cutClip and addMedia (ffmpeg)", () => {
     expect(Math.max(...gaps)).toBeLessThanOrEqual(5 / 30 + 1e-6);
   });
 
+  it("drops the camera's timecode, which would misplace the clip in an editor", async () => {
+    const timed = join(dir, "timed.mp4");
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=s=320x240:r=30:d=3", "-timecode", "01:04:52:25", "-pix_fmt", "yuv420p", timed]);
+    expect(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream_tags=timecode", "-of", "csv=p=0", timed]).toString()).toContain("01:04:52");
+    const out = join(dir, "untimed.mp4");
+    await cutClip(timed, out);
+    expect(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type:stream_tags=timecode:format_tags=timecode", "-of", "csv=p=0", out]).toString().trim()).toBe("video");
+  });
+
   it("records the clip's source, span and license beside it", async () => {
     const song = mkdtempSync(join(dir, "song-"));
     await addMedia(song, "counter", { kind: "file", file: source, url: "own", license: "own", by: "Mark" }, { start: 1, end: 3 });

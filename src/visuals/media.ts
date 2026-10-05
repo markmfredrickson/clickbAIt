@@ -116,6 +116,8 @@ export async function cutClip(input: string, out: string, span?: { start: number
     "-i", input,
     "-an", "-vf", `${crop}scale=-2:'min(ih,1080)'`,
     "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-g", "5",
+    // No camera timecode: an editor such as Resolve places a clip by it, and a cut's starts at 0.
+    "-map_metadata", "-1", "-write_tmcd", "0",
     "-movflags", "+faststart", out,
   ]);
   return probe(out);

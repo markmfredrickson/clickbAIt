@@ -11,9 +11,8 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
-import * as alphaTab from "@coderline/alphatab";
 import { loadScore } from "./score-info.js";
-import { doubleTime } from "./double-time.js";
+import { doubleTime, toGuitarPro } from "./double-time.js";
 
 const [input, output] = process.argv.slice(2);
 if (!input || !output || !output.endsWith(".gp")) {
@@ -24,5 +23,5 @@ if (!input || !output || !output.endsWith(".gp")) {
 const score = loadScore(new Uint8Array(readFileSync(input)), basename(input));
 const before = score.masterBars.length;
 const doubled = doubleTime(score);
-writeFileSync(output, new alphaTab.exporter.Gp7Exporter().export(doubled, new alphaTab.Settings()));
+writeFileSync(output, toGuitarPro(doubled));
 console.log(`${basename(output)}: ${before} bars → ${doubled.masterBars.length}, tempo ${score.tempo} → ${doubled.tempo}`);

@@ -237,3 +237,39 @@ function renumber(json: Obj): void {
     }
   }
 }
+
+/**
+ * The score as a Guitar Pro 7 file. A drum track without a drum list (every
+ * Guitar Pro 5 drum track) names each note's drum by id, but alphaTab's writer
+ * reads that number as a place in the standard list it writes, so every hit
+ * lands on another drum. Writing once and reading back gives that standard
+ * list, which alphaTab doesn't export; the track gets it and each note its
+ * drum's place in it.
+ */
+export function toGuitarPro(score: alphaTab.model.Score): Uint8Array {
+  const settings = new alphaTab.Settings();
+  const write = () => new alphaTab.exporter.Gp7Exporter().export(score, settings);
+  const bare = score.tracks.filter((t) => t.staves.some((s) => s.isPercussion) && t.percussionArticulations.length === 0);
+  if (bare.length === 0) return write();
+
+  const back = alphaTab.importer.ScoreLoader.loadScoreFromBytes(write(), settings);
+  for (const track of bare) {
+    const list = back.tracks[track.index].percussionArticulations;
+    for (const staff of track.staves) {
+      for (const bar of staff.bars) {
+        for (const voice of bar.voices) {
+          for (const beat of voice.beats) {
+            for (const note of beat.notes) {
+              if (!note.isPercussion) continue;
+              const place = list.findIndex((a) => a.id === note.percussionArticulation);
+              if (place < 0) throw new Error(`track "${track.name}" bar ${bar.index + 1}: no standard drum ${note.percussionArticulation}`);
+              note.percussionArticulation = place;
+            }
+          }
+        }
+      }
+    }
+    track.percussionArticulations = list;
+  }
+  return write();
+}

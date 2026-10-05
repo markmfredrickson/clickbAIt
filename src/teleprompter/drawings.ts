@@ -56,7 +56,7 @@ export function notationRanges(doc: RowDocument): { id: string; source: string; 
         for (const seg of scoreSegments(row.items)) if (seg.start !== null) add(seg.start, seg.count);
       }
     }
-    // The card's reminder of the part's snippets.
+    // The card's reminder of the part's phrases.
     for (const f of doc.card?.figures?.[c.id] ?? []) for (const seg of barSegments(f.scoreBars)) if (seg.start !== null) add(seg.start, seg.count);
     const ranges = [...seen.values()].sort((a, b) => a.start - b.start || a.count - b.count);
     return [{ id: c.id, source: c.source, track: c.track, chart: c.chart, ranges }];

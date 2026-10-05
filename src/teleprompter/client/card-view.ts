@@ -2,7 +2,7 @@
  * The card before a song, as page elements, for the web prompter and the
  * e-ink renderer alike: the song, its key and tempo, this screen's notes
  * (see card.ts), and for each part on screen a reminder of what it plays:
- * a chart-style part's figures, each letter with its bar, or a score-style
+ * a chart-style part's phrases, each drawn, or a score-style
  * part's opening row, drawn with the notation the rows carry.
  */
 
@@ -75,12 +75,12 @@ function openingRow(channel: RowChannel, at: { row: number; item: number } | und
   return { ...channel, kind: "figures", rows: [only] };
 }
 
-/** A one-row channel of a chart-style part's figures: "(A) [bar] (B) [bar] …". */
+/** A one-row channel of a chart-style part's phrases, each drawn once. */
 function legendRow(channel: RowChannel, doc: RowDocument): RowChannel | null {
   const list = doc.card?.figures?.[channel.id];
   if (channel.kind !== "figures" || !list?.length) return null;
   const items = list.map((f) => ({
-    letter: f.letter, scoreBars: f.scoreBars, barBeats: f.scoreBars.map(() => 0), draw: true, count: 1, phraseBeats: 0, songBar: 0, start: 0, end: 0,
+    scoreBars: f.scoreBars, barBeats: f.scoreBars.map(() => 0), draw: true, count: 1, phraseBeats: 0, songBar: 0, start: 0, end: 0,
   }));
   return { ...channel, rows: [{ type: "figures", section: 0, start: 0, end: 0, items }] };
 }

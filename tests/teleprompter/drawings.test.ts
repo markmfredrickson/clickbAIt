@@ -26,7 +26,7 @@ describe("scoreSegments", () => {
 
 describe("notationRanges", () => {
   const run = (scoreBars: number[], draw: boolean) => ({
-    letter: "A", scoreBars, barBeats: scoreBars.map(() => 4), draw, count: 1, phraseBeats: 4 * scoreBars.length, songBar: 1, start: 0, end: 4,
+    scoreBars, barBeats: scoreBars.map(() => 4), draw, count: 1, phraseBeats: 4 * scoreBars.length, songBar: 1, start: 0, end: 4,
   });
   const doc = {
     channels: [
@@ -52,7 +52,7 @@ describe("notationRanges", () => {
   });
 
   it("draws the card's figures too, though a score section took their first time", () => {
-    const withCard = { ...doc, card: { startBeat: 0, notes: [], opening: {}, figures: { kit: [{ letter: "A", scoreBars: [3] }, { letter: "Z", scoreBars: [99, 100] }] } } } as unknown as RowDocument;
+    const withCard = { ...doc, card: { startBeat: 0, notes: [], opening: {}, figures: { kit: [{ scoreBars: [3] }, { scoreBars: [99, 100] }] } } } as unknown as RowDocument;
     expect(notationRanges(withCard)[0].ranges).toEqual([{ start: 3, count: 1 }, { start: 7, count: 1 }, { start: 20, count: 2 }, { start: 99, count: 2 }]);
   });
 

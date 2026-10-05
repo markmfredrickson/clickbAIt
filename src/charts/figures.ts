@@ -1,24 +1,20 @@
 /**
- * A part written as a chart of snippets: a few short passages, each named
- * with a letter, that the song is written in ("A ×8 B", "C ×2 B"). A snippet
- * is up to four bars and is drawn, so a player learns it; the chart is the
- * snippets in order, so a player reads it. The snippets are the set that
- * keeps both short: the fewest bars drawn plus symbols read, where a
- * snippet's back-to-back repeats are one symbol ("A ×8"), and a bar in two
- * snippets is drawn twice. The first time a section plays a snippet, a
- * display draws it there, so every section's line reads on its own. Only
- * what the song plays more than once gets a letter: a bar played once is
- * drawn where it plays, joined to any such bars beside it.
+ * A part written as a chart: each section's bars in order, every one drawn
+ * where it plays, with a phrase played back to back drawn once and counted
+ * ("[groove] ×6"). Nothing is named and looked up elsewhere, so a player
+ * reads each line as it comes. A phrase is up to four bars; bars between
+ * phrases are drawn as passages of up to four bars, so a long one wraps
+ * rather than shrinking.
  *
  * Bars are compared exactly (see ScoreInfo.signatures), so two bars are the
- * same only when they play the same thing. Sections drawn as scores (a solo)
- * are left out: they're drawn bar by bar, so their bars aren't snippets.
+ * same only when they play the same thing. Sections drawn as scores (named
+ * in the manifest) are left out: they're drawn bar by bar.
  */
 
 import type { MappedBar, SongSection } from "./bar-map.js";
 
-export interface Snippet {
-  letter: string;
+/** A phrase the part plays back to back, for the card's reminder of what it plays. */
+export interface Phrase {
   /** Its bars, as the score bars where the song first plays it. */
   scoreBars: number[];
   barBeats: number[];
@@ -27,16 +23,11 @@ export interface Snippet {
 }
 
 export interface FigureRun {
-  /**
-   * The snippet's letter, or null: for bars the song plays only here (drawn,
-   * no letter) or song bars the score has nothing for (not drawn).
-   */
-  letter: string | null;
-  /** The score bars behind each bar of the snippet here (null where none). */
+  /** The score bars behind each bar of the run (null where none). */
   scoreBars: (number | null)[];
-  /** Beats in each bar of the snippet. */
+  /** Beats in each bar of the run. */
   barBeats: number[];
-  /** Draw it here: the first time its section plays it. */
+  /** Drawn where it plays; false only for song bars the score has nothing for. */
   draw: boolean;
   /** Times through, back to back. */
   count: number;
@@ -46,20 +37,14 @@ export interface FigureRun {
 }
 
 export interface FigureChart {
-  snippets: Snippet[];
+  /** Each phrase played back to back somewhere, once, in the order the song first plays it. */
+  phrases: Phrase[];
   /** One entry per song section, in order; a section drawn as a score has no runs. */
   sections: { section: number; runs: FigureRun[] }[];
 }
 
-/** The longest snippet, in bars. */
-const MAX_SNIPPET = 4;
-
-/** 0 → "A", 25 → "Z", 26 → "AA", 27 → "AB", … */
-export function figureLetter(n: number): string {
-  let s = "";
-  for (let k = n + 1; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(65 + ((k - 1) % 26)) + s;
-  return s;
-}
+/** The longest phrase or passage, in bars. */
+const MAX_BARS = 4;
 
 interface Bar {
   /** What the bar plays and how long it is; null where the score has nothing. */
@@ -85,94 +70,46 @@ function sectionBars(bars: readonly MappedBar[], signatures: readonly string[], 
   return out;
 }
 
-/** Snippet lengths to try, longest first, so a tie keeps the bigger unit. */
-const LENGTHS = Array.from({ length: MAX_SNIPPET }, (_, i) => MAX_SNIPPET - i);
-
-/**
- * The sections to draw as scores: those the manifest names (`named`), and each
- * section of two or more bars, all with notation, that costs no more to draw
- * bar by bar than to write with snippets. Written with snippets, a section
- * costs its symbols plus the bars of the snippets no other section uses; as a
- * score it costs its bars. A section in which no bar repeats always qualifies.
- * Taking a section out changes which snippets the rest share, so sections go
- * one at a time, the costliest first.
- */
-export function scoredSections(
-  bars: readonly MappedBar[],
-  signatures: readonly string[],
-  sections: readonly SongSection[],
-  named: readonly number[] = [],
-): number[] {
-  const bySection = sectionBars(bars, signatures, sections.length);
-  const asScore = new Set(named);
-  for (;;) {
-    const keysOf = bySection.map((list, section) => (asScore.has(section) ? [] : list.map((b) => b.key)));
-    const set = chooseSnippets(keysOf);
-    const steps = keysOf.map((keys) => write(keys, set, LENGTHS));
-    const usedBy = new Map<Candidate, Set<number>>();
-    steps.forEach((list, section) => {
-      for (const s of list) if (s.snippet !== null) usedBy.set(s.snippet, (usedBy.get(s.snippet) ?? new Set()).add(section));
-    });
-    let worst = -1;
-    let worstExcess = -Infinity;
-    keysOf.forEach((keys, section) => {
-      if (asScore.has(section) || keys.length < 2 || keys.includes(null)) return;
-      let own = 0;
-      for (const s of new Set(steps[section].map((st) => st.snippet!))) if (usedBy.get(s)!.size === 1) own += s.split(SEP).length;
-      const excess = steps[section].length + own - keys.length;
-      if (excess >= 0 && excess > worstExcess) {
-        worst = section;
-        worstExcess = excess;
-      }
-    });
-    if (worst < 0) return [...asScore].sort((a, b) => a - b);
-    asScore.add(worst);
-  }
-}
-
-/** A snippet while choosing: its bars' keys, joined. */
-type Candidate = string;
-const SEP = "\u0001";
-
-/** How a section is written with a set of snippets: each step a snippet (or a gap) and its count. */
+/** How a section's bars are written: a phrase and its count, a single bar of a passage, or bars with no score. */
 interface Step {
-  /** The snippet's keys, or null for bars with no score. */
-  snippet: Candidate | null;
+  kind: "repeat" | "bar" | "gap";
   length: number;
   count: number;
 }
 
 /**
- * The fewest symbols to write a section's bars with `set`: a dynamic program
- * over where each symbol starts, a symbol being a snippet played one or more
- * times back to back, or a stretch of bars with no score.
+ * Split a section's bars into phrases played back to back and the bars
+ * between them, drawing as few bars as it can: a dynamic program over where
+ * each step starts, a repeat costing its bars drawn plus one for its count.
+ * A repeat must cost less than writing its bars out, so one bar played twice
+ * stays in its passage; on a tie a longer phrase beats a shorter one.
  */
-function write(keys: readonly (string | null)[], set: ReadonlySet<Candidate>, lengths: readonly number[]): Step[] {
+function split(keys: readonly (string | null)[]): Step[] {
   const n = keys.length;
   const best: number[] = new Array(n + 1).fill(Infinity);
   const step: (Step | null)[] = new Array(n + 1).fill(null);
   best[n] = 0;
-  const at = (i: number, len: number) => keys.slice(i, i + len).join(SEP);
+  const at = (i: number, len: number) => keys.slice(i, i + len).join("\u0001");
   for (let i = n - 1; i >= 0; i--) {
     if (keys[i] === null) {
       let j = i;
       while (j < n && keys[j] === null) j++;
-      best[i] = 1 + best[j];
-      step[i] = { snippet: null, length: 1, count: j - i };
+      best[i] = best[j];
+      step[i] = { kind: "gap", length: 1, count: j - i };
       continue;
     }
-    // Longer snippets first, so a tie keeps the bigger unit.
-    for (const len of lengths) {
-      if (i + len > n || keys.slice(i, i + len).includes(null)) continue;
-      const s = at(i, len);
-      if (!set.has(s)) continue;
+    best[i] = 1 + best[i + 1];
+    step[i] = { kind: "bar", length: 1, count: 1 };
+    for (let len = MAX_BARS; len >= 1; len--) {
+      if (i + 2 * len > n || keys.slice(i, i + len).includes(null)) continue;
+      const phrase = at(i, len);
       let count = 1;
-      while (i + (count + 1) * len <= n && at(i + count * len, len) === s) count++;
-      for (let k = count; k >= 1; k--) {
-        const cost = 1 + best[i + k * len];
+      while (i + (count + 1) * len <= n && at(i + count * len, len) === phrase) count++;
+      for (let k = count; k >= 2; k--) {
+        const cost = len + 1 + best[i + k * len];
         if (cost < best[i]) {
           best[i] = cost;
-          step[i] = { snippet: s, length: len, count: k };
+          step[i] = { kind: "repeat", length: len, count: k };
         }
       }
     }
@@ -186,72 +123,6 @@ function write(keys: readonly (string | null)[], set: ReadonlySet<Candidate>, le
   return out;
 }
 
-/** The total to minimize for a set: bars drawn (of the snippets used) plus symbols read. */
-function costOf(sections: readonly (string | null)[][], set: ReadonlySet<Candidate>, lengths: readonly number[]): number {
-  let symbols = 0;
-  const used = new Set<Candidate>();
-  for (const keys of sections) {
-    for (const s of write(keys, set, lengths)) {
-      symbols++;
-      if (s.snippet !== null) used.add(s.snippet);
-    }
-  }
-  let drawn = 0;
-  for (const s of used) drawn += s.split(SEP).length;
-  return drawn + symbols;
-}
-
-/**
- * Choose the snippets: start from single bars (every bar must be writable),
- * add the candidate that lowers the total most until none does, then drop
- * any whose removal lowers it. A candidate of two or more bars is a sequence
- * the part plays at least twice: a snippet is something that comes back.
- */
-function chooseSnippets(sections: readonly (string | null)[][]): Set<Candidate> {
-  const occurrences = new Map<Candidate, number>();
-  const set = new Set<Candidate>();
-  for (const keys of sections) {
-    for (let i = 0; i < keys.length; i++) {
-      if (keys[i] === null) continue;
-      set.add(keys[i]!);
-      for (let len = 2; len <= MAX_SNIPPET && i + len <= keys.length; len++) {
-        const run = keys.slice(i, i + len);
-        if (run.includes(null)) break;
-        const s = run.join(SEP);
-        occurrences.set(s, (occurrences.get(s) ?? 0) + 1);
-      }
-    }
-  }
-  const candidates = [...occurrences].filter(([, n]) => n >= 2).map(([s]) => s);
-  let cost = costOf(sections, set, LENGTHS);
-  for (;;) {
-    let bestAdd: Candidate | null = null;
-    let bestCost = cost;
-    for (const c of candidates) {
-      if (set.has(c)) continue;
-      set.add(c);
-      const next = costOf(sections, set, LENGTHS);
-      set.delete(c);
-      if (next < bestCost) {
-        bestCost = next;
-        bestAdd = c;
-      }
-    }
-    if (bestAdd === null) break;
-    set.add(bestAdd);
-    cost = bestCost;
-    // Drop what the new snippet made pointless.
-    for (const s of [...set]) {
-      if (!s.includes(SEP)) continue;
-      set.delete(s);
-      const without = costOf(sections, set, LENGTHS);
-      if (without <= cost) cost = without;
-      else set.add(s);
-    }
-  }
-  return set;
-}
-
 export function figureChart(
   bars: readonly MappedBar[],
   signatures: readonly string[],
@@ -259,62 +130,46 @@ export function figureChart(
   opts: { asScore?: readonly number[] } = {},
 ): FigureChart {
   const asScore = new Set(opts.asScore ?? []);
-  const bySection = sectionBars(bars, signatures, sections.length);
-  const keysOf = bySection.map((list, section) => (asScore.has(section) ? [] : list.map((b) => b.key)));
-  const set = chooseSnippets(keysOf);
-  const steps = keysOf.map((keys) => write(keys, set, LENGTHS));
+  const phrases: Phrase[] = [];
+  const seen = new Set<string>();
 
-  // A snippet the song plays once is no figure to learn: it's drawn where it
-  // plays with no letter, joined to any such bars next to it.
-  const plays = new Map<Candidate, number>();
-  for (const list of steps) for (const s of list) if (s.snippet !== null) plays.set(s.snippet, (plays.get(s.snippet) ?? 0) + s.count);
-  const once = (s: Step) => s.snippet !== null && plays.get(s.snippet) === 1;
-
-  const letterOf = new Map<Candidate, string>();
-  const snippets: Snippet[] = [];
-  const out = bySection.map((list, section) => {
+  const out = sectionBars(bars, signatures, sections.length).map((list, section) => {
     const runs: FigureRun[] = [];
-    const drawn = new Set<Candidate>();
+    if (asScore.has(section)) return { section, runs };
     let i = 0;
-    let previousOnce = false;
-    for (const s of steps[section]) {
+    let passage: FigureRun | null = null;
+    for (const s of split(list.map((b) => b.key))) {
       const first = list[i];
-      const bars = list.slice(i, i + s.length);
+      const these = list.slice(i, i + s.length);
       i += s.length * s.count;
-      if (once(s)) {
-        const last = runs[runs.length - 1];
-        if (previousOnce) {
-          last.scoreBars.push(...bars.map((b) => b.scoreBar));
-          last.barBeats.push(...bars.map((b) => b.beats));
-        } else {
-          runs.push({ letter: null, scoreBars: bars.map((b) => b.scoreBar), barBeats: bars.map((b) => b.beats), draw: true, count: 1, songBar: first.songBar, startBeat: first.startBeat });
-        }
-        previousOnce = true;
+      if (s.kind === "bar" && passage && passage.scoreBars.length < MAX_BARS) {
+        passage.scoreBars.push(first.scoreBar);
+        passage.barBeats.push(first.beats);
         continue;
       }
-      previousOnce = false;
-      if (s.snippet !== null && !letterOf.has(s.snippet)) {
-        letterOf.set(s.snippet, figureLetter(letterOf.size));
-        snippets.push({
-          letter: letterOf.get(s.snippet)!,
-          scoreBars: bars.map((b) => b.scoreBar!),
-          barBeats: bars.map((b) => b.beats),
-          rest: bars.every((b) => isRest(signatureOf(signatures, b.scoreBar!))),
-        });
-      }
-      const draw = s.snippet !== null && !drawn.has(s.snippet);
-      if (s.snippet !== null) drawn.add(s.snippet);
-      runs.push({
-        letter: s.snippet === null ? null : letterOf.get(s.snippet)!,
-        scoreBars: bars.map((b) => b.scoreBar),
-        barBeats: bars.map((b) => b.beats),
-        draw,
+      const run: FigureRun = {
+        scoreBars: these.map((b) => b.scoreBar),
+        barBeats: these.map((b) => b.beats),
+        draw: s.kind !== "gap",
         count: s.count,
         songBar: first.songBar,
         startBeat: first.startBeat,
-      });
+      };
+      runs.push(run);
+      passage = s.kind === "bar" ? run : null;
+      if (s.kind === "repeat") {
+        const key = these.map((b) => b.key).join("\u0001");
+        if (!seen.has(key)) {
+          seen.add(key);
+          phrases.push({
+            scoreBars: these.map((b) => b.scoreBar!),
+            barBeats: these.map((b) => b.beats),
+            rest: these.every((b) => isRest(signatureOf(signatures, b.scoreBar!))),
+          });
+        }
+      }
     }
     return { section, runs };
   });
-  return { snippets, sections: out };
+  return { phrases, sections: out };
 }

@@ -3,14 +3,14 @@
  * out once at build as rows, channel by channel. A display picks the
  * channels it wants and shows each in its own pane, in the order asked for.
  * Panes don't line up with each other; each follows the beat on its own, so
- * a drum pane can sit on "A ×8" while the lyrics pane turns several lines.
+ * a drum pane can sit on "[groove] ×8" while the lyrics pane turns several lines.
  *
  * A channel's rows depend on what it is:
  *   lyrics   one row per sung line, its words the items
  *   chords   `barsPerRow` bars per row (4, or the song's or section's own),
  *            never past a section's end; its chords the items
  *   figures  a chart-style part (see charts/figures.ts): one row per
- *            section, its runs of snippets the items ("A ×8"); a section
+ *            section, its runs the items ("[groove] ×8"); a section
  *            drawn as a score instead has score rows, as below
  *   score    a score-style part: `barsPerRow` bars per row, like chords,
  *            each bar an item
@@ -65,16 +65,11 @@ export interface ChordRow extends Span {
 export type ChartKind = "tab" | "staff" | "staff-tab" | "drums";
 
 export interface FigureItem extends Span {
-  /**
-   * The snippet's letter (see charts/figures.ts), or null: for bars the song
-   * plays only here (drawn) or bars the score has nothing for (not drawn).
-   */
-  letter: string | null;
-  /** The score bar behind each bar of the snippet here. */
+  /** The score bar behind each bar of the run. */
   scoreBars: (number | null)[];
-  /** Beats in each bar of the snippet. */
+  /** Beats in each bar of the run. */
   barBeats: number[];
-  /** Draw it here: the first time its section plays it. */
+  /** Drawn here; false only for bars the score has nothing for. */
   draw: boolean;
   /** Times through, back to back. */
   count: number;
@@ -132,8 +127,8 @@ export interface RowDocument {
     /** Where the song's timeline starts (the lead-in's first beat): the card shows there. */
     startBeat: number;
     notes: Note[];
-    /** A chart-style part's snippets, a reminder of what it plays: each letter with its score bars, rests left out. */
-    figures: Record<string, { letter: string; scoreBars: number[] }[]>;
+    /** A chart-style part's phrases, a reminder of what it plays: each one's score bars, rests left out. */
+    figures: Record<string, { scoreBars: number[] }[]>;
     /** A score-style part's opening: its first row and bar that plays (not only rests). */
     opening: Record<string, { row: number; item: number }>;
   };

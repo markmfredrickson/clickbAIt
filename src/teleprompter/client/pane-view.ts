@@ -5,8 +5,7 @@
  *
  *   lyrics   a line of words
  *   chords   a line of bars, each as wide as its beats, chords on a grid
- *   figures  a line of snippets: "(A) [staff] ×8" the first time a section
- *            plays one, the letter after that
+ *   figures  a line of runs, each drawn with its count: "[staff] ×8"
  *   score    a line of drawn bars, a box over each to light while it plays
  *
  * Every row and item element is returned in order, so a display can light
@@ -135,21 +134,16 @@ function chordRow(row: ChordRow, width: number, held: string | null): RowView {
   return { el: line, items, bars };
 }
 
-const letterText = (letter: string | null) => letter ?? "–";
-
 function figureRow(row: FigureRow, notation: NotationTarget[]): RowView {
   const line = el("div", "row figure-row");
   const items = row.items.map((run) => {
-    const drawn = run.draw && run.scoreBars.some((b) => b !== null);
-    const runEl = el("div", "figure-run" + (drawn ? " first" : ""));
-    if (!drawn) {
-      // The letter alone: "A ×8".
-      runEl.appendChild(el("span", "figure-label", letterText(run.letter)));
+    const runEl = el("div", "figure-run");
+    if (!run.draw) {
+      // Bars the score has nothing for.
+      runEl.appendChild(el("span", "figure-label", "–"));
     } else {
-      // In line: the letter, the snippet's bars, and its count after: "(A) [bars] ×8".
-      // Bars the song plays only here have no letter.
+      // The run's bars, and its count after: "[bars] ×8".
       const body = el("div", "figure-body");
-      if (run.letter !== null) body.appendChild(el("span", "figure-label", `(${run.letter})`));
       for (const seg of barSegments(run.scoreBars)) {
         if (seg.start === null) continue;
         const staff = el("div", "notation");
@@ -216,7 +210,7 @@ export function fitRow(rowEl: HTMLElement): void {
       part.style.setProperty("--fit", "1");
       const width = part.scrollWidth;
       if (width <= room) return;
-      // Only the notation shrinks; the letters and count around it keep their size.
+      // Only the notation shrinks; the count after it keeps its size.
       let staves = 0;
       part.querySelectorAll(".notation").forEach((n) => (staves += n.getBoundingClientRect().width));
       const fit = staves > 0 ? (room - (width - staves) - 2) / staves : 1;

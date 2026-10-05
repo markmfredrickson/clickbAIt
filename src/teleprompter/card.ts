@@ -1,7 +1,7 @@
 /**
  * The card a display shows before a song: the song's notes for this screen
  * (setup reminders, banter) and a reminder of what each part plays: a
- * chart's figures by letter, or a score's opening row. It shows while
+ * chart's repeated phrases, or a score's opening row. It shows while
  * the song sits at its start, and goes once playback moves into the lead-in
  * (the spoken title and count-in before the downbeat), so the count-in plays
  * with the panes up and the downbeat can be seen coming.

@@ -88,15 +88,15 @@ export function buildRows(input: RowInput): RowDocument {
 
   const doc: RowDocument = { schema: "clickbait/rows@1", slug: input.slug, title: input.title, sections, channels };
   if (input.notes?.length || input.startBeat !== undefined) {
-    const figures: Record<string, { letter: string; scoreBars: number[] }[]> = {};
+    const figures: Record<string, { scoreBars: number[] }[]> = {};
     const opening: Record<string, { row: number; item: number }> = {};
     for (const chart of input.charts ?? []) {
       const channel = channels.find((c) => c.id === chart.id);
       if (!channel) continue;
       const rests = new Set(chart.restBars ?? []);
       if (channel.kind === "figures" && chart.figures) {
-        // Its snippets that play something (a rest is nothing to remember).
-        const list = chart.figures.snippets.filter((s) => !s.rest).map((s) => ({ letter: s.letter, scoreBars: s.scoreBars }));
+        // Its phrases that play something (a rest is nothing to remember).
+        const list = chart.figures.phrases.filter((p) => !p.rest).map((p) => ({ scoreBars: p.scoreBars }));
         if (list.length) figures[chart.id] = list;
       } else {
         const at = openingFigure(channel, rests);
@@ -178,7 +178,6 @@ function figureRows(sections: RowSection[], chart: FigureChart): FigureRow[] {
     items: runs.map((run) => {
       const phraseBeats = run.barBeats.reduce((sum, b) => sum + b, 0);
       return {
-        letter: run.letter,
         scoreBars: run.scoreBars,
         barBeats: run.barBeats,
         draw: run.draw,

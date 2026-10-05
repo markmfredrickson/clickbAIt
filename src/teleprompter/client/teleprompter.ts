@@ -508,7 +508,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
       const perPage = rowsOf(channel);
       const pane: Pane = { channel, view, el, rowsEl, perPage, pages: panePages(channel.rows, perPage), page: -1, litRow: -1, litItem: -1 };
       panes.push(pane);
-      // Notation comes drawn, in the rows (a song built before that shows its letters only).
+      // Notation comes drawn, in the rows (a song built before that shows no notation).
       const drawn = doc!.notation && doc!.notation[channel.id];
       if (drawn) {
         view.notation.forEach(function (t) {

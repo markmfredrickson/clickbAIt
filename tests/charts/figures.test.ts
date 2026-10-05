@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { figureChart, figureLetter, scoredSections } from "../../src/charts/figures.js";
+import { figureChart } from "../../src/charts/figures.js";
 import { songSections, type MappedBar } from "../../src/charts/bar-map.js";
 
 /**
@@ -19,11 +19,11 @@ function chartOf(...sections: (number | null)[][]) {
   const { placed, mapped } = bars(...sections);
   return figureChart(mapped, SIGS, placed);
 }
-/** A section's runs as "A ×8", bars drawn without a letter as "[4,6] ×1", bars with no score as "– ×2". */
+/** A section's runs as "[1,3] ×4", bars with no score as "– ×2". */
 const runs = (chart: ReturnType<typeof chartOf>, s = 0) =>
-  chart.sections[s].runs.map((r) => `${r.letter ?? (r.draw ? `[${r.scoreBars.join(",")}]` : "–")} ×${r.count}`);
-/** Each snippet as its score bars. */
-const snippets = (chart: ReturnType<typeof chartOf>) => chart.snippets.map((sn) => `${sn.letter}=${sn.scoreBars.join(",")}`);
+  chart.sections[s].runs.map((r) => `${r.draw ? `[${r.scoreBars.join(",")}]` : "–"} ×${r.count}`);
+/** Each repeated phrase as its score bars. */
+const phrases = (chart: ReturnType<typeof chartOf>) => chart.phrases.map((p) => p.scoreBars.join(","));
 
 // Seven Nation Army's bass by score bar: the riff 1 3 (four bars' worth of it
 // and more), the verse ending 4 6, and the instrumental's variant 1 3 1 7.
@@ -32,104 +32,55 @@ const verse = [...riff, ...riff, 4, 6];
 const instrumental = [1, 3, 1, 7, 1, 3, 1, 7, 4, 6];
 const bass = () => chartOf(riff, verse, instrumental, riff, verse, [1, 3, 1, 7, 1, 3, 1, 7, 1, 3, 1, 7, 1, 3, 1, 7, 4, 6]);
 
-describe("figureChart: snippets", () => {
-  it("picks the snippets that keep the drawing and the reading both short", () => {
-    // The riff, the verse ending, and the riff's 4-bar variant: 8 bars drawn,
-    // and every section a symbol or two.
-    expect(snippets(bass())).toEqual(["A=1,3", "B=4,6", "C=1,3,1,7"]);
-  });
-
-  it("writes each section as its snippets, repeats counted", () => {
+describe("figureChart", () => {
+  it("writes each section as its bars in order, a phrase played back to back drawn once with its count", () => {
     const chart = bass();
-    expect([runs(chart, 0), runs(chart, 1), runs(chart, 2)]).toEqual([["A ×4"], ["A ×8", "B ×1"], ["C ×2", "B ×1"]]);
+    expect([runs(chart, 0), runs(chart, 1), runs(chart, 2)]).toEqual([
+      ["[1,3] ×4"],
+      ["[1,3] ×8", "[4,6] ×1"],
+      ["[1,3,1,7] ×2", "[4,6] ×1"],
+    ]);
   });
 
-  it("names snippets A, B, C… in the order the song first plays them", () => {
-    expect(chartOf([4, 6, 4, 6], [1, 3, 1, 3]).snippets.map((s) => s.letter)).toEqual(["A", "B"]);
+  it("writes a bar played over and over as that bar and its count", () => {
+    expect(runs(chartOf([1, 1, 1, 1, 1, 1, 1, 1]))).toEqual(["[1] ×8"]);
   });
 
-  it("keeps a bar played over and over a snippet of its own, counted", () => {
-    expect(runs(chartOf([1, 1, 1, 1, 1, 1, 1, 1]))).toEqual(["A ×8"]);
-    expect(snippets(chartOf([1, 1, 1, 1, 1, 1, 1, 1]))).toEqual(["A=1"]);
+  it("counts bars that play the same thing as the same, whatever their score bar", () => {
+    expect(runs(chartOf([1, 2, 5]))).toEqual(["[1] ×3"]);
   });
 
-  it("doesn't make a snippet of bars played together only once: a snippet is something that comes back", () => {
-    expect(snippets(chartOf([3, 4, 6]))).toEqual([]);
-    expect(runs(chartOf([3, 4, 6]))).toEqual(["[3,4,6] ×1"]);
+  it("leaves a bar played twice in its passage, where a count would save nothing", () => {
+    expect(runs(chartOf([3, 4, 4, 6]))).toEqual(["[3,4,4,6] ×1"]);
+    expect(runs(chartOf([3, 4, 4, 4, 6]))).toEqual(["[3] ×1", "[4] ×3", "[6] ×1"]);
   });
 
-  it("letters only what the song plays more than once, and draws a bar played once where it plays", () => {
-    const chart = chartOf([1, 3, 1, 3, 4], [1, 3]);
-    expect(snippets(chart)).toEqual(["A=1,3"]);
-    expect(runs(chart)).toEqual(["A ×2", "[4] ×1"]);
-    expect(chart.sections[0].runs[1].draw).toBe(true);
+  it("draws bars that don't repeat back to back as passages of up to four bars", () => {
+    expect(runs(chartOf([3, 4, 6, 7, 8, 4]))).toEqual(["[3,4,6,7] ×1", "[8,4] ×1"]);
   });
 
-  it("joins bars played once that sit next to each other into one drawn run", () => {
-    expect(runs(chartOf([1, 3, 4, 6, 1, 3], [1, 3]))).toEqual(["A ×1", "[4,6] ×1", "A ×1"]);
+  it("draws every run where it plays, and nothing for song bars with no score bar", () => {
+    expect(runs(chartOf([1, null, null, 1]))).toEqual(["[1] ×1", "– ×2", "[1] ×1"]);
+    expect(bass().sections.every((s) => s.runs.every((r) => r.draw))).toBe(true);
   });
 
-  it("skips bars played once when lettering", () => {
-    expect(snippets(chartOf([4, 1, 1], [1]))).toEqual(["A=1"]);
+  it("lists the phrases the part repeats back to back, once each, in the order the song first plays them", () => {
+    expect(phrases(bass())).toEqual(["1,3", "1,3,1,7"]);
   });
 
-  it("gives song bars with no score bar no letter", () => {
-    expect(runs(chartOf([1, null, null, 1]))).toEqual(["A ×1", "– ×2", "A ×1"]);
-  });
-
-  it("marks a snippet of nothing but rests", () => {
-    expect(chartOf([9, 9, 9, 9], [1, 1]).snippets.map((s) => [s.letter, s.rest])).toEqual([["A", true], ["B", false]]);
+  it("marks a phrase of nothing but rests", () => {
+    expect(chartOf([9, 9, 9, 9], [1, 1, 1]).phrases.map((p) => [p.scoreBars.join(","), p.rest])).toEqual([["9", true], ["1", false]]);
   });
 
   it("records where each run starts, and its bars", () => {
     const run = bass().sections[1].runs[1];
     expect([run.songBar, run.startBeat, run.scoreBars, run.barBeats]).toEqual([25, 96, [4, 6], [4, 4]]);
   });
-});
 
-describe("figureChart: what to draw", () => {
-  it("draws a snippet the first time each section plays it", () => {
-    const chart = chartOf([1, 3, 1, 3, 4, 4, 1, 3], [1, 3, 1, 3]);
-    expect(chart.sections.map((s) => s.runs.map((r) => `${r.letter}${r.draw ? "*" : ""}`))).toEqual([["A*", "B*", "A"], ["A*"]]);
-  });
-});
-
-describe("figureChart: sections drawn as scores", () => {
-  it("leaves them out of the snippets, with no runs of their own", () => {
-    const { placed, mapped } = bars([1, 3, 1, 3], [6, 7, 8, 4]);
+  it("leaves sections drawn as scores with no runs, and out of the phrases", () => {
+    const { placed, mapped } = bars([1, 3, 1, 3], [6, 6, 6, 6]);
     const chart = figureChart(mapped, SIGS, placed, { asScore: [1] });
-    expect(snippets(chart)).toEqual(["A=1,3"]);
+    expect(phrases(chart)).toEqual(["1,3"]);
     expect(chart.sections[1].runs).toEqual([]);
-  });
-});
-
-describe("scoredSections", () => {
-  it("finds the sections of two or more bars where no bar repeats", () => {
-    // A riff that repeats, a solo that doesn't, a one-bar hit, and bars with no score.
-    const { placed, mapped } = bars([1, 3, 1, 3], [4, 6, 7, 3], [4], [null, null]);
-    expect(scoredSections(mapped, SIGS, placed)).toEqual([1]);
-  });
-
-  it("draws a section as a score when its figures cost more to read and draw than its bars", () => {
-    // The second section comes back to one bar, but is otherwise its own:
-    // six symbols and five bars drawn only for it, against six bars.
-    const { placed, mapped } = bars([1, 3, 1, 3, 1, 3, 1, 3], [3, 4, 6, 7, 4, 8], [1, 3, 1, 3]);
-    expect(scoredSections(mapped, SIGS, placed)).toEqual([1]);
-  });
-
-  it("keeps a section as figures when they're shared with other sections and few", () => {
-    const { placed, mapped } = bars([1, 3, 1, 3, 1, 3, 1, 3], [1, 3, 1, 3, 4, 6], [1, 3, 1, 3, 4, 6]);
-    expect(scoredSections(mapped, SIGS, placed)).toEqual([]);
-  });
-
-  it("includes the sections the manifest names, however well they'd read as figures", () => {
-    const { placed, mapped } = bars([1, 3, 1, 3], [1, 3, 1, 3]);
-    expect(scoredSections(mapped, SIGS, placed, [1])).toEqual([1]);
-  });
-});
-
-describe("figureLetter", () => {
-  it("goes A to Z, then AA, AB and on", () => {
-    expect([0, 25, 26, 27, 52].map(figureLetter)).toEqual(["A", "Z", "AA", "AB", "BA"]);
   });
 });

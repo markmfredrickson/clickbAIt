@@ -148,7 +148,7 @@ describe("buildRows: lyrics", () => {
 });
 
 describe("buildRows: chart-style parts (figures)", () => {
-  // Verse: A ×6. Break: B ×2 (2/4 bars). Chorus: A ×7, then a bar with no score.
+  // Verse: the groove ×6. Break: the fill ×2 (2/4 bars). Chorus: the groove ×7, then a bar with no score.
   const sections = songSections(SONG.sections, SONG.timeSignature);
   const bars: MappedBar[] = [];
   let beat = 0;
@@ -179,10 +179,10 @@ describe("buildRows: chart-style parts (figures)", () => {
     ]);
   });
 
-  it("keeps each run whole, with its start, end, snippet length and the score bars to draw", () => {
-    expect(kit.rows[2].items.map((r: any) => [r.letter, r.count, r.start, r.end, r.phraseBeats, r.scoreBars, r.draw])).toEqual([
-      ["A", 7, 28, 56, 4, [1], true],
-      [null, 1, 56, 60, 4, [null], false],
+  it("keeps each run whole, with its start, end, phrase length and the score bars to draw", () => {
+    expect(kit.rows[2].items.map((r: any) => [r.count, r.start, r.end, r.phraseBeats, r.scoreBars, r.draw])).toEqual([
+      [7, 28, 56, 4, [1], true],
+      [1, 56, 60, 4, [null], false],
     ]);
   });
 });
@@ -431,10 +431,9 @@ describe("buildRows: the card", () => {
     expect([doc.card?.startBeat, doc.card?.notes]).toEqual([-8, notes]);
   });
 
-  it("lists a chart-style part's snippets, each letter with its score bars, leaving out rests", () => {
-    // The lead rests through the Verse (A); the Break plays once, so it has no
-    // letter; the Chorus's figure is B.
-    expect(doc.card?.figures.lead).toEqual([{ letter: "B", scoreBars: [2, 3] }]);
+  it("lists a chart-style part's repeated phrases with their score bars, leaving out rests", () => {
+    // The lead rests through the Verse; the Break plays once; the Chorus repeats bars 2 and 3.
+    expect(doc.card?.figures.lead).toEqual([{ scoreBars: [2, 3] }]);
   });
 
   it("marks a score-style part's opening instead: its first row with a bar that plays", () => {

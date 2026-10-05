@@ -7,6 +7,7 @@
  *   npx tsx src/visuals/edit-cli.ts shot shots/<name>.json         (a wireit task, run in visuals/)
  *   npx tsx src/visuals/edit-cli.ts credits credits.json           (a wireit task)
  *   npx tsx src/visuals/edit-cli.ts assemble edit.json             (a wireit task)
+ *   npx tsx src/visuals/edit-cli.ts resolve <song dir>    write visuals/resolve/<slug>.fcpxml for DaVinci Resolve
  *
  * `split` derives the per-shot files and the nested wireit package from the
  * edit; wireit then re-renders only the shots whose file or footage changed.
@@ -23,6 +24,7 @@ import { tmpdir } from "node:os";
 import { SongManifestSchema } from "../manifest.js";
 import { toSlug } from "../core/dsongl/slug.js";
 import { readMedia } from "./media.js";
+import { fcpxml, resolveCut, type SourceInfo } from "./resolve.js";
 import { checkRules, credits, layout, prerollProblem, shotFiles, shotTiming, visualsPackage, type Edit, type ShotKind, type SoundCue } from "./edit.js";
 
 const ff = (...args: string[]) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 });
@@ -290,6 +292,32 @@ function assemble(editPath: string) {
   console.error(`${gig} and ${review}: ${total.toFixed(1)} s (${t.toFixed(1)} s of song, then credits)`);
 }
 
+/**
+ * The edit as a Resolve timeline, `visuals/resolve/<slug>.fcpxml`, with the
+ * song's mix beside it as AAC for judging sync.
+ */
+function resolveExport(songDir: string) {
+  const visualsDir = join(songDir, "visuals");
+  const e = readEdit(visualsDir);
+  const song = songOf(songDir);
+  const problem = prerollProblem(e, song.preRollBars);
+  if (problem) throw new Error(problem);
+  const media = readMedia(songDir);
+  const sources: Record<string, SourceInfo> = {};
+  for (const name of Object.keys(e.clips)) {
+    const r = media.clips[name];
+    sources[name] = { path: resolve(songDir, r.file), duration: r.duration, fps: r.fps, width: r.width, height: r.height };
+  }
+  const dir = join(visualsDir, "resolve");
+  mkdirSync(dir, { recursive: true });
+  const mix = join(dir, `${song.slug}.mix.m4a`);
+  ff("-i", join(songDir, `${song.slug}.opus`), "-c:a", "aac", "-b:a", "256k", mix);
+  const out = join(dir, `${song.slug}.fcpxml`);
+  const cut = resolveCut(e, sources);
+  writeFileSync(out, fcpxml(cut, { title: song.title, sources, audio: { path: mix, duration: probe(mix).duration } }));
+  console.error(`${relative(process.cwd(), out)}: ${cut.clips.length} shots, ${(cut.duration / cut.fps).toFixed(1)} s`);
+}
+
 const [command, arg] = process.argv.slice(2);
 if (command === "split" && arg) split(resolve(arg));
 else if (command === "build" && arg) {
@@ -303,7 +331,8 @@ else if (command === "build" && arg) {
 } else if (command === "shot" && arg) shot(arg);
 else if (command === "credits" && arg) await creditsRoll(arg);
 else if (command === "assemble" && arg) assemble(arg);
+else if (command === "resolve" && arg) resolveExport(resolve(arg));
 else {
-  console.error("usage: edit-cli.ts build <song dir> | split <song dir> | shot shots/<name>.json | credits credits.json | assemble edit.json");
+  console.error("usage: edit-cli.ts build <song dir> | split <song dir> | shot shots/<name>.json | credits credits.json | assemble edit.json | resolve <song dir>");
   process.exit(1);
 }

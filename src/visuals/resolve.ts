@@ -3,8 +3,9 @@
  * FCPXML, which Resolve imports (File > Import > Timeline).
  *
  * The edit stays the source of the cut. Resolve gets the same shots at the
- * same frames, the dissolves, a marker per section and the song's mix to judge
- * sync by, and owns what ffmpeg's filter chains did: the looks and the film.
+ * same frames, the dissolves, a marker per section, the sound effects and the
+ * song's mix to judge sync by, and owns what ffmpeg's filter chains did: the
+ * looks and the film.
  * Clips are named by their look, so a look's shots can be found and graded
  * together. The Ken Burns pushes and the per-shot brightness lift don't come
  * across; grade those in Resolve.
@@ -125,8 +126,15 @@ const frames = (n: number, r: Rate) => (n === 0 ? "0s" : `${n * r.den}/${r.num}s
 const seconds = (t: number, r: Rate) => frames(Math.round((t * r.num) / r.den), r);
 const esc = (t: string) => t.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-/** The cut as an FCPXML document Resolve imports, with the song's mix under the picture. */
-export function fcpxml(cut: Cut, opts: { title: string; sources: Record<string, SourceInfo>; audio?: { path: string; duration: number } }): string {
+/** An audio file that plays from time 0 under the picture, such as the song's mix. */
+export interface AudioTrack {
+  name: string;
+  path: string;
+  duration: number;
+}
+
+/** The cut as an FCPXML document Resolve imports, with each audio file on its own lane under the picture. */
+export function fcpxml(cut: Cut, opts: { title: string; sources: Record<string, SourceInfo>; audio?: AudioTrack[] }): string {
   const out = rate(cut.fps);
   const formats = new Map<string, string>([[frameDuration(out), "r1"]]);
   const resources = [`<format id="r1" frameDuration="${frameDuration(out)}" width="${cut.width}" height="${cut.height}"/>`];
@@ -150,14 +158,15 @@ export function fcpxml(cut: Cut, opts: { title: string; sources: Record<string, 
         `<media-rep kind="original-media" src="${esc(pathToFileURL(s.path).href)}"/></asset>`,
     );
   }
-  let mix: string | undefined;
-  if (opts.audio) {
-    mix = next();
+  const under = (opts.audio ?? []).map((a, i) => {
+    const ref = next();
     resources.push(
-      `<asset id="${mix}" name="mix" start="0s" duration="${seconds(opts.audio.duration, out)}" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000">` +
-        `<media-rep kind="original-media" src="${esc(pathToFileURL(opts.audio.path).href)}"/></asset>`,
+      `<asset id="${ref}" name="${esc(a.name)}" start="0s" duration="${seconds(a.duration, out)}" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000">` +
+        `<media-rep kind="original-media" src="${esc(pathToFileURL(a.path).href)}"/></asset>`,
     );
-  }
+    const dur = seconds(Math.min(a.duration, cut.duration / cut.fps), out);
+    return `<asset-clip ref="${ref}" name="${esc(a.name)}" lane="${-(i + 1)}" offset="0s" start="0s" duration="${dur}" audioRole="music"/>`;
+  });
   const dissolve = next();
   resources.push(`<effect id="${dissolve}" name="Cross Dissolve" uid="FxPlug:4731E73A-8DAC-4113-9A30-AE85B1761265"/>`);
 
@@ -186,7 +195,6 @@ export function fcpxml(cut: Cut, opts: { title: string; sources: Record<string, 
   });
 
   const total = frames(cut.duration, out);
-  const under = mix ? [`<asset-clip ref="${mix}" name="mix" lane="-1" offset="0s" start="0s" duration="${seconds(Math.min(opts.audio!.duration, cut.duration / cut.fps), out)}" audioRole="music"/>`] : [];
   const markers = cut.markers.map(m => `<marker start="${frames(m.frame, out)}" duration="${frames(1, out)}" value="${esc(m.name)}"/>`);
 
   return [

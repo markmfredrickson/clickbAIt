@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { SongManifestSchema } from "../manifest.js";
 import { toSlug } from "../core/dsongl/slug.js";
 import { readMedia } from "./media.js";
-import { fcpxml, resolveCut, type SourceInfo } from "./resolve.js";
+import { fcpxml, resolveCut, type AudioTrack, type SourceInfo } from "./resolve.js";
 import { checkRules, credits, layout, prerollProblem, shotFiles, shotTiming, visualsPackage, type Edit, type ShotKind, type SoundCue } from "./edit.js";
 
 const ff = (...args: string[]) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 });
@@ -238,6 +238,15 @@ function soundChain(c: SoundCue, i: number): string {
   return parts.join(",");
 }
 
+/** Every sound effect mixed to `[a]`, `total` seconds long, from inputs numbered from `first`. */
+function soundMix(sounds: SoundCue[], first: number, total: number): string {
+  if (!sounds.length) return `anullsrc=r=48000:cl=stereo,atrim=0:${total.toFixed(3)}[a]`;
+  return (
+    sounds.map((c, k) => `${soundChain(c, first + k)}[s${k}];`).join("") +
+    `${sounds.map((_, k) => `[s${k}]`).join("")}amix=inputs=${sounds.length}:normalize=0:duration=longest,alimiter=limit=0.89:attack=5:release=80,apad=whole_dur=${total.toFixed(3)}[a]`
+  );
+}
+
 function assemble(editPath: string) {
   const visualsDir = dirname(resolve(editPath));
   const e = readEdit(visualsDir);
@@ -266,13 +275,7 @@ function assemble(editPath: string) {
   const total = t + probe(".shots/credits.mp4").duration;
 
   const sounds = e.sounds ?? [];
-  const a0 = inputs.length;
-  if (sounds.length) {
-    f += sounds.map((c, k) => `${soundChain(c, a0 + k)}[s${k}];`).join("");
-    f += `${sounds.map((_, k) => `[s${k}]`).join("")}amix=inputs=${sounds.length}:normalize=0:duration=longest,alimiter=limit=0.89:attack=5:release=80,apad=whole_dur=${total.toFixed(3)}[a]`;
-  } else {
-    f += `anullsrc=r=48000:cl=stereo,atrim=0:${total.toFixed(3)}[a]`;
-  }
+  f += soundMix(sounds, inputs.length, total);
   const gig = `${song.slug}.visuals.mp4`;
   const review = `${song.slug}.visuals-review.mp4`;
   ff(
@@ -294,7 +297,7 @@ function assemble(editPath: string) {
 
 /**
  * The edit as a Resolve timeline, `visuals/resolve/<slug>.fcpxml`, with the
- * song's mix beside it as AAC for judging sync.
+ * song's mix (as AAC, for judging sync) and the sound effects beside it.
  */
 function resolveExport(songDir: string) {
   const visualsDir = join(songDir, "visuals");
@@ -310,11 +313,21 @@ function resolveExport(songDir: string) {
   }
   const dir = join(visualsDir, "resolve");
   mkdirSync(dir, { recursive: true });
+  const cut = resolveCut(e, sources);
+  const total = cut.duration / cut.fps;
+  const audio: AudioTrack[] = [];
   const mix = join(dir, `${song.slug}.mix.m4a`);
   ff("-i", join(songDir, `${song.slug}.opus`), "-c:a", "aac", "-b:a", "256k", mix);
+  audio.push({ name: "mix", path: mix, duration: probe(mix).duration });
+  // The sound effects as the gig file mixes them, on a lane of their own.
+  const sounds = e.sounds ?? [];
+  if (sounds.length) {
+    const fx = join(dir, `${song.slug}.sounds.wav`);
+    ff(...sounds.flatMap(c => ["-i", join(visualsDir, c.file)]), "-filter_complex", soundMix(sounds, 0, total), "-map", "[a]", "-t", total.toFixed(3), "-c:a", "pcm_s16le", fx);
+    audio.push({ name: "sound effects", path: fx, duration: probe(fx).duration });
+  }
   const out = join(dir, `${song.slug}.fcpxml`);
-  const cut = resolveCut(e, sources);
-  writeFileSync(out, fcpxml(cut, { title: song.title, sources, audio: { path: mix, duration: probe(mix).duration } }));
+  writeFileSync(out, fcpxml(cut, { title: song.title, sources, audio }));
   console.error(`${relative(process.cwd(), out)}: ${cut.clips.length} shots, ${(cut.duration / cut.fps).toFixed(1)} s`);
 }
 

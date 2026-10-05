@@ -119,7 +119,10 @@ function balanced(xml: string): boolean {
 }
 
 describe("fcpxml", () => {
-  const xml = () => fcpxml(resolveCut(edit(), sources), { title: "Test Song", sources, audio: { path: "/songs/a b/mix.m4a", duration: 15 } });
+  const xml = () => fcpxml(resolveCut(edit(), sources), { title: "Test Song", sources, audio: [
+    { name: "mix", path: "/songs/a b/mix.m4a", duration: 15 },
+    { name: "sounds", path: "/songs/a b/sounds.wav", duration: 15 },
+  ] });
 
   it("is well formed", () => {
     expect(xml()).toMatch(/^<\?xml/);
@@ -134,7 +137,7 @@ describe("fcpxml", () => {
 
   it("links each clip's file once, as a file URL", () => {
     const x = xml();
-    expect(x.match(/<asset /g)).toHaveLength(6); // five clips and the mix
+    expect(x.match(/<asset /g)).toHaveLength(7); // five clips, the mix and the sound effects
     expect(x).toContain('src="file:///songs/a%20b/footage/road.mp4"');
   });
 
@@ -150,9 +153,13 @@ describe("fcpxml", () => {
     expect(xml().match(/<timeMap>/g)).toHaveLength(2); // the reversed road and the sky
   });
 
-  it("puts the mix under the picture and the sections as markers", () => {
+  it("puts each audio file on its own lane under the picture, from time 0", () => {
     const x = xml();
-    expect(x).toMatch(/<asset-clip[^>]*ref="[^"]+"[^>]*lane="-1"/);
-    expect(x).toContain('value="Intro"');
+    expect(x).toMatch(/<asset-clip[^>]*name="mix" lane="-1" offset="0s"/);
+    expect(x).toMatch(/<asset-clip[^>]*name="sounds" lane="-2" offset="0s"/);
+  });
+
+  it("marks the sections", () => {
+    expect(xml()).toContain('value="Intro"');
   });
 });

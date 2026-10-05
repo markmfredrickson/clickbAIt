@@ -25,7 +25,7 @@ import { SongManifestSchema } from "../manifest.js";
 import { toSlug } from "../core/dsongl/slug.js";
 import { readMedia } from "./media.js";
 import { fcpxml, resolveCut, type AudioTrack, type SourceInfo } from "./resolve.js";
-import { checkRules, credits, layout, prerollProblem, shotFiles, shotTiming, visualsPackage, type Edit, type ShotKind, type SoundCue } from "./edit.js";
+import { checkRules, credits, layout, prerollProblem, PUSH_ZOOM, shotFiles, shotTiming, visualsPackage, type Edit, type ShotKind, type SoundCue } from "./edit.js";
 
 const ff = (...args: string[]) => execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 });
 const probe = (file: string) => {
@@ -140,7 +140,8 @@ function shot(shotPath: string) {
 
   const render = (w: number, h: number, gamma: number, boost: number, file: string, preset: string) => {
     const n = Math.round(s.dur * fps);
-    const z = s.push === "in" ? `1+0.07*on/${n}` : `1.07-0.07*on/${n}`;
+    const k = (PUSH_ZOOM - 1).toFixed(4);
+    const z = s.push === "in" ? `1+${k}*on/${n}` : `${PUSH_ZOOM}-${k}*on/${n}`;
     // Ken Burns renders at 1.5x and scales down, so the slow push doesn't step pixel by pixel.
     const frame =
       s.push === "none"

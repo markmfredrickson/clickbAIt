@@ -7,12 +7,12 @@
  * song's mix to judge sync by, and owns what ffmpeg's filter chains did: the
  * looks and the film.
  * Clips are named by their look, so a look's shots can be found and graded
- * together. The Ken Burns pushes and the per-shot brightness lift don't come
- * across; grade those in Resolve.
+ * together. The Ken Burns pushes come across as scale keyframes; the per-shot
+ * brightness lift doesn't, so grade it in Resolve.
  */
 
 import { pathToFileURL } from "node:url";
-import { layout, shotTiming, type Edit } from "./edit.js";
+import { layout, pushOf, PUSH_ZOOM, shotTiming, type Edit } from "./edit.js";
 
 /** A clip's file and what `footage/footage.json` records about it. */
 export interface SourceInfo {
@@ -46,6 +46,8 @@ export interface TimelineClip {
   map: [MapPoint, MapPoint];
   /** Reversed or not at speed 1, so it needs a time map. */
   retimed: boolean;
+  /** Ken Burns: zoom in or out over the shot. */
+  push: "in" | "out" | "none";
 }
 
 export interface Cut {
@@ -91,6 +93,7 @@ export function resolveCut(e: Edit, sources: Record<string, SourceInfo>): Cut {
       length,
       map: [{ local: 0, src: at(0) }, { local: length, src: at(length) }],
       retimed: !!s.reverse || Math.abs(speed - 1) > 1e-3,
+      push: pushOf(s),
     };
   });
 
@@ -123,6 +126,14 @@ export function timeMap(c: TimelineClip, sourceDuration: number, fps: number): {
     start: first + c.localStart / fps,
     points: speed < 0 ? [{ time: 0, value: sourceDuration }, { time: end, value: 0 }] : [{ time: 0, value: 0 }, { time: end, value: sourceDuration }],
   };
+}
+
+/** A shot's push as scale keyframes from its first frame (`zero`, in the clip's time) to its last. */
+function push(c: TimelineClip, zero: number, axis: Rate): string {
+  if (c.push === "none") return "";
+  const [a, b] = c.push === "in" ? [1, PUSH_ZOOM] : [PUSH_ZOOM, 1];
+  const key = (t: number, z: number) => `<keyframe time="${seconds(t, axis)}" value="${z} ${z}"/>`;
+  return `<adjust-transform scale="${a} ${a}"><param name="scale"><keyframeAnimation>${key(zero, a)}${key(zero + c.length, b)}</keyframeAnimation></param></adjust-transform>`;
 }
 
 interface Rate {
@@ -199,14 +210,12 @@ export function fcpxml(cut: Cut, opts: { title: string; sources: Record<string, 
     const attrs = `ref="${assets.get(c.clip)}" name="${esc(c.name)}" offset="${frames(c.offset, out)}" duration="${frames(c.duration, out)}"`;
     // A source at another rate plays in real time, as ffmpeg's framerate filter plays it.
     const conform = r.num !== out.num || r.den !== out.den ? `<conform-rate scaleEnabled="0"/>` : "";
-    const fill = `<adjust-conform type="fill"/>`;
-    if (!c.retimed) {
-      story.push(`<asset-clip ${attrs} start="${seconds(c.map[0].src + c.localStart / cut.fps, r)}">${conform}${fill}</asset-clip>`);
-    } else {
-      const m = timeMap(c, s.duration, cut.fps);
-      const pts = m.points.map(p => `<timept time="${seconds(p.time, out)}" value="${seconds(p.value, r)}" interp="linear"/>`).join("");
-      story.push(`<asset-clip ${attrs} start="${seconds(m.start, out)}">${conform}<timeMap>${pts}</timeMap>${fill}</asset-clip>`);
-    }
+    // A clip without a time map keeps time in its source's frames; a retimed one in the timeline's.
+    const m = c.retimed ? timeMap(c, s.duration, cut.fps) : undefined;
+    const axis = m ? out : r;
+    const start = m ? m.start : c.map[0].src + c.localStart / cut.fps;
+    const retime = m ? `<timeMap>${m.points.map(p => `<timept time="${seconds(p.time, out)}" value="${seconds(p.value, r)}" interp="linear"/>`).join("")}</timeMap>` : "";
+    story.push(`<asset-clip ${attrs} start="${seconds(start, axis)}">${conform}${retime}<adjust-conform type="fill"/>${push(c, start - c.localStart / cut.fps, axis)}</asset-clip>`);
   });
 
   const total = frames(cut.duration, out);

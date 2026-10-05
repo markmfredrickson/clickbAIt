@@ -134,12 +134,20 @@ export function layout(e: Edit): PlacedShot[] {
   return shots;
 }
 
-/** A fixed Ken Burns direction per shot name, so the pushes alternate without depending on position. */
-function defaultPush(name: string): "in" | "out" {
+/**
+ * A shot's Ken Burns push: none for sky, else the shot's own or a fixed
+ * direction per shot name, so the pushes alternate without depending on position.
+ */
+export function pushOf(s: Pick<PlacedShot, "kind" | "push" | "name">): "in" | "out" | "none" {
+  if (s.kind === "sky") return "none";
+  if (s.push) return s.push;
   let sum = 0;
-  for (const c of name) sum += c.charCodeAt(0);
+  for (const c of s.name) sum += c.charCodeAt(0);
   return sum % 2 ? "in" : "out";
 }
+
+/** How far a push zooms: from the whole frame to this much over the shot. */
+export const PUSH_ZOOM = 1.07;
 
 /** One JSON file per shot, holding everything its render reads (so its wireit task sees every change). */
 export function shotFiles(e: Edit): Record<string, string> {
@@ -160,7 +168,7 @@ export function shotFiles(e: Edit): Record<string, string> {
       speed: s.speed,
       night: s.night,
       reverse: s.reverse,
-      push: s.kind === "sky" ? "none" : (s.push ?? defaultPush(s.name)),
+      push: pushOf(s),
       look,
       saturation: e.saturation?.[s.look],
       // a shot runs half a dissolve into each neighbour

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shotTiming, type Edit } from "../../src/visuals/edit.js";
+import { PUSH_ZOOM, shotTiming, type Edit } from "../../src/visuals/edit.js";
 import { fcpxml, resolveCut, timeMap, type SourceInfo, type TimelineClip } from "../../src/visuals/resolve.js";
 
 // 120 bpm in 4/4 at 24 fps: a bar is 2 s, 48 frames; the dissolve is 12 frames.
@@ -101,6 +101,15 @@ describe("resolveCut: the edit as a timeline", () => {
     expect(resolveCut(edit(), sources).clips.map(c => c.name)).toEqual(["green: key", "green: road", "green: radio", "green: field", "night: sky"]);
   });
 
+  it("carries each shot's push: none for sky, the shot's own when it has one", () => {
+    const e = edit();
+    e.sections[1].shots[0].push = "none";
+    const pushes = resolveCut(e, sources).clips.map(c => c.push);
+    expect(pushes[2]).toBe("none");
+    expect(pushes[4]).toBe("none");
+    expect(pushes.filter(p => p !== "none")).toHaveLength(3);
+  });
+
   it("refuses a shot whose clip has no source", () => {
     const { sky: _, ...rest } = sources;
     expect(() => resolveCut(edit(), rest)).toThrow(/sky/);
@@ -183,6 +192,36 @@ describe("fcpxml", () => {
 
   it("retimes only the shots that need it", () => {
     expect(xml().match(/<timeMap>/g)).toHaveLength(2); // the reversed road and the sky
+  });
+
+  /** Seconds from an FCPXML time such as "98/24s" or "0s". */
+  const secs = (t: string) => {
+    const [n, d] = t.replace(/s$/, "").split("/").map(Number);
+    return n / (d ?? 1);
+  };
+  /** The clip's start and its scale keyframes, from its <asset-clip>. */
+  const clipXml = (name: string) => {
+    const el = xml().match(new RegExp(`<asset-clip[^>]*name="${name}"[\\s\\S]*?</asset-clip>`))![0];
+    const keys = [...el.matchAll(/<keyframe time="([^"]+)" value="([\d.]+) [\d.]+"/g)].map(k => ({ time: secs(k[1]), scale: Number(k[2]) }));
+    return { start: secs(el.match(/ start="([^"]+)"/)![1]), keys, el };
+  };
+
+  it("zooms each pushed shot over its whole length, and leaves sky still", () => {
+    const cut = resolveCut(edit(), sources);
+    expect(xml().match(/<adjust-transform/g)).toHaveLength(cut.clips.filter(c => c.push !== "none").length);
+    expect(clipXml("night: sky").el).not.toContain("adjust-transform");
+    for (const c of cut.clips.filter(c => c.push !== "none")) {
+      const { keys } = clipXml(c.name);
+      expect(keys.map(k => k.scale)).toEqual(c.push === "in" ? [1, PUSH_ZOOM] : [PUSH_ZOOM, 1]);
+      expect(keys[1].time - keys[0].time).toBeCloseTo(c.length, 1);
+    }
+  });
+
+  it("starts a push on the shot's first frame, half a dissolve before the clip shows", () => {
+    for (const name of ["green: radio", "green: road"]) { // one at speed 1, one retimed
+      const { start, keys } = clipXml(name);
+      expect(keys[0].time).toBeCloseTo(start - X / 2 / 24, 1);
+    }
   });
 
   it("puts each audio file on its own lane under the picture, from time 0", () => {

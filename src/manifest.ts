@@ -358,8 +358,9 @@ const ChartSpecSchema = z
     kind: z.enum(["tab", "staff", "staff-tab", "drums"]),
     style: z.enum(["chart", "score"]).optional(),
     /** Chart style only: sections to draw bar by bar anyway (a solo that never
-     *  repeats), by name, every occurrence. A section of two or more bars in
-     *  which no bar repeats is drawn as a score without being listed. */
+     *  repeats), by name, every occurrence. A section of two or more bars that
+     *  costs no more to draw bar by bar than with snippets (one in which no
+     *  bar repeats, say) is drawn as a score without being listed. */
     scoreSections: z.array(z.string().min(1)).optional(),
     instrument: z.string().min(1),
     /** Id of an entry in `scores`. */

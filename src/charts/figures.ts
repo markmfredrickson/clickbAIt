@@ -80,15 +80,49 @@ function sectionBars(bars: readonly MappedBar[], signatures: readonly string[], 
   return out;
 }
 
+/** Snippet lengths to try, longest first, so a tie keeps the bigger unit. */
+const LENGTHS = Array.from({ length: MAX_SNIPPET }, (_, i) => MAX_SNIPPET - i);
+
 /**
- * The sections of two or more bars, all with notation, in which no bar
- * repeats (a solo): they read better as a score than as snippets.
+ * The sections to draw as scores: those the manifest names (`named`), and each
+ * section of two or more bars, all with notation, that costs no more to draw
+ * bar by bar than to write with snippets. Written with snippets, a section
+ * costs its symbols plus the bars of the snippets no other section uses; as a
+ * score it costs its bars. A section in which no bar repeats always qualifies.
+ * Taking a section out changes which snippets the rest share, so sections go
+ * one at a time, the costliest first.
  */
-export function unrepeatedSections(bars: readonly MappedBar[], signatures: readonly string[], sections: readonly SongSection[]): number[] {
-  return sectionBars(bars, signatures, sections.length).flatMap((list, section) => {
-    const keys = list.map((b) => b.key);
-    return keys.length >= 2 && keys.every((k) => k !== null) && new Set(keys).size === keys.length ? [section] : [];
-  });
+export function scoredSections(
+  bars: readonly MappedBar[],
+  signatures: readonly string[],
+  sections: readonly SongSection[],
+  named: readonly number[] = [],
+): number[] {
+  const bySection = sectionBars(bars, signatures, sections.length);
+  const asScore = new Set(named);
+  for (;;) {
+    const keysOf = bySection.map((list, section) => (asScore.has(section) ? [] : list.map((b) => b.key)));
+    const set = chooseSnippets(keysOf);
+    const steps = keysOf.map((keys) => write(keys, set, LENGTHS));
+    const usedBy = new Map<Candidate, Set<number>>();
+    steps.forEach((list, section) => {
+      for (const s of list) if (s.snippet !== null) usedBy.set(s.snippet, (usedBy.get(s.snippet) ?? new Set()).add(section));
+    });
+    let worst = -1;
+    let worstExcess = -Infinity;
+    keysOf.forEach((keys, section) => {
+      if (asScore.has(section) || keys.length < 2 || keys.includes(null)) return;
+      let own = 0;
+      for (const s of new Set(steps[section].map((st) => st.snippet!))) if (usedBy.get(s)!.size === 1) own += s.split(SEP).length;
+      const excess = steps[section].length + own - keys.length;
+      if (excess >= 0 && excess > worstExcess) {
+        worst = section;
+        worstExcess = excess;
+      }
+    });
+    if (worst < 0) return [...asScore].sort((a, b) => a - b);
+    asScore.add(worst);
+  }
 }
 
 /** A snippet while choosing: its bars' keys, joined. */
@@ -184,15 +218,14 @@ function chooseSnippets(sections: readonly (string | null)[][]): Set<Candidate> 
     }
   }
   const candidates = [...occurrences].filter(([, n]) => n >= 2).map(([s]) => s);
-  const lengths = Array.from({ length: MAX_SNIPPET }, (_, i) => MAX_SNIPPET - i);
-  let cost = costOf(sections, set, lengths);
+  let cost = costOf(sections, set, LENGTHS);
   for (;;) {
     let bestAdd: Candidate | null = null;
     let bestCost = cost;
     for (const c of candidates) {
       if (set.has(c)) continue;
       set.add(c);
-      const next = costOf(sections, set, lengths);
+      const next = costOf(sections, set, LENGTHS);
       set.delete(c);
       if (next < bestCost) {
         bestCost = next;
@@ -206,7 +239,7 @@ function chooseSnippets(sections: readonly (string | null)[][]): Set<Candidate> 
     for (const s of [...set]) {
       if (!s.includes(SEP)) continue;
       set.delete(s);
-      const without = costOf(sections, set, lengths);
+      const without = costOf(sections, set, LENGTHS);
       if (without <= cost) cost = without;
       else set.add(s);
     }
@@ -224,7 +257,6 @@ export function figureChart(
   const bySection = sectionBars(bars, signatures, sections.length);
   const keysOf = bySection.map((list, section) => (asScore.has(section) ? [] : list.map((b) => b.key)));
   const set = chooseSnippets(keysOf);
-  const lengths = Array.from({ length: MAX_SNIPPET }, (_, i) => MAX_SNIPPET - i);
 
   const letterOf = new Map<Candidate, string>();
   const snippets: Snippet[] = [];
@@ -232,7 +264,7 @@ export function figureChart(
     const runs: FigureRun[] = [];
     const drawn = new Set<Candidate>();
     let i = 0;
-    for (const s of write(keysOf[section], set, lengths)) {
+    for (const s of write(keysOf[section], set, LENGTHS)) {
       const first = list[i];
       const bars = list.slice(i, i + s.length);
       if (s.snippet !== null && !letterOf.has(s.snippet)) {

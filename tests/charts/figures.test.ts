@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { figureChart, figureLetter, unrepeatedSections } from "../../src/charts/figures.js";
+import { figureChart, figureLetter, scoredSections } from "../../src/charts/figures.js";
 import { songSections, type MappedBar } from "../../src/charts/bar-map.js";
 
 /**
@@ -86,16 +86,28 @@ describe("figureChart: sections drawn as scores", () => {
   });
 });
 
-describe("unrepeatedSections", () => {
+describe("scoredSections", () => {
   it("finds the sections of two or more bars where no bar repeats", () => {
     // A riff that repeats, a solo that doesn't, a one-bar hit, and bars with no score.
     const { placed, mapped } = bars([1, 3, 1, 3], [4, 6, 7, 3], [4], [null, null]);
-    expect(unrepeatedSections(mapped, SIGS, placed)).toEqual([1]);
+    expect(scoredSections(mapped, SIGS, placed)).toEqual([1]);
   });
 
-  it("doesn't count a section that comes back to a bar, however late", () => {
-    const { placed, mapped } = bars([3, 4, 6, 3]);
-    expect(unrepeatedSections(mapped, SIGS, placed)).toEqual([]);
+  it("draws a section as a score when its figures cost more to read and draw than its bars", () => {
+    // The second section comes back to one bar, but is otherwise its own:
+    // six symbols and five bars drawn only for it, against six bars.
+    const { placed, mapped } = bars([1, 3, 1, 3, 1, 3, 1, 3], [3, 4, 6, 7, 4, 8], [1, 3, 1, 3]);
+    expect(scoredSections(mapped, SIGS, placed)).toEqual([1]);
+  });
+
+  it("keeps a section as figures when they're shared with other sections and few", () => {
+    const { placed, mapped } = bars([1, 3, 1, 3, 1, 3, 1, 3], [1, 3, 1, 3, 4, 6], [1, 3, 1, 3, 4, 6]);
+    expect(scoredSections(mapped, SIGS, placed)).toEqual([]);
+  });
+
+  it("includes the sections the manifest names, however well they'd read as figures", () => {
+    const { placed, mapped } = bars([1, 3, 1, 3], [1, 3, 1, 3]);
+    expect(scoredSections(mapped, SIGS, placed, [1])).toEqual([1]);
   });
 });
 

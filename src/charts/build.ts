@@ -15,7 +15,7 @@ import { chartStyle, type ChartSpec, type ChordsSpec, type ScoreSpec } from "../
 import { transposeSteps, type TransposeSpec } from "../build/transpose.js";
 import { mapScore, songSections, type MappedBar, type SongSection } from "./bar-map.js";
 import { chordName, transposeChord } from "./chord-label.js";
-import { figureChart, unrepeatedSections, type FigureChart } from "./figures.js";
+import { figureChart, scoredSections, type FigureChart } from "./figures.js";
 import { chordBeats, type ChordTiming } from "./chord-timeline.js";
 import { parseLab } from "./lab.js";
 import { readScoreInfo, type ScoreInfo } from "./score-info.js";
@@ -107,10 +107,10 @@ export function buildChartsFile(
     // A bar's signature lists each beat's notes in brackets; a rest bar has none.
     const restBars = signatures.flatMap((sig, i) => (/\[[^\]]/.test(sig) ? [] : [i + 1]));
     // A chart's sections drawn as scores: those the manifest names (every
-    // occurrence), and those no bar repeats in. Its snippets come from the rest.
+    // occurrence), and those that read better bar by bar. Its snippets come from the rest.
     const sectionsAsScore =
       style === "chart"
-        ? [...new Set([...sections.flatMap((s, i) => (chart.scoreSections?.includes(s.name) ? [i] : [])), ...unrepeatedSections(score.bars, signatures, sections)])].sort((a, b) => a - b)
+        ? scoredSections(score.bars, signatures, sections, sections.flatMap((s, i) => (chart.scoreSections?.includes(s.name) ? [i] : [])))
         : undefined;
     const figures = style === "chart" ? figureChart(score.bars, signatures, sections, { asScore: sectionsAsScore }) : undefined;
     charts.push({

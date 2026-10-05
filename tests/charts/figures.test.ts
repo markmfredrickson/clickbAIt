@@ -19,8 +19,9 @@ function chartOf(...sections: (number | null)[][]) {
   const { placed, mapped } = bars(...sections);
   return figureChart(mapped, SIGS, placed);
 }
-/** A section's runs as "A ×8". */
-const runs = (chart: ReturnType<typeof chartOf>, s = 0) => chart.sections[s].runs.map((r) => `${r.letter ?? "–"} ×${r.count}`);
+/** A section's runs as "A ×8", bars drawn without a letter as "[4,6] ×1", bars with no score as "– ×2". */
+const runs = (chart: ReturnType<typeof chartOf>, s = 0) =>
+  chart.sections[s].runs.map((r) => `${r.letter ?? (r.draw ? `[${r.scoreBars.join(",")}]` : "–")} ×${r.count}`);
 /** Each snippet as its score bars. */
 const snippets = (chart: ReturnType<typeof chartOf>) => chart.snippets.map((sn) => `${sn.letter}=${sn.scoreBars.join(",")}`);
 
@@ -53,7 +54,23 @@ describe("figureChart: snippets", () => {
   });
 
   it("doesn't make a snippet of bars played together only once: a snippet is something that comes back", () => {
-    expect(snippets(chartOf([3, 4, 6]))).toEqual(["A=3", "B=4", "C=6"]);
+    expect(snippets(chartOf([3, 4, 6]))).toEqual([]);
+    expect(runs(chartOf([3, 4, 6]))).toEqual(["[3,4,6] ×1"]);
+  });
+
+  it("letters only what the song plays more than once, and draws a bar played once where it plays", () => {
+    const chart = chartOf([1, 3, 1, 3, 4], [1, 3]);
+    expect(snippets(chart)).toEqual(["A=1,3"]);
+    expect(runs(chart)).toEqual(["A ×2", "[4] ×1"]);
+    expect(chart.sections[0].runs[1].draw).toBe(true);
+  });
+
+  it("joins bars played once that sit next to each other into one drawn run", () => {
+    expect(runs(chartOf([1, 3, 4, 6, 1, 3], [1, 3]))).toEqual(["A ×1", "[4,6] ×1", "A ×1"]);
+  });
+
+  it("skips bars played once when lettering", () => {
+    expect(snippets(chartOf([4, 1, 1], [1]))).toEqual(["A=1"]);
   });
 
   it("gives song bars with no score bar no letter", () => {

@@ -401,14 +401,15 @@ describe("resolveChannels", () => {
 });
 
 describe("buildRows: the card", () => {
-  // Verse rests, then the Break and Chorus play: score bars 1 (rest), 2, 3…
+  // Verse rests (score bar 1), then the Break and the Chorus play bars 2 and 3:
+  // once in the Break's 2/4, four times over in the Chorus's 4/4.
   const sections = songSections(SONG.sections, SONG.timeSignature);
   const bars: MappedBar[] = [];
   let beat = 0;
   SONG.sections.forEach((sec, section) => {
     for (let i = 0; i < sec.bars; i++) {
       const beats = sec.timeSignature?.[0] ?? 4;
-      bars.push({ songBar: bars.length + 1, section, startBeat: beat, beats, scoreBar: section === 0 ? 1 : section === 1 ? 2 + i : 4 + i });
+      bars.push({ songBar: bars.length + 1, section, startBeat: beat, beats, scoreBar: section === 0 ? 1 : 2 + (i % 2) });
       beat += beats;
     }
   });
@@ -431,13 +432,9 @@ describe("buildRows: the card", () => {
   });
 
   it("lists a chart-style part's snippets, each letter with its score bars, leaving out rests", () => {
-    // The lead rests through the Verse (A), then plays B… in the Break and Chorus.
-    expect(doc.card?.figures.lead?.slice(0, 3)).toEqual([
-      { letter: "B", scoreBars: [2] },
-      { letter: "C", scoreBars: [3] },
-      { letter: "D", scoreBars: [4] },
-    ]);
-    expect(doc.card?.figures.lead?.some((f) => f.letter === "A")).toBe(false);
+    // The lead rests through the Verse (A); the Break plays once, so it has no
+    // letter; the Chorus's figure is B.
+    expect(doc.card?.figures.lead).toEqual([{ letter: "B", scoreBars: [2, 3] }]);
   });
 
   it("marks a score-style part's opening instead: its first row with a bar that plays", () => {

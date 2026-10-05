@@ -6,7 +6,9 @@
  * keeps both short: the fewest bars drawn plus symbols read, where a
  * snippet's back-to-back repeats are one symbol ("A ×8"), and a bar in two
  * snippets is drawn twice. The first time a section plays a snippet, a
- * display draws it there, so every section's line reads on its own.
+ * display draws it there, so every section's line reads on its own. Only
+ * what the song plays more than once gets a letter: a bar played once is
+ * drawn where it plays, joined to any such bars beside it.
  *
  * Bars are compared exactly (see ScoreInfo.signatures), so two bars are the
  * same only when they play the same thing. Sections drawn as scores (a solo)
@@ -25,7 +27,10 @@ export interface Snippet {
 }
 
 export interface FigureRun {
-  /** The snippet's letter, or null for song bars the score has nothing for. */
+  /**
+   * The snippet's letter, or null: for bars the song plays only here (drawn,
+   * no letter) or song bars the score has nothing for (not drawn).
+   */
   letter: string | null;
   /** The score bars behind each bar of the snippet here (null where none). */
   scoreBars: (number | null)[];
@@ -257,6 +262,13 @@ export function figureChart(
   const bySection = sectionBars(bars, signatures, sections.length);
   const keysOf = bySection.map((list, section) => (asScore.has(section) ? [] : list.map((b) => b.key)));
   const set = chooseSnippets(keysOf);
+  const steps = keysOf.map((keys) => write(keys, set, LENGTHS));
+
+  // A snippet the song plays once is no figure to learn: it's drawn where it
+  // plays with no letter, joined to any such bars next to it.
+  const plays = new Map<Candidate, number>();
+  for (const list of steps) for (const s of list) if (s.snippet !== null) plays.set(s.snippet, (plays.get(s.snippet) ?? 0) + s.count);
+  const once = (s: Step) => s.snippet !== null && plays.get(s.snippet) === 1;
 
   const letterOf = new Map<Candidate, string>();
   const snippets: Snippet[] = [];
@@ -264,9 +276,23 @@ export function figureChart(
     const runs: FigureRun[] = [];
     const drawn = new Set<Candidate>();
     let i = 0;
-    for (const s of write(keysOf[section], set, LENGTHS)) {
+    let previousOnce = false;
+    for (const s of steps[section]) {
       const first = list[i];
       const bars = list.slice(i, i + s.length);
+      i += s.length * s.count;
+      if (once(s)) {
+        const last = runs[runs.length - 1];
+        if (previousOnce) {
+          last.scoreBars.push(...bars.map((b) => b.scoreBar));
+          last.barBeats.push(...bars.map((b) => b.beats));
+        } else {
+          runs.push({ letter: null, scoreBars: bars.map((b) => b.scoreBar), barBeats: bars.map((b) => b.beats), draw: true, count: 1, songBar: first.songBar, startBeat: first.startBeat });
+        }
+        previousOnce = true;
+        continue;
+      }
+      previousOnce = false;
       if (s.snippet !== null && !letterOf.has(s.snippet)) {
         letterOf.set(s.snippet, figureLetter(letterOf.size));
         snippets.push({
@@ -287,7 +313,6 @@ export function figureChart(
         songBar: first.songBar,
         startBeat: first.startBeat,
       });
-      i += s.length * s.count;
     }
     return { section, runs };
   });

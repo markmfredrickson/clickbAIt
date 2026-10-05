@@ -65,7 +65,10 @@ export interface ChordRow extends Span {
 export type ChartKind = "tab" | "staff" | "staff-tab" | "drums";
 
 export interface FigureItem extends Span {
-  /** The snippet's letter (see charts/figures.ts), or null for bars the score has nothing for. */
+  /**
+   * The snippet's letter (see charts/figures.ts), or null: for bars the song
+   * plays only here (drawn) or bars the score has nothing for (not drawn).
+   */
   letter: string | null;
   /** The score bar behind each bar of the snippet here. */
   scoreBars: (number | null)[];

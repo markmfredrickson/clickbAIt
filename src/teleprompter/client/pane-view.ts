@@ -140,15 +140,16 @@ const letterText = (letter: string | null) => letter ?? "–";
 function figureRow(row: FigureRow, notation: NotationTarget[]): RowView {
   const line = el("div", "row figure-row");
   const items = row.items.map((run) => {
-    const drawn = run.draw && run.letter !== null;
+    const drawn = run.draw && run.scoreBars.some((b) => b !== null);
     const runEl = el("div", "figure-run" + (drawn ? " first" : ""));
     if (!drawn) {
       // The letter alone: "A ×8".
       runEl.appendChild(el("span", "figure-label", letterText(run.letter)));
     } else {
       // In line: the letter, the snippet's bars, and its count after: "(A) [bars] ×8".
+      // Bars the song plays only here have no letter.
       const body = el("div", "figure-body");
-      body.appendChild(el("span", "figure-label", `(${letterText(run.letter)})`));
+      if (run.letter !== null) body.appendChild(el("span", "figure-label", `(${run.letter})`));
       for (const seg of barSegments(run.scoreBars)) {
         if (seg.start === null) continue;
         const staff = el("div", "notation");

@@ -479,6 +479,11 @@ body {
   color: var(--accent);
 }
 
+/* A count the song hasn't reached yet stays grey, so the bright one is the one playing. */
+.row.current .figure-run.now ~ .figure-run .figure-count {
+  color: var(--text-dim);
+}
+
 /* Which time through a repeat this is, under its count, out of the line's flow. */
 .figure-pass {
   position: absolute;

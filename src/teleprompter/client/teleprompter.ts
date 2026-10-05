@@ -62,6 +62,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     page: number;
     litRow: number;
     litItem: number;
+    litPass?: number;
   }
   let panes: Pane[] = [];
   let order: string[] = [];  // channel ids shown, top to bottom
@@ -625,21 +626,20 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
       if (at.row >= 0) rows[at.row].el.classList.add("current");
     }
     // The item: a word, a chord, a bar, or a figure run with its pass.
-    if (p.litRow >= 0 && p.litItem >= 0 && (p.litRow !== at.row || p.litItem !== at.item)) {
-      const old = rows[p.litRow].items[p.litItem];
-      if (old) {
-        old.classList.remove("now");
-        const oldRow = p.channel.kind === "figures" ? p.channel.rows[p.litRow] : null;
-        if (oldRow && oldRow.type === "figures") showPass(old, oldRow.items[p.litItem], 0);
-      }
-    }
-    if (at.row >= 0 && at.item >= 0) {
-      const item = rows[at.row].items[at.item];
-      if (item) {
-        item.classList.add("now");
-        const row = p.channel.kind === "figures" ? p.channel.rows[at.row] : null;
-        if (row && row.type === "figures") showPass(item, row.items[at.item], at.pass ?? 0);
-      }
+    const moved = p.litRow !== at.row || p.litItem !== at.item;
+    if (p.litRow >= 0 && p.litItem >= 0 && moved) rows[p.litRow].items[p.litItem]?.classList.remove("now");
+    if (at.row >= 0 && at.item >= 0) rows[at.row].items[at.item]?.classList.add("now");
+    // Every repeated run shows its pass: 0 ahead, the count behind. A move
+    // can be a jump either way, so all of them are set again.
+    if (p.channel.kind === "figures" && (moved || at.pass !== p.litPass)) {
+      p.channel.rows.forEach(function (row, r) {
+        if (row.type !== "figures") return;
+        row.items.forEach(function (run, i) {
+          const el = rows[r].items[i];
+          if (!el || run.count < 2) return;
+          showPass(el, run, r === at.row && i === at.item ? at.pass ?? 0 : run.end <= beat ? run.count : 0);
+        });
+      });
     }
     // Words already sung in the current line stay marked.
     if (p.channel.kind === "lyrics" && at.row >= 0) {
@@ -648,6 +648,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     }
     p.litRow = at.row;
     p.litItem = at.item;
+    p.litPass = at.pass;
   }
 
   // ── Drawer ──

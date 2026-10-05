@@ -484,13 +484,19 @@ body {
   color: var(--text-dim);
 }
 
-/* Which time through a repeat this is, under its count, out of the line's flow. */
+/* Which time through a repeat this is, under its count, out of the line's
+   flow; grey except on the run playing. */
 .figure-pass {
   position: absolute;
   left: 0;
   top: 100%;
   font-size: 0.55em;
   white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.figure-run.now .figure-pass {
+  color: inherit;
 }
 
 /* A run's letters, each with its notation where it's drawn. */

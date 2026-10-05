@@ -186,14 +186,14 @@ function scoreRow(row: ScoreRow, notation: NotationTarget[]): RowView {
 }
 
 /**
- * Show a run's count ("×4") after it, and while it plays, which time through
- * this is ("3/4"), hung under the count so the line doesn't reflow as the
- * highlight moves. `pass` 0 shows none.
+ * Show a run's count ("×4") after it, and under it which time through this
+ * is ("3/4"): 0 before the song gets there, the count once it's past. The
+ * pass hangs under the count so the line doesn't reflow as it changes.
  */
 export function showPass(runEl: HTMLElement, run: FigureItem, pass: number): void {
   const countEl = runEl.querySelector<HTMLElement>(".figure-count")!;
   countEl.textContent = run.count > 1 ? `×${run.count}` : "";
-  if (pass > 0 && run.count > 1) countEl.appendChild(el("span", "figure-pass", `${pass}/${run.count}`));
+  if (run.count > 1) countEl.appendChild(el("span", "figure-pass", `${pass}/${run.count}`));
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { shotTiming, type Edit } from "../../src/visuals/edit.js";
-import { fcpxml, resolveCut, type SourceInfo } from "../../src/visuals/resolve.js";
+import { fcpxml, resolveCut, timeMap, type SourceInfo, type TimelineClip } from "../../src/visuals/resolve.js";
 
 // 120 bpm in 4/4 at 24 fps: a bar is 2 s, 48 frames; the dissolve is 12 frames.
 const BAR = 48;
@@ -104,6 +104,38 @@ describe("resolveCut: the edit as a timeline", () => {
   it("refuses a shot whose clip has no source", () => {
     const { sky: _, ...rest } = sources;
     expect(() => resolveCut(edit(), rest)).toThrow(/sky/);
+  });
+});
+
+describe("timeMap: a retime as Final Cut writes it, which Resolve reads", () => {
+  /** The source time the map gives at local time `t`. */
+  const at = (m: ReturnType<typeof timeMap>, t: number) => {
+    const [a, b] = m.points;
+    return a.value + ((t - a.time) * (b.value - a.value)) / (b.time - a.time);
+  };
+  /** Where the shot should be in its source at the clip's first visible frame. */
+  const want = (c: TimelineClip) => c.map[0].src + ((c.map[1].src - c.map[0].src) * c.localStart) / 24 / c.length;
+
+  it("maps the whole source from frame 0, at the shot's speed", () => {
+    const sky = resolveCut(edit(), sources).clips[4];
+    const m = timeMap(sky, sources.sky.duration, 24);
+    expect(m.points[0]).toEqual({ time: 0, value: 0 });
+    expect(m.points[1].value).toBeCloseTo(sources.sky.duration);
+    expect((m.points[1].value - m.points[0].value) / (m.points[1].time - m.points[0].time)).toBeCloseTo(3);
+  });
+
+  it("starts the clip where the shot is in its source", () => {
+    const sky = resolveCut(edit(), sources).clips[4];
+    const m = timeMap(sky, sources.sky.duration, 24);
+    expect(at(m, m.start)).toBeCloseTo(want(sky), 1);
+  });
+
+  it("runs a reversed shot from the end of the source back to frame 0", () => {
+    const road = resolveCut(edit(), sources).clips[1];
+    const m = timeMap(road, sources.road.duration, 24);
+    expect(m.points[0]).toEqual({ time: 0, value: sources.road.duration });
+    expect(m.points[1].value).toBe(0);
+    expect(at(m, m.start)).toBeCloseTo(want(road), 1);
   });
 });
 

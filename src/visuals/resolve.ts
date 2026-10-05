@@ -107,6 +107,24 @@ export function resolveCut(e: Edit, sources: Record<string, SourceInfo>): Cut {
   };
 }
 
+/**
+ * A retimed clip's time map, as Final Cut writes one: the whole source from
+ * frame 0 (or, reversed, from its end back to frame 0) at the shot's speed,
+ * with the clip's start in the retimed time. Resolve read a map that began
+ * partway into the source as starting at frame 0.
+ */
+export function timeMap(c: TimelineClip, sourceDuration: number, fps: number): { start: number; points: { time: number; value: number }[] } {
+  const speed = (c.map[1].src - c.map[0].src) / c.length;
+  const s = Math.abs(speed);
+  const end = sourceDuration / s;
+  // retimed time of the shot's first frame
+  const first = speed < 0 ? (sourceDuration - c.map[0].src) / s : c.map[0].src / s;
+  return {
+    start: first + c.localStart / fps,
+    points: speed < 0 ? [{ time: 0, value: sourceDuration }, { time: end, value: 0 }] : [{ time: 0, value: 0 }, { time: end, value: sourceDuration }],
+  };
+}
+
 interface Rate {
   num: number;
   den: number;
@@ -185,12 +203,9 @@ export function fcpxml(cut: Cut, opts: { title: string; sources: Record<string, 
     if (!c.retimed) {
       story.push(`<asset-clip ${attrs} start="${seconds(c.map[0].src + c.localStart / cut.fps, r)}">${conform}${fill}</asset-clip>`);
     } else {
-      const end = frames(Math.round(c.length * cut.fps), out);
-      story.push(
-        `<asset-clip ${attrs} start="${frames(c.localStart, out)}">${conform}` +
-          `<timeMap><timept time="0s" value="${seconds(c.map[0].src, r)}" interp="linear"/><timept time="${end}" value="${seconds(c.map[1].src, r)}" interp="linear"/></timeMap>` +
-          `${fill}</asset-clip>`,
-      );
+      const m = timeMap(c, s.duration, cut.fps);
+      const pts = m.points.map(p => `<timept time="${seconds(p.time, out)}" value="${seconds(p.value, r)}" interp="linear"/>`).join("");
+      story.push(`<asset-clip ${attrs} start="${seconds(m.start, out)}">${conform}<timeMap>${pts}</timeMap>${fill}</asset-clip>`);
     }
   });
 

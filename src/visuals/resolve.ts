@@ -116,16 +116,30 @@ export function resolveCut(e: Edit, sources: Record<string, SourceInfo>): Cut {
  * with the clip's start in the retimed time. Resolve read a map that began
  * partway into the source as starting at frame 0.
  */
-export function timeMap(c: TimelineClip, sourceDuration: number, fps: number): { start: number; points: { time: number; value: number }[] } {
+export function timeMap(c: TimelineClip, sourceDuration: number, fps: number, scale = 1): { start: number; points: { time: number; value: number }[] } {
   const speed = (c.map[1].src - c.map[0].src) / c.length;
   const s = Math.abs(speed);
   const end = sourceDuration / s;
   // retimed time of the shot's first frame
   const first = speed < 0 ? (sourceDuration - c.map[0].src) / s : c.map[0].src / s;
+  const d = sourceDuration * scale;
   return {
     start: first + c.localStart / fps,
-    points: speed < 0 ? [{ time: 0, value: sourceDuration }, { time: end, value: 0 }] : [{ time: 0, value: 0 }, { time: end, value: sourceDuration }],
+    points: speed < 0 ? [{ time: 0, value: d }, { time: end, value: 0 }] : [{ time: 0, value: 0 }, { time: end, value: d }],
   };
+}
+
+/**
+ * How Resolve stretches a source's clock. A source within 5% of the timeline's
+ * rate plays frame for frame at the timeline rate, as Final Cut's automatic
+ * speed does, whatever conform-rate says: a 25 fps clip on a 24 fps timeline
+ * shows source frame n at n/24 s. Its source times are written on that clock,
+ * the returned factor times the real ones. (Measured on Resolve 21.1; 23.976
+ * is 0.1% off, so it is left alone.)
+ */
+export function resolveScale(sourceFps: number, timelineFps: number): number {
+  const k = sourceFps / timelineFps;
+  return Math.abs(k - 1) < 0.05 && Math.abs(k - 1) > 0.005 ? k : 1;
 }
 
 /** A shot's push as scale keyframes from its first frame (`zero`, in the clip's time) to its last. */
@@ -183,7 +197,7 @@ export function fcpxml(cut: Cut, opts: { title: string; sources: Record<string, 
     const a = next();
     assets.set(name, a);
     resources.push(
-      `<asset id="${a}" name="${esc(name)}" start="0s" duration="${seconds(s.duration, r)}" hasVideo="1" videoSources="1" format="${formats.get(key)}">` +
+      `<asset id="${a}" name="${esc(name)}" start="0s" duration="${seconds(s.duration * resolveScale(s.fps, cut.fps), r)}" hasVideo="1" videoSources="1" format="${formats.get(key)}">` +
         `<media-rep kind="original-media" src="${esc(pathToFileURL(s.path).href)}"/></asset>`,
     );
   }
@@ -211,7 +225,9 @@ export function fcpxml(cut: Cut, opts: { title: string; sources: Record<string, 
     // A source at another rate plays in real time, as ffmpeg's framerate filter plays it.
     const conform = r.num !== out.num || r.den !== out.den ? `<conform-rate scaleEnabled="0"/>` : "";
     // A clip without a time map keeps time in its source's frames; a retimed one in the timeline's.
-    const m = c.retimed ? timeMap(c, s.duration, cut.fps) : undefined;
+    // A clip Resolve plays on a stretched clock needs a time map even at speed 1.
+    const k = resolveScale(s.fps, cut.fps);
+    const m = c.retimed || k !== 1 ? timeMap(c, s.duration, cut.fps, k) : undefined;
     const axis = m ? out : r;
     const start = m ? m.start : c.map[0].src + c.localStart / cut.fps;
     const retime = m ? `<timeMap>${m.points.map(p => `<timept time="${seconds(p.time, out)}" value="${seconds(p.value, r)}" interp="linear"/>`).join("")}</timeMap>` : "";

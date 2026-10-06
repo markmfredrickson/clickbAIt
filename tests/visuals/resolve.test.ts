@@ -224,6 +224,44 @@ describe("fcpxml", () => {
     }
   });
 
+  describe("a 25 fps source, which Resolve plays frame for frame at 24", () => {
+    // Measured on Resolve 21.1: a 25 fps clip on a 24 fps timeline shows source frame n at n/24 s
+    // of its own time, ignoring conform-rate. 23.976, 30 and 59.94 play in real time.
+    const pal = { ...sources, radio: { ...sources.radio, fps: 25 } };
+    const el = (name: string) => fcpxml(resolveCut(edit(), pal), { title: "T", sources: pal }).match(new RegExp(`<asset-clip[^>]*name="${name}"[\\s\\S]*?</asset-clip>`))![0];
+    /** The source frame Resolve shows at the clip's first frame: its time map at its start, counted at 24 fps. */
+    const firstFrame = (x: string) => {
+      const start = secs(x.match(/ start="([^"]+)"/)![1]);
+      const [a, b] = [...x.matchAll(/<timept time="([^"]+)" value="([^"]+)"/g)].map(m => ({ time: secs(m[1]), value: secs(m[2]) }));
+      return (a.value + ((start - a.time) * (b.value - a.value)) / (b.time - a.time)) * 24;
+    };
+
+    it("gets a time map even at speed 1, so it plays in real time", () => {
+      const x = el("green: radio");
+      expect(x).toContain("<timeMap>");
+      const [a, b] = [...x.matchAll(/<timept time="([^"]+)" value="([^"]+)"/g)].map(m => ({ time: secs(m[1]), value: secs(m[2]) }));
+      expect((b.value - a.value) / (b.time - a.time)).toBeCloseTo(25 / 24, 3);
+    });
+
+    it("starts on the source frame the shot asks for", () => {
+      const c = resolveCut(edit(), pal).clips[2];
+      const want = (c.map[0].src + c.localStart / 24) * 25; // speed 1
+      expect(firstFrame(el("green: radio"))).toBeCloseTo(want, 0);
+    });
+
+    it("gives the asset its length as Resolve counts it", () => {
+      const xml = fcpxml(resolveCut(edit(), pal), { title: "T", sources: pal });
+      const asset = xml.match(/<asset [^>]*name="radio"[^>]*duration="([^"]+)"/)![1];
+      expect(secs(asset)).toBeCloseTo((20 * 25) / 24, 1);
+    });
+
+    it("leaves 23.976 and 30 fps sources alone", () => {
+      const ntsc = { ...sources, radio: { ...sources.radio, fps: 24000 / 1001 }, key: { ...sources.key, fps: 30 } };
+      const xml = fcpxml(resolveCut(edit(), ntsc), { title: "T", sources: ntsc });
+      expect(xml.match(/<timeMap>/g)).toHaveLength(2);
+    });
+  });
+
   it("puts each audio file on its own lane under the picture, from time 0", () => {
     const x = xml();
     expect(x).toMatch(/<asset-clip[^>]*name="mix" lane="-1" offset="0s"/);

@@ -101,7 +101,6 @@ function pageHtml(size: Required<RenderSize>): string {
     .figure-row, .score-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 1em; padding-bottom: ${Math.round(f * 0.25)}px; }
     .figure-run, .figure-body { display: inline-flex; align-items: center; gap: 0.4em; }
     .figure-label { font-size: 1.5em; font-weight: 700; white-space: nowrap; }
-    .figure-label.paren { font-weight: 400; font-size: 2em; }
     .figure-count:empty { display: none; }
     .score-seg { position: relative; }
     .score-seg.empty { display: flex; gap: 0.6em; }

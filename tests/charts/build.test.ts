@@ -73,14 +73,13 @@ describe("buildChartsFile", () => {
     expect(reads).toBe(1);
   });
 
-  it("writes a chart-style part as snippets: the fixture's drums play a beat, then rest", () => {
+  it("writes a chart-style part as runs: the fixture's drums play a beat, then rest", () => {
     const drums: ChartSpec = { id: "drums", kind: "drums", instrument: "drums", score: "fixture", track: 2 };
     const out = buildChartsFile(song([fixture], [drums]), files);
     expect(out.charts[0].style).toBe("chart");
     const figures = out.charts[0].figures!;
     // The Intro's two different bars are drawn as a score; each Verse is the rest bar twice.
-    expect(figures.sections.map((sec) => sec.runs.map((r) => `${r.letter}×${r.count}`))).toEqual([[], ["A×2"], ["A×2"]]);
-    expect(figures.snippets.map((sn) => [sn.letter, sn.rest])).toEqual([["A", true]]);
+    expect(figures.sections.map((sec) => sec.runs.map((r) => `${r.scoreBars.length} bar×${r.count}`))).toEqual([[], ["1 bar×2"], ["1 bar×2"]]);
   });
 
   it("draws as scores the sections the manifest names, and those where no bar repeats", () => {

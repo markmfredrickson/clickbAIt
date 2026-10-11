@@ -2,8 +2,8 @@
  * The card before a song, as page elements, for the web prompter and the
  * e-ink renderer alike: the song, its key and tempo, this screen's notes
  * (see card.ts), and for each part on screen a reminder of what it plays:
- * a chart-style part's figures, each letter with its bar, or a score-style
- * part's opening row, drawn with the notation the rows carry.
+ * its opening (a chart-style part's first run, a score-style part's first
+ * row), drawn with the notation the rows carry.
  */
 
 import type { FigureRow, RowChannel, RowDocument, ScoreRow } from "../rows.js";
@@ -42,7 +42,7 @@ export function cardView(doc: RowDocument, song: CardSong, shown: readonly strin
   }
 
   for (const channel of channels) {
-    const figure = legendRow(channel, doc) ?? openingRow(channel, doc.card?.opening[channel.id]);
+    const figure = openingRow(channel, doc.card?.opening[channel.id]);
     if (!figure) continue;
     const part = el("div", `card-figure pane-${channel.kind}`);
     part.appendChild(el("div", "card-figure-for", channelTitle(channel)));
@@ -73,14 +73,4 @@ function openingRow(channel: RowChannel, at: { row: number; item: number } | und
   if (!row) return null;
   const only: FigureRow | ScoreRow = row.type === "figures" ? { ...row, items: [{ ...row.items[at.item], count: 1 }] } : row;
   return { ...channel, kind: "figures", rows: [only] };
-}
-
-/** A one-row channel of a chart-style part's figures: "(A) [bar] (B) [bar] …". */
-function legendRow(channel: RowChannel, doc: RowDocument): RowChannel | null {
-  const list = doc.card?.figures?.[channel.id];
-  if (channel.kind !== "figures" || !list?.length) return null;
-  const items = list.map((f) => ({
-    letter: f.letter, scoreBars: f.scoreBars, barBeats: f.scoreBars.map(() => 0), draw: true, count: 1, phraseBeats: 0, songBar: 0, start: 0, end: 0,
-  }));
-  return { ...channel, rows: [{ type: "figures", section: 0, start: 0, end: 0, items }] };
 }

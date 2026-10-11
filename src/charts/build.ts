@@ -28,7 +28,7 @@ export interface BuiltChart extends ChartSpec {
   bars: MappedBar[];
   /** How it's drawn: `chart` (its figures) or `score` (every bar). See chartStyle. */
   style: "chart" | "score";
-  /** Chart style: the part as figure letters, section by section. */
+  /** Chart style: the part as runs, section by section. */
   figures?: FigureChart;
   /** Chart style: the sections drawn bar by bar anyway, by index (the manifest's
    *  scoreSections, and those no bar repeats in). */
@@ -107,7 +107,7 @@ export function buildChartsFile(
     // A bar's signature lists each beat's notes in brackets; a rest bar has none.
     const restBars = signatures.flatMap((sig, i) => (/\[[^\]]/.test(sig) ? [] : [i + 1]));
     // A chart's sections drawn as scores: those the manifest names (every
-    // occurrence), and those no bar repeats in. Its snippets come from the rest.
+    // occurrence), and those no bar repeats in. Its runs come from the rest.
     const sectionsAsScore =
       style === "chart"
         ? [...new Set([...sections.flatMap((s, i) => (chart.scoreSections?.includes(s.name) ? [i] : [])), ...unrepeatedSections(score.bars, signatures, sections)])].sort((a, b) => a - b)

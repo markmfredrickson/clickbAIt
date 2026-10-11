@@ -456,7 +456,7 @@ body {
   gap: 0.4em;
 }
 
-/* Letters and counts are the chart's main text, so they read larger than the
+/* Counts are the chart's main text, so they read larger than the
    staff; the pane's size scales both together. */
 .figure-label {
   position: relative;
@@ -464,11 +464,6 @@ body {
   font-weight: 700;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.figure-label.paren {
-  font-weight: 400;
-  font-size: 2em;
 }
 
 .figure-count:empty {
@@ -488,7 +483,7 @@ body {
   white-space: nowrap;
 }
 
-/* A run's letters, each with its notation where it's drawn. */
+/* A run's notation. */
 .figure-body {
   display: flex;
   align-items: center;

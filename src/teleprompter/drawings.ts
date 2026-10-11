@@ -51,13 +51,11 @@ export function notationRanges(doc: RowDocument): { id: string; source: string; 
     const add = (start: number, count: number) => seen.set(drawingKey(start, count), { start, count });
     for (const row of c.rows) {
       if (row.type === "figures") {
-        for (const run of row.items) if (run.draw) for (const seg of barSegments(run.scoreBars)) if (seg.start !== null) add(seg.start, seg.count);
+        for (const run of row.items) for (const seg of barSegments(run.scoreBars)) if (seg.start !== null) add(seg.start, seg.count);
       } else {
         for (const seg of scoreSegments(row.items)) if (seg.start !== null) add(seg.start, seg.count);
       }
     }
-    // The card's reminder of the part's snippets.
-    for (const f of doc.card?.figures?.[c.id] ?? []) for (const seg of barSegments(f.scoreBars)) if (seg.start !== null) add(seg.start, seg.count);
     const ranges = [...seen.values()].sort((a, b) => a.start - b.start || a.count - b.count);
     return [{ id: c.id, source: c.source, track: c.track, chart: c.chart, ranges }];
   });

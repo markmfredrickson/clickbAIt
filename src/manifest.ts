@@ -346,8 +346,8 @@ const ScoreSpecSchema = z
  * A chart channel: one track of a score, shown alongside the song. `kind`
  * says how to draw its bars: `tab` as tab with the rhythm under it, `staff`
  * as standard notation, `staff-tab` as both, `drums` as percussion. `style`
- * says what to draw: `chart` names each distinct bar with a letter and draws
- * it once per section ("(A) [bar] ×8"), `score` draws every bar; see
+ * says what to draw: `chart` draws each section's bars with back-to-back
+ * repeats counted ("[bars] ×8"), `score` draws every bar; see
  * chartStyle for the default; `scoreSections` draws some sections of a chart
  * as scores. `instrument` groups channels, so a display can
  * ask for "guitar" and get every guitar chart.

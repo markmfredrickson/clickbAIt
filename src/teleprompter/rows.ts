@@ -10,7 +10,7 @@
  *   chords   `barsPerRow` bars per row (4, or the song's or section's own),
  *            never past a section's end; its chords the items
  *   figures  a chart-style part (see charts/figures.ts): one row per
- *            section, its runs of snippets the items ("A ×8"); a section
+ *            section, its runs the items ("[bars] ×8"); a section
  *            drawn as a score instead has score rows, as below
  *   score    a score-style part: `barsPerRow` bars per row, like chords,
  *            each bar an item
@@ -65,14 +65,10 @@ export interface ChordRow extends Span {
 export type ChartKind = "tab" | "staff" | "staff-tab" | "drums";
 
 export interface FigureItem extends Span {
-  /** The snippet's letter (see charts/figures.ts), or null for bars the score has nothing for. */
-  letter: string | null;
-  /** The score bar behind each bar of the snippet here. */
+  /** The score bar behind each bar of one time through (see charts/figures.ts); all null where the score has nothing. */
   scoreBars: (number | null)[];
-  /** Beats in each bar of the snippet. */
+  /** Beats in each bar of one time through. */
   barBeats: number[];
-  /** Draw it here: the first time its section plays it. */
-  draw: boolean;
   /** Times through, back to back. */
   count: number;
   /** Beats in one time through it. */
@@ -129,9 +125,7 @@ export interface RowDocument {
     /** Where the song's timeline starts (the lead-in's first beat): the card shows there. */
     startBeat: number;
     notes: Note[];
-    /** A chart-style part's snippets, a reminder of what it plays: each letter with its score bars, rests left out. */
-    figures: Record<string, { letter: string; scoreBars: number[] }[]>;
-    /** A score-style part's opening: its first row and bar that plays (not only rests). */
+    /** A chart part's opening: its first row, and the run or bar there that plays (not only rests). */
     opening: Record<string, { row: number; item: number }>;
   };
 }

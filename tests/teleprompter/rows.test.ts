@@ -179,10 +179,10 @@ describe("buildRows: chart-style parts (figures)", () => {
     ]);
   });
 
-  it("keeps each run whole, with its start, end, snippet length and the score bars to draw", () => {
-    expect(kit.rows[2].items.map((r: any) => [r.letter, r.count, r.start, r.end, r.phraseBeats, r.scoreBars, r.draw])).toEqual([
-      ["A", 7, 28, 56, 4, [1], true],
-      [null, 1, 56, 60, 4, [null], false],
+  it("keeps each run whole, with its start, end, length once through and the score bars to draw", () => {
+    expect(kit.rows[2].items.map((r: any) => [r.count, r.start, r.end, r.phraseBeats, r.scoreBars])).toEqual([
+      [7, 28, 56, 4, [1]],
+      [1, 56, 60, 4, [null]],
     ]);
   });
 });
@@ -430,20 +430,14 @@ describe("buildRows: the card", () => {
     expect([doc.card?.startBeat, doc.card?.notes]).toEqual([-8, notes]);
   });
 
-  it("lists a chart-style part's snippets, each letter with its score bars, leaving out rests", () => {
-    // The lead rests through the Verse (A), then plays B… in the Break and Chorus.
-    expect(doc.card?.figures.lead?.slice(0, 3)).toEqual([
-      { letter: "B", scoreBars: [2] },
-      { letter: "C", scoreBars: [3] },
-      { letter: "D", scoreBars: [4] },
-    ]);
-    expect(doc.card?.figures.lead?.some((f) => f.letter === "A")).toBe(false);
+  it("marks a chart-style part's opening: its first run that plays", () => {
+    // The lead rests through the Verse (row 0); the Break is row 1.
+    expect(doc.card?.opening.lead).toEqual({ row: 1, item: 0 });
   });
 
-  it("marks a score-style part's opening instead: its first row with a bar that plays", () => {
+  it("marks a score-style part's opening: its first row with a bar that plays", () => {
     // The Verse rests (rows 0 and 1, 4 + 2 bars); the Break is row 2.
     expect(doc.card?.opening.vocals).toEqual({ row: 2, item: 0 });
-    expect(doc.card?.figures.vocals).toBeUndefined();
   });
 
   it("has no card without notes or a start to place it", () => {

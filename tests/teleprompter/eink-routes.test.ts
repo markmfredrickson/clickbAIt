@@ -145,7 +145,7 @@ describe("GET /eink/deck — panes", () => {
 
 describe("GET /eink/deck — the card", () => {
   it("carries the card's image and when it goes away, for rows that have a card", async () => {
-    current = { ...current!, rows: { ...ROWS, card: { startBeat: -8, notes: [], figures: {}, opening: {} } } };
+    current = { ...current!, rows: { ...ROWS, card: { startBeat: -8, notes: [], opening: {} } } };
     const d = await (await deck()).json();
     expect(d.card).toMatchObject({ startBeat: -8 });
     expect((await fetch(base + d.card.src)).status).toBe(200);

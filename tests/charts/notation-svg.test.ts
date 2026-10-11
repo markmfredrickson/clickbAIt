@@ -84,7 +84,7 @@ describe("drawNotation", () => {
       channels: [
         { id: "lyrics", kind: "lyrics", rows: [] },
         { id: "kit", kind: "figures", chart: "drums", instrument: "drums", source: "song.atex", track: DRUMS, rows: [
-          { type: "figures", section: 0, start: 0, end: 4, items: [{ letters: ["A"], scoreBars: [1], barBeats: [4], draw: [true], count: 1, phraseBeats: 4, songBar: 1, start: 0, end: 4 }] },
+          { type: "figures", section: 0, start: 0, end: 4, items: [{ scoreBars: [1], barBeats: [4], count: 1, phraseBeats: 4, songBar: 1, start: 0, end: 4 }] },
         ] },
         { id: "guitar", kind: "score", chart: "tab", instrument: "guitar", source: "song.atex", track: GUITAR, rows: [
           { type: "score", section: 0, start: 0, end: 8, items: [{ songBar: 1, scoreBar: 1, start: 0, end: 4 }, { songBar: 2, scoreBar: 2, start: 4, end: 8 }] },

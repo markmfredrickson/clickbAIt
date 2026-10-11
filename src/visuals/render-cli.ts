@@ -1,7 +1,7 @@
 /**
  * Render a song's scene beside the manifest.
  *
- *   npm run visuals:render -- <manifest.song.json> [--draft] [--scene file] [--tail s] [--from s] [--until s] [--out file] [--skip-without-scene]
+ *   npx tsx src/visuals/render-cli.ts <manifest.song.json> [--draft] [--scene file] [--tail s] [--from s] [--until s] [--out file] [--skip-without-scene]
  *
  * By default it writes the gig master, `<slug>.visuals.mp4`: 1080p, encoded
  * near-lossless, no audio. `--draft` writes `<slug>.visuals-draft.mp4` for

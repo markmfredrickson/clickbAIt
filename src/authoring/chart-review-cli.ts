@@ -8,16 +8,16 @@
  * answer can be taken back. Rebuild the song when done.
  *
  * Usage:
- *   npx tsx src/authoring/chart-review-cli.ts <song folder> [--port N]
+ *   npm run song:chart-review -- <song folder or .song.json> [--port N]
  *
  * Without --port it takes the first free port from 3100, so two songs can
  * be open at once.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createReadStream, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { createReadStream, readFileSync, statSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
-import { extname, join, resolve } from "node:path";
+import { basename, extname, join } from "node:path";
 import { SongManifestSchema, ordinal, resolveBeatMap } from "../manifest.js";
 import { beatMapCurve, beatMapToBeats } from "../core/beat-map.js";
 import { buildChartsFile } from "../charts/build.js";
@@ -27,22 +27,13 @@ import { sourceTime } from "../charts/chord-timeline.js";
 import { notationCss, renderRanges } from "../charts/notation-svg.js";
 import { ALPHATAB_DIR } from "../teleprompter/alphatab-files.js";
 import type { Drawing } from "../teleprompter/drawings.js";
+import { songArgOrExit } from "../core/song-arg.js";
 
 const args = process.argv.slice(2);
 const portFlag = args.indexOf("--port");
 const askedPort = portFlag >= 0 ? Number(args.splice(portFlag, 2)[1]) : null;
-const [dirArg] = args;
-if (!dirArg) {
-  console.error("usage: npx tsx src/authoring/chart-review-cli.ts <song folder> [--port 3100]");
-  process.exit(1);
-}
-const dir = resolve(dirArg);
-const manifestName = readdirSync(dir).find((f) => f.endsWith(".song.json"));
-if (!manifestName) {
-  console.error(`no .song.json in ${dir}`);
-  process.exit(1);
-}
-const manifestPath = join(dir, manifestName);
+const { dir, manifest: manifestPath } = songArgOrExit(args[0], "usage: npm run song:chart-review -- <song folder or .song.json> [--port N]");
+const manifestName = basename(manifestPath);
 
 const readRaw = () => JSON.parse(readFileSync(manifestPath, "utf8"));
 const writeRaw = (m: unknown) => writeFileSync(manifestPath, JSON.stringify(m, null, 2) + "\n");

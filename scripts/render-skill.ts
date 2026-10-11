@@ -9,7 +9,7 @@
  * the zod schema (`src/manifest.ts`) via zod v4's native `z.toJSONSchema`, so
  * the skill's reference can't drift from the code. Keeping it in the on-demand
  * `manifest.md` (not SKILL.md) keeps the always-loaded skill small. Run with
- * `npm run build:skill`.
+ * `npm run dev:skill`.
  */
 
 import nunjucks from "nunjucks";

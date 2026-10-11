@@ -110,7 +110,7 @@ Features: dark/light mode, adjustable text size, beat offset slider for lookahea
 
 ## Troubleshooting
 
-**"clickbait-audio not found"** — Run `./setup.sh` again, or build from source with `cargo build --release` and then `npm run build:skill`.
+**"clickbait-audio not found"** — Run `./setup.sh` again, or build from source with `cargo build --release` and then `npm run dev:skill`.
 
 **Cues sound like chipmunks** — The TTS resamples to 44100 Hz but if your REAPER project is set to a different sample rate, pitch will be off. Check REAPER project settings.
 
@@ -126,7 +126,7 @@ Features: dark/light mode, adjustable text size, beat offset slider for lookahea
 git clone https://github.com/markmfredrickson/clickbAIt && cd clickbAIt
 npm install
 cargo build --release
-npm run build:skill
+npm run dev:skill
 
 # Download models
 target/release/clickbait-audio setup

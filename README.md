@@ -210,7 +210,7 @@ npm run test:watch
 cargo build --release
 
 # Build npm package
-npm run build
+npm run dev:bundle
 ```
 
 Tests use [Vitest](https://vitest.dev/). The project follows TDD — write tests first, then implement.
@@ -228,7 +228,7 @@ The Claude Code skill lives in `skill/`. Editable sources:
 The generated `SKILL.md` is built at release time and gitignored. To regenerate locally:
 
 ```bash
-npm run build:skill
+npm run dev:skill
 ```
 
 This injects live DSongL types and builder signatures from `src/dsongl/` into the template.

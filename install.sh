@@ -18,7 +18,7 @@ if [ "$OS" != "Darwin" ]; then
   echo "For Linux/Windows, clone and build from source:"
   echo "  git clone $REPO && cd $DIR"
   echo "  npm install && cargo build --release"
-  echo "  npm run build:skill"
+  echo "  npm run dev:skill"
   echo "  See BETA_TEST.md for details."
   exit 1
 fi
@@ -29,7 +29,7 @@ if [ "$ARCH" != "arm64" ]; then
   echo ""
   echo "  git clone $REPO && cd $DIR"
   echo "  npm install && cargo build --release"
-  echo "  npm run build:skill"
+  echo "  npm run dev:skill"
   echo "  target/release/clickbait-audio setup"
   echo "  cp .env.example .env"
   echo ""

@@ -27,13 +27,13 @@
 // Footage: in setup, `const c = song.clip(name, (s) => clipSeconds or null)` opens a
 // clip from footage/footage.json; draw `p.image(c.frame, ...)` when `c.visible`.
 // c.shots ({ start, end } cuts) and c.strikes (moments of impact) come from
-// `npm run media -- analyze`.
+// `npm run song:media -- analyze`.
 //
 // Also on `song`: width, height, sections (each { name, start, end, bars, beatsPerBar }),
 // and timeOf(beat), the project seconds of a beat, for cutting on beats.
 //
-// Preview while editing:  npm run visuals:preview -- <manifest> [--scene this-file]
-// Render to video:        npm run visuals:render -- <manifest> [--scene this-file]
+// Preview while editing:  npm run song:visuals-preview -- <song folder> [--scene this-file]
+// Render to video:        npx tsx src/visuals/render-cli.ts <manifest> [--scene this-file]  (the song build runs it)
 
 export default function scene(p, song) {
   p.setup = () => {

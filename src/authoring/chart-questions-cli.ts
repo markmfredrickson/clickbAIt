@@ -9,7 +9,7 @@
  *   "distinct": [13]        bar 13 really is different
  *
  * Usage:
- *   npx tsx src/authoring/chart-questions-cli.ts <song folder>
+ *   npm run song:chart-questions -- <song folder or .song.json>
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -17,12 +17,9 @@ import { join } from "node:path";
 import type { ChartsFile } from "../charts/build.js";
 import { questionGroup } from "../charts/near-repeats.js";
 import { ordinal } from "../manifest.js";
+import { songArgOrExit } from "../core/song-arg.js";
 
-const [dir] = process.argv.slice(2);
-if (!dir) {
-  console.error("usage: npx tsx src/authoring/chart-questions-cli.ts <song folder>");
-  process.exit(1);
-}
+const { dir } = songArgOrExit(process.argv[2], "usage: npm run song:chart-questions -- <song folder or .song.json>");
 const name = readdirSync(dir).find((f) => f.endsWith(".charts.json"));
 if (!name) {
   console.error(`no .charts.json in ${dir}: build the song first`);

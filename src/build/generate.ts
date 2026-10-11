@@ -33,6 +33,7 @@ import { pCenterSeconds, type AlignChar } from "./pcenter.js";
 import { linearize } from "./linearize.js";
 import { songSlug } from "../core/dsongl/index.js";
 import type { AlignInput } from "./lyrics-timing.js";
+import { songArgOrExit } from "../core/song-arg.js";
 
 const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
 
@@ -50,12 +51,10 @@ for (let i = 2; i < process.argv.length; i++) {
   if (a.startsWith("--")) flags[a.slice(2)] = process.argv[++i] ?? "";
   else positional.push(a);
 }
-const manifestPath = positional[0];
-if (!manifestPath) {
-  console.error("usage: npx tsx src/build/generate.ts <manifest.song.json> [out-dir] [--mute-stems a,b] [--render-name name] [--part timing|project]");
-  process.exit(1);
-}
-const dir = dirname(resolve(manifestPath));
+const { manifest: manifestPath, dir } = songArgOrExit(
+  positional[0],
+  "usage: npm run song:build -- <song folder or .song.json> [out-dir] [--mute-stems a,b] [--render-name name] [--part timing|project]",
+);
 const outDir = positional[1] ? resolve(positional[1]) : dir;
 const muteTracks = (flags["mute-stems"] ?? "").split(",").filter(Boolean).map(stemTrackName);
 const renderName = flags["render-name"] || undefined;
@@ -283,7 +282,7 @@ if (manifest.charts?.length || manifest.chords) {
   lyricsMsg += `; ${chartsFile.charts.length} chart(s)`;
   if (chartsFile.chords) lyricsMsg += `; ${chartsFile.chords.length} chord(s)`;
   const asked = chartsFile.charts.reduce((n, c) => n + (c.questions?.length ?? 0), 0);
-  if (asked) lyricsMsg += `; ${asked} near-repeat question(s): npm run chart-questions -- ${dir}`;
+  if (asked) lyricsMsg += `; ${asked} near-repeat question(s): npm run song:chart-review -- ${dir}`;
 }
 
 // The song's notes, for the card before it; a bad notes file fails the build.

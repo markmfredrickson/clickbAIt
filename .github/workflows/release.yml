@@ -33,7 +33,7 @@ jobs:
       - name: Render SKILL.md
         run: |
           npm install
-          npm run build:skill
+          npm run dev:skill
 
       - name: Package skill bundle
         run: |

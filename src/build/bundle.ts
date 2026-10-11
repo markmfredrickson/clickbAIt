@@ -7,10 +7,13 @@
  * clock (not OSC).
  *
  * Usage:
- *   npm run bundle -- songs/<artist>/<song>        [--out <dir>]
+ *   npx tsx src/build/bundle.ts songs/<artist>/<song>  [--out <dir>]
+ *
+ * The last step of the song recipe's `bundle` task (scripts/render-bundle.ts),
+ * which renders the mixes first; run that, not this.
  *
  * Inputs (already produced by the normal pipeline), found in the song folder:
- *   - <slug>.lyrics-display.json  — from `npm run generate` (the built display)
+ *   - <slug>.lyrics-display.json  — from the song build (the built display)
  *   - <slug>.rows.json            — also from generate: what the prompter's panes show
  *   - <slug>.charts.json          — optional; used only for a song built before rows files
  *   - the score files charts come from (only for a song built before rows files,
@@ -48,8 +51,8 @@ function parseArgs(argv: string[]): { songDir: string; outDir?: string } {
   }
   if (!songDir) {
     fail(
-      "usage: npm run bundle -- songs/<artist>/<song> [--out <dir>]\n" +
-      "  e.g. npm run bundle -- songs/<artist>/<song>",
+      "usage: npx tsx src/build/bundle.ts songs/<artist>/<song> [--out <dir>]\n" +
+      "  (normally run by the song's bundle task: cd songs/<artist>/<song> && npm run bundle)",
     );
   }
   return { songDir, outDir };
@@ -65,7 +68,7 @@ const displayFiles = readdirSync(songDir).filter((f) => f.endsWith(".lyrics-disp
 if (displayFiles.length === 0) {
   fail(
     `no *.lyrics-display.json in ${songDir}\n` +
-    `  Build the song first:  npm run generate -- ${songDirArg}/<slug>.song.json`,
+    `  Build the song first:  npm run song:build -- ${songDirArg}`,
   );
 }
 if (displayFiles.length > 1) fail(`multiple *.lyrics-display.json in ${songDir}: ${displayFiles.join(", ")}`);
@@ -93,7 +96,7 @@ if (!full) {
   fail(
     `no rendered mix in ${songDir}\n` +
     `  Looked for: ${wanted.map((v) => v.file).join(", ")}\n` +
-    `  Render with:  npm run bundle:render -- ${songDirArg}`,
+    `  Render with:  cd ${songDirArg} && npm run bundle`,
   );
 }
 songData.variants = variants.map(({ id, label, file }) => ({ id, label, file }));

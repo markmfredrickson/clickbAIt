@@ -48,7 +48,7 @@ Every song gets its own folder: **`songs/<artist-slug>/<song-slug>/`**. All of a
 Create the song folder and its wireit build recipe **up front, before any analysis**. This writes `songs/<artist-slug>/<song-slug>/package.json` with the whole pipeline (split, lookup, beats, align, init-manifest, smooth, build, bundle) as tasks:
 
 ```bash
-npm run init-song -- --title "<title>" --artist "<artist>" [--key <key>] [--bpm <hint>] --source "songs/dls/<download>.m4a"
+npm run song:init -- --title "<title>" --artist "<artist>" [--key <key>] [--bpm <hint>] --source "songs/dls/<download>.m4a"
 ```
 
 - `--source` **moves and renames** the download to `<songdir>/source.m4a`. If the audio is already in place, put it at `<songdir>/source.m4a` yourself and omit `--source`.
@@ -74,7 +74,7 @@ npm run analyze
 
 Sidecars are human-editable — fix a wrong lyric or beat in the JSON and the next step uses your correction.
 
-**Tuning `beats`.** The detection window came from `--bpm` (or a wide default). After lookup reports the tempo, if the window was off, narrow `--min-bpm`/`--max-bpm` in the recipe's `beats` task (add `--start`/`--until`, source seconds, to crop a loose intro or slowing outro) and re-run `npm run beats` — it's standalone, so a `build` never re-runs it. For songs with drum-**silent** passages the single-stem pass leaves gaps in the grid; detect two passes + `beats:unify` by hand and write `source.m4a.beats.json` yourself (see `skill/stems.md`).
+**Tuning `beats`.** The detection window came from `--bpm` (or a wide default). After lookup reports the tempo, if the window was off, narrow `--min-bpm`/`--max-bpm` in the recipe's `beats` task (add `--start`/`--until`, source seconds, to crop a loose intro or slowing outro) and re-run `npm run beats` — it's standalone, so a `build` never re-runs it. For songs with drum-**silent** passages the single-stem pass leaves gaps in the grid; detect two passes + `npm run song:beats-unify` by hand and write `source.m4a.beats.json` yourself (see `skill/stems.md`).
 
 ## Step 3: Present findings and confirm
 
@@ -119,7 +119,7 @@ Runs **smooth** (de-warble the beats → beatmap) then **build/generate**: spoke
 - **`split`** — the mix → role stems.
 - **`lookup`** — Deezer/Genius/MusicBrainz → `<slug>.lookup.json`. Network task with no file inputs, so it re-runs when invoked; kept **out of the build chain** so a rebuild never re-hits the network.
 - **`lyrics-txt`** — `<slug>.lookup.json` → `<slug>.lyrics.txt`.
-- **`beats`** — detect from the drum stem: `clickbait-audio beats stems/source_drums.wav --min-bpm <lo> --max-bpm <hi> [--start <s>] [--until <s>] > source.m4a.beats.json`. `--start`/`--until` (source seconds) crop a loose/rubato intro or a slowing outro. Window is `--bpm` ±10% (or a wide default). **Standalone — not a build dep**, so a tuned detection is never re-run by accident. (For drum-*silent* passages, detect two-pass + `beats:unify` by hand instead.)
+- **`beats`** — detect from the drum stem: `clickbait-audio beats stems/source_drums.wav --min-bpm <lo> --max-bpm <hi> [--start <s>] [--until <s>] > source.m4a.beats.json`. `--start`/`--until` (source seconds) crop a loose/rubato intro or a slowing outro. Window is `--bpm` ±10% (or a wide default). **Standalone — not a build dep**, so a tuned detection is never re-run by accident. (For drum-*silent* passages, detect two-pass + `npm run song:beats-unify` by hand instead.)
 - **`align`** — single-shot `clickbait-audio align` → `stems/source_vocals.align.json`. KV/multitrack songs have no demucs vocal stem, so they get no `align` task; their alignment is produced by `npm run realign-all` (desilence) from the `lead vocal` track instead.
 
 **`init-manifest`** — the one-shot first-cut manifest from the analysis sidecars. **Standalone, never a build dep**, and guarded against clobbering your authored sections.
@@ -133,8 +133,8 @@ Runs **smooth** (de-warble the beats → beatmap) then **build/generate**: spoke
 Rebuild from the repo root:
 
 ```bash
-npm run build:songs             # build every song whose manifest/beatmap/align/rig changed
-npm run build:songs -- bundle   # also render the mix + rebuild the bundle (on demand)
+npm run songs                   # build every song whose manifest/beatmap/align/rig changed
+npm run songs -- bundle         # also render the mix + rebuild the bundle (on demand)
 ```
 
 Or per song from its folder: `npm run analyze` (once), `npm run init-manifest`, author the sections, then `npm run build`. Re-run `npm run beats` after changing detection flags. Editing a `.song.json` re-runs only the affected song (wireit content-hashes inputs); **bundling is opt-in** (`-- bundle`). The rig (`default.json`) is a tracked input, so a routing change re-triggers the affected songs. After changing **clickbait itself** (tool code — not a tracked input), force a rebuild: `rm -rf songs/*/*/.wireit` then `npm run build:songs`.
@@ -144,7 +144,7 @@ Or per song from its folder: `npm run analyze` (once), `npm run init-manifest`, 
 - **Open the RPP in REAPER** (close it first if open — no hot-reload).
 - **Run the teleprompter** (browser lyrics + OSC relay + QR code), reading the built `<song-slug>.lyrics-display.json`:
   ```bash
-  npm run teleprompter -- --songs-dir "songs/<artist-slug>/<song-slug>"
+  npm run show:teleprompter -- --songs-dir "songs/<artist-slug>/<song-slug>"
   ```
   See `skill/teleprompter.md` for the REAPER OSC setup.
 

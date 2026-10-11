@@ -9,7 +9,7 @@
  *
  * The output `teleprompter.js` sits next to index.html (a build artifact, not
  * checked in). Every consumer builds it before serving/copying: the relay
- * (startTeleprompter), the bundle builder, and `npm run build`.
+ * (startTeleprompter), the bundle builder, and `npm run dev:bundle`.
  */
 
 import * as esbuild from "esbuild";

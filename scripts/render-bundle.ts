@@ -1,7 +1,7 @@
 /**
  * Build a practice bundle end to end — one command instead of the manual dance.
  *
- *   npm run bundle:render -- songs/<artist>/<song>
+ *   cd songs/<artist>/<song> && npm run bundle    (the recipe's bundle task runs this)
  *
  * Stages:
  *   1. For EACH practice variant (full, minus-<part>, click-only — the manifest's
@@ -35,7 +35,7 @@ const TSX = (rel: string) => `npx tsx ${JSON.stringify(join(ROOT, rel))}`;
 
 const arg = process.argv[2];
 if (!arg) {
-  console.error("usage: npm run bundle:render -- songs/<artist>/<song>");
+  console.error("usage: npx tsx scripts/render-bundle.ts <song folder>  (or npm run bundle in the song folder)");
   process.exit(1);
 }
 const dir = resolve(arg);

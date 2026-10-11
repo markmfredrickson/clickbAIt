@@ -86,7 +86,7 @@ backups/
 # Local practice launcher (symlinks into gitignored songs/)
 practice/
 
-# Compiled esbuild bundles — regenerable via `npm run build` (scripts/build.mjs).
+# Compiled esbuild bundles — regenerable via `npm run dev:bundle` (scripts/build.mjs).
 # Every bin/*.mjs is build output.
 bin/*.mjs
 

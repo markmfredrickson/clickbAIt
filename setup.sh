@@ -20,7 +20,7 @@ if [ -z "$LATEST" ]; then
   echo ""
   echo "No release found. Build from source instead:"
   echo "  cargo build --release"
-  echo "  npm run build:skill"
+  echo "  npm run dev:skill"
   exit 1
 fi
 

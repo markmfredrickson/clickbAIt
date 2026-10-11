@@ -10,11 +10,12 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { execFile } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { SongManifestSchema } from "../manifest.js";
 import { toSlug } from "../core/dsongl/slug.js";
 import { startPreview } from "./preview.js";
+import { songArgOrExit } from "../core/song-arg.js";
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -25,12 +26,10 @@ const { values, positionals } = parseArgs({
     size: { type: "string", default: "1920x1080" },
   },
 });
-const manifestPath = positionals[0];
-if (!manifestPath) {
-  console.error("usage: npx tsx src/visuals/preview-cli.ts <manifest.song.json> [--scene file] [--audio file] [--port 8095] [--size 1920x1080]");
-  process.exit(1);
-}
-const dir = dirname(resolve(manifestPath));
+const { manifest: manifestPath, dir } = songArgOrExit(
+  positionals[0],
+  "usage: npm run song:visuals-preview -- <song folder or .song.json> [--scene file] [--audio file] [--port 8095] [--size 1920x1080]",
+);
 const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
 const slug = toSlug([manifest.title, manifest.artist].filter(Boolean).join("-"));
 const file = (suffix: string) => join(dir, `${slug}${suffix}`);

@@ -6,7 +6,7 @@
  * raw audio to finished RPP is a content-hashed, re-runnable wireit task.
  *
  * Usage:
- *   npm run init-song -- --title "Billie Jean" --artist "Michael Jackson" \
+ *   npm run song:init -- --title "Billie Jean" --artist "Michael Jackson" \
  *     [--key F#m] [--bpm 117] [--model 4stem] [--source songs/dls/whatever.m4a]
  *
  * --source, if given, is MOVED and renamed to <songdir>/source.m4a. Otherwise
@@ -35,7 +35,7 @@ const title = flag("title");
 const artist = flag("artist");
 if (!title) {
   console.error(
-    'usage: npm run init-song -- --title "<t>" [--artist "<a>"] [--key <k>] [--bpm <n>] [--model 4stem|6stem] [--source <file>]',
+    'usage: npm run song:init -- --title "<t>" [--artist "<a>"] [--key <k>] [--bpm <n>] [--model 4stem|6stem] [--source <file>]',
   );
   process.exit(1);
 }

@@ -51,7 +51,7 @@ function readEdit(visualsDir: string): Edit {
   e.clips = {};
   for (const sec of e.sections) for (const s of sec.shots) {
     const r = media.clips[s.clip];
-    if (!r) throw new Error(`edit.json uses clip "${s.clip}", which isn't in footage/footage.json (add it with \`npm run media -- add\`)`);
+    if (!r) throw new Error(`edit.json uses clip "${s.clip}", which isn't in footage/footage.json (add it with \`npm run song:media -- add\`)`);
     e.clips[s.clip] = { file: `../${r.file}`, by: r.by, license: r.license, url: r.source.url as string | undefined };
   }
   return e;

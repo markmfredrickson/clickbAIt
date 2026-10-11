@@ -1,11 +1,11 @@
 /**
  * Footage for a song's scene.
  *
- *   npm run media -- add <source> --song <manifest> --name <clip> [--in 5:00 --out 5:10]
+ *   npm run song:media -- add <source> --song <manifest> --name <clip> [--in 5:00 --out 5:10]
  *                        [--from <page url> | --from own] [--license <id>] [--by <name>] [--crop w:h:x:y]
- *   npm run media -- sheet <source> [--every 5] [--out <dir>]
- *   npm run media -- analyze <clip>... --song <manifest>
- *   npm run media -- upgrade <clip>... --to <source> --song <manifest> [--near t]
+ *   npm run song:media -- sheet <source> [--every 5] [--out <dir>]
+ *   npm run song:media -- analyze <clip>... --song <manifest>
+ *   npm run song:media -- upgrade <clip>... --to <source> --song <manifest> [--near t]
  *
  * <source> is an Internet Archive item (`archive:<id>` or its archive.org URL)
  * or a file you downloaded or shot. `add` cuts the clip into the song's
@@ -41,10 +41,10 @@ const { values, positionals } = parseArgs({
 });
 const [command, source] = positionals;
 const usage = () => {
-  console.error("usage: npm run media -- add <source> --song <manifest> --name <clip> [--in t --out t] [--from url|own] [--license id] [--by name]");
-  console.error("       npm run media -- sheet <source> [--every 5] [--out dir]");
-  console.error("       npm run media -- analyze <clip>... --song <manifest>");
-  console.error("       npm run media -- upgrade <clip>... --to <source> --song <manifest> [--near t]");
+  console.error("usage: npm run song:media -- add <source> --song <manifest> --name <clip> [--in t --out t] [--from url|own] [--license id] [--by name]");
+  console.error("       npm run song:media -- sheet <source> [--every 5] [--out dir]");
+  console.error("       npm run song:media -- analyze <clip>... --song <manifest>");
+  console.error("       npm run song:media -- upgrade <clip>... --to <source> --song <manifest> [--near t]");
   process.exit(1);
 };
 if (!command || !source) usage();

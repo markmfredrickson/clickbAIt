@@ -84,14 +84,14 @@ Note the split inside lyrics: the lyric **text** lives in the manifest (nested u
 **Regenerating everything from manifests** is the build half, and it cannot touch sections or lyrics:
 
 ```sh
-npm run build:songs             # every changed song → RPP, lyrics-display, cues
-npm run build:songs -- bundle   # also render the mix + bundle
+npm run songs                   # every changed song → RPP, lyrics-display, cues
+npm run songs -- bundle         # also render the mix + bundle
 ```
 
-Wireit content-hashes inputs, so unchanged songs no-op. After changing clickbait's own tool code (not a tracked input), force it: `rm -rf songs/*/*/.wireit`.
+Wireit content-hashes inputs, so unchanged songs no-op. After changing clickbait's own tool code (not a tracked input), force it: `npm run songs -- build --force` (clears only that task's wireit state, so its dependencies, like the stem split, don't re-run).
 
 **Caveats.**
-- `build:songs` only visits folders whose `package.json` has a `wireit` block. A flat folder holding several manifests (e.g. `songs/steely-dan/`, `songs/example-songs/`) is skipped — build those with `npm run generate <manifest>`.
+- `npm run songs` only visits folders whose `package.json` has a `wireit` block. A flat folder holding several manifests (e.g. `songs/steely-dan/`, `songs/example-songs/`) is skipped — build those with `npm run song:build -- <manifest>`.
 - Recipes are **not uniform**. Songs scaffolded before the recipe grew `beats`/`smooth` still lack those tasks and read `*.beats.json`/`*.beatmap.json` as globs instead. Check the actual recipe before reasoning about a specific song.
 - The build needs the Rust binary. `.claude/skills/clickbait/bin/clickbait-audio` is a **symlink into `target/release/`**, so a `cargo clean` silently breaks both the build and `tests/build-rpp.test.ts`. Fix: `cargo build --release -p clickbait-audio` (a from-scratch build takes 10–20 min — it compiles `burn` and `wgpu`).
 

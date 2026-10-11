@@ -7,30 +7,27 @@
  * file.
  *
  * Usage:
- *   npx tsx src/authoring/chords-draft-cli.ts <song.song.json> <sheet.txt> [--out f]
+ *   npm run song:chords-draft -- <song folder or .song.json> <sheet.txt> [--out f]
  *
  * Set CLICKBAIT_SCAFFOLD_FORCE=1 to replace an existing draft on purpose.
  */
 
 import { readFileSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import { SongManifestSchema, resolveBeatMap } from "../manifest.js";
 import { beatMapCurve, beatMapToBeats } from "../core/beat-map.js";
 import { buildLyricsDisplay } from "../build/lyrics-display.js";
 import type { AlignInput } from "../build/lyrics-timing.js";
 import { songSections } from "../charts/bar-map.js";
 import { draftLab, writeNewFile } from "../charts/chord-draft.js";
+import { songArgOrExit } from "../core/song-arg.js";
 
 const args = process.argv.slice(2);
 const outFlag = args.indexOf("--out");
 const out = outFlag >= 0 ? args.splice(outFlag, 2)[1] : undefined;
-const [manifestPath, sheetPath] = args;
-if (!manifestPath || !sheetPath) {
-  console.error("usage: npx tsx src/authoring/chords-draft-cli.ts <song.song.json> <sheet.txt> [--out f]");
-  process.exit(1);
-}
-
-const dir = dirname(resolve(manifestPath));
+const usage = "usage: npm run song:chords-draft -- <song folder or .song.json> <sheet.txt> [--out f]";
+const [songPath, sheetPath] = args;
+const { manifest: manifestPath, dir } = songArgOrExit(sheetPath ? songPath : undefined, usage);
 const manifest = SongManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
 manifest.sources.recording.beatMap = resolveBeatMap(manifest.sources.recording.beatMap, dir);
 if (!manifest.lyrics.alignment) {

@@ -82,6 +82,22 @@ describe("buildChartsFile", () => {
     expect(figures.sections.map((sec) => sec.runs.map((r) => `${r.scoreBars.length} bar×${r.count}`))).toEqual([[], ["1 bar×2"], ["1 bar×2"]]);
   });
 
+  it("counts a bar as the one the manifest says it's the same as", () => {
+    // Drum bar 1 (a beat) as bar 3 (a rest): the Intro's two bars are now one, played twice.
+    const drums: ChartSpec = { id: "drums", kind: "drums", instrument: "drums", score: "fixture", track: 2, sameAs: { "1": 3 } };
+    const chart = buildChartsFile(song([fixture], [drums]), files).charts[0];
+    expect(chart.sectionsAsScore).toEqual([]);
+    expect(chart.figures!.sections[0].runs.map((r) => [r.scoreBars, r.count])).toEqual([[[3], 2]]);
+  });
+
+  it("reports answers about bars the score doesn't have, and answers on a score-style part", () => {
+    const drums: ChartSpec = { id: "drums", kind: "drums", instrument: "drums", score: "fixture", track: 2, sameAs: { "9": 1 } };
+    const vocals: ChartSpec = { ...guitar, id: "vox", style: "score", distinct: [2] };
+    expect(() => buildChartsFile(song([fixture], [drums, vocals]), files)).toThrow(
+      /chart "drums": sameAs: the score has no bar 9[\s\S]*chart "vox": sameAs and distinct only apply to a chart-style part/,
+    );
+  });
+
   it("draws as scores the sections the manifest names, and those where no bar repeats", () => {
     const drums: ChartSpec = { id: "drums", kind: "drums", instrument: "drums", score: "fixture", track: 2 };
     // The Intro plays a beat then a rest bar, two different bars: drawn as a score unasked.

@@ -19,6 +19,7 @@ import { figureChart, unrepeatedSections, type FigureChart } from "./figures.js"
 import { chordBeats, type ChordTiming } from "./chord-timeline.js";
 import { parseLab } from "./lab.js";
 import { readScoreInfo, type ScoreInfo } from "./score-info.js";
+import { checkSameAs, nearRepeats, sameAsBars, type NearRepeat } from "./near-repeats.js";
 
 export interface BuiltChart extends ChartSpec {
   /** The score file, relative to the song folder. */
@@ -35,6 +36,8 @@ export interface BuiltChart extends ChartSpec {
   sectionsAsScore?: number[];
   /** Score bars where this track plays nothing but rests (1-based). */
   restBars: number[];
+  /** Chart style: the near-repeats still to answer in the manifest (sameAs or distinct). */
+  questions?: NearRepeat[];
 }
 
 export interface ChartsFile {
@@ -106,13 +109,20 @@ export function buildChartsFile(
     const signatures = score.info.signatures[chart.track] ?? [];
     // A bar's signature lists each beat's notes in brackets; a rest bar has none.
     const restBars = signatures.flatMap((sig, i) => (/\[[^\]]/.test(sig) ? [] : [i + 1]));
+    // The manifest's answers to near-repeat questions: its runs count each
+    // sameAs bar as the bar it names. Score sections still draw every bar.
+    const answered = chart.sameAs !== undefined || chart.distinct !== undefined;
+    if (style === "score" && answered) errors.push(`chart "${chart.id}": sameAs and distinct only apply to a chart-style part`);
+    errors.push(...checkSameAs(score.bars, score.info.bars, chart.sameAs ?? {}, chart.distinct ?? []).map((e) => `chart "${chart.id}": ${e}`));
+    const runBars = sameAsBars(score.bars, chart.sameAs ?? {});
     // A chart's sections drawn as scores: those the manifest names (every
     // occurrence), and those no bar repeats in. Its runs come from the rest.
     const sectionsAsScore =
       style === "chart"
-        ? [...new Set([...sections.flatMap((s, i) => (chart.scoreSections?.includes(s.name) ? [i] : [])), ...unrepeatedSections(score.bars, signatures, sections)])].sort((a, b) => a - b)
+        ? [...new Set([...sections.flatMap((s, i) => (chart.scoreSections?.includes(s.name) ? [i] : [])), ...unrepeatedSections(runBars, signatures, sections)])].sort((a, b) => a - b)
         : undefined;
-    const figures = style === "chart" ? figureChart(score.bars, signatures, sections, { asScore: sectionsAsScore }) : undefined;
+    const figures = style === "chart" ? figureChart(runBars, signatures, sections, { asScore: sectionsAsScore }) : undefined;
+    const questions = style === "chart" ? nearRepeats(runBars, signatures, sections, { asScore: sectionsAsScore, distinct: chart.distinct }) : [];
     charts.push({
       ...chart,
       style,
@@ -121,6 +131,7 @@ export function buildChartsFile(
       bars: score.bars,
       restBars,
       ...(figures ? { figures, sectionsAsScore } : {}),
+      ...(questions.length ? { questions } : {}),
     });
   }
 

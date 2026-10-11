@@ -361,6 +361,12 @@ const ChartSpecSchema = z
      *  repeats), by name, every occurrence. A section of two or more bars in
      *  which no bar repeats is drawn as a score without being listed. */
     scoreSections: z.array(z.string().min(1)).optional(),
+    /** Chart style only: answers to the build's near-repeat questions (see
+     *  charts/near-repeats.ts). `sameAs` counts a score bar as another, by
+     *  score bar number ({ "13": 9 }); `distinct` lists bars that really are
+     *  different, so the build stops asking. */
+    sameAs: z.record(z.string().regex(/^[1-9][0-9]*$/, "sameAs keys are score bar numbers"), z.number().int().positive()).optional(),
+    distinct: z.array(z.number().int().positive()).optional(),
     instrument: z.string().min(1),
     /** Id of an entry in `scores`. */
     score: z.string().min(1),

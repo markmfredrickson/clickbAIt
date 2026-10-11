@@ -53,6 +53,11 @@ describe("figureChart: runs", () => {
     expect(runs(chartOf([1, 2, 5, 1]))).toEqual(["1 ×4"]);
   });
 
+  it("counts rest bars as the same however their rests are written", () => {
+    const { placed, mapped } = bars([1, 2]);
+    expect(figureChart(mapped, ["1r[]", "2r[] 2r[] | 1r[]"], placed).sections[0].runs.map((r) => r.count)).toEqual([2]);
+  });
+
   it("doesn't count repeats that aren't back to back: every bar is written out", () => {
     const written = chartOf([1, 3, 4, 1, 3, 6]).sections[0].runs;
     expect(written.every((r) => r.count === 1)).toBe(true);

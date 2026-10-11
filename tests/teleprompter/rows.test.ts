@@ -161,7 +161,7 @@ describe("buildRows: chart-style parts (figures)", () => {
   add(1, 2, 2);
   for (let i = 0; i < 7; i++) add(2, 4, 1);
   add(2, 4, null);
-  const figures = figureChart(bars, ["groove", "fill"], sections);
+  const figures = figureChart(bars, ["4[36]", "4[38] 4[38]"], sections);
   const doc = buildRows(
     base({ charts: [{ id: "kit", kind: "drums", instrument: "drums", source: "song.gp5", track: 4, style: "chart", bars, figures }] }),
   );
@@ -313,7 +313,7 @@ describe("itemsAt", () => {
       slug: "s",
       title: "S",
       song: { timeSignature: [4, 4], sections: [{ name: "Verse", bars: 8 }] },
-      charts: [{ id: "bass", kind: "tab", instrument: "bass", source: "s.gp5", track: 0, style: "chart", bars, figures: figureChart(bars, ["a", "b"], sections) }],
+      charts: [{ id: "bass", kind: "tab", instrument: "bass", source: "s.gp5", track: 0, style: "chart", bars, figures: figureChart(bars, ["4[1]", "4[2]"], sections) }],
     });
     expect(itemsAt(doc, 0).bass).toEqual({ row: 0, item: 0, pass: 1, of: 4 });
     expect(itemsAt(doc, 7.9).bass).toEqual({ row: 0, item: 0, pass: 1, of: 4 });

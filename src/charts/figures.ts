@@ -43,12 +43,22 @@ interface Bar {
 }
 
 /** A bar's signature, or "bar N" when the file gives none: bars are the same only when they play the same. */
-const signatureOf = (signatures: readonly string[], scoreBar: number) => signatures[scoreBar - 1] ?? `bar ${scoreBar}`;
+export const signatureOf = (signatures: readonly string[], scoreBar: number) => signatures[scoreBar - 1] ?? `bar ${scoreBar}`;
+
+/**
+ * What a bar plays and how long it is, as a key: bars with equal keys are the
+ * same bar. Every bar of nothing but rests is the same, however its rests are
+ * written.
+ */
+export function barKey(signatures: readonly string[], scoreBar: number, beats: number): string {
+  const sig = signatureOf(signatures, scoreBar);
+  return `${/\[[^\]]/.test(sig) ? sig : "rest"}|${beats}`;
+}
 
 function sectionBars(bars: readonly MappedBar[], signatures: readonly string[], count: number): Bar[][] {
   const out: Bar[][] = Array.from({ length: count }, () => []);
   for (const b of bars) {
-    const key = b.scoreBar === null ? null : `${signatureOf(signatures, b.scoreBar)}|${b.beats}`;
+    const key = b.scoreBar === null ? null : barKey(signatures, b.scoreBar, b.beats);
     out[b.section].push({ key, scoreBar: b.scoreBar, beats: b.beats, songBar: b.songBar, startBeat: b.startBeat });
   }
   return out;
@@ -66,7 +76,7 @@ export function unrepeatedSections(bars: readonly MappedBar[], signatures: reado
 }
 
 /** A run while choosing: how many bars one time through is, and how many times. */
-interface Step {
+export interface Step {
   length: number;
   count: number;
 }
@@ -80,7 +90,7 @@ const SEP = "\u0001";
  * with no score (nothing drawn). Longer runs are tried first, so a tie keeps
  * the bigger unit.
  */
-function write(keys: readonly (string | null)[]): Step[] {
+export function write(keys: readonly (string | null)[]): Step[] {
   const n = keys.length;
   const best: number[] = new Array(n + 1).fill(Infinity);
   const step: (Step | null)[] = new Array(n + 1).fill(null);

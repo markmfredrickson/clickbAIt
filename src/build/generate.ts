@@ -282,6 +282,8 @@ if (manifest.charts?.length || manifest.chords) {
   if (writeTiming) writeFileSync(join(outDir, `${slug}.charts.json`), JSON.stringify(chartsFile, null, 2));
   lyricsMsg += `; ${chartsFile.charts.length} chart(s)`;
   if (chartsFile.chords) lyricsMsg += `; ${chartsFile.chords.length} chord(s)`;
+  const asked = chartsFile.charts.reduce((n, c) => n + (c.questions?.length ?? 0), 0);
+  if (asked) lyricsMsg += `; ${asked} near-repeat question(s): npm run chart-questions -- ${dir}`;
 }
 
 // The song's notes, for the card before it; a bad notes file fails the build.

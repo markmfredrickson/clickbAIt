@@ -8,7 +8,10 @@
  * answer can be taken back. Rebuild the song when done.
  *
  * Usage:
- *   npx tsx src/authoring/chart-review-cli.ts <song folder> [--port 3100]
+ *   npx tsx src/authoring/chart-review-cli.ts <song folder> [--port N]
+ *
+ * Without --port it takes the first free port from 3100, so two songs can
+ * be open at once.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -27,7 +30,7 @@ import type { Drawing } from "../teleprompter/drawings.js";
 
 const args = process.argv.slice(2);
 const portFlag = args.indexOf("--port");
-const port = portFlag >= 0 ? Number(args.splice(portFlag, 2)[1]) : 3100;
+const askedPort = portFlag >= 0 ? Number(args.splice(portFlag, 2)[1]) : null;
 const [dirArg] = args;
 if (!dirArg) {
   console.error("usage: npx tsx src/authoring/chart-review-cli.ts <song folder> [--port 3100]");
@@ -297,8 +300,15 @@ fetch("/state").then((r) => r.json()).then(render);
 </body>
 </html>`;
 
-server.listen(port, () => {
+// The port asked for, or the first free one from 3100 (another song's review may be open).
+let port = askedPort ?? 3100;
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE" && askedPort === null && port < 3120) server.listen(++port);
+  else throw err;
+});
+server.on("listening", () => {
   const url = `http://localhost:${port}/`;
   console.log(`chart review for ${manifestName}: ${url}`);
   execFile("open", ["-a", "Google Chrome", url], () => {});
 });
+server.listen(port);

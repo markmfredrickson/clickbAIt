@@ -30,6 +30,7 @@
     "init-manifest": "npx tsx src/authoring/init-manifest-cli.ts",
     "chords-draft": "npx tsx src/authoring/chords-draft-cli.ts",
     "chart-questions": "npx tsx src/authoring/chart-questions-cli.ts",
+    "chart-review": "npx tsx src/authoring/chart-review-cli.ts",
     "generate": "npx tsx src/build/generate.ts",
     "visuals:preview": "npx tsx src/visuals/preview-cli.ts",
     "visuals:render": "npx tsx src/visuals/render-cli.ts",

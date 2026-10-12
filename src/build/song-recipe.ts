@@ -23,6 +23,9 @@
  * there is one definition of the tasks.
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
 export interface SongRecipeOpts {
   slug: string;
   title: string;
@@ -38,21 +41,107 @@ export interface SongRecipeOpts {
   /** The recording file the manifest references — always "source.m4a". */
   recFile?: string;
   /**
-   * Whether to wire an `align` TASK into this recipe. True for the normal
-   * ground-up flow (a demucs `stems/source_vocals.wav` + a lyrics text).
-   *
-   * False for KV/multitrack songs. Those still HAVE vocals — a `lead vocal`
-   * track in `sources.stems.files` — they just have no demucs split for the
-   * task to point at. Their alignment is produced out-of-band by
-   * `npm run realign-all`, which locates the vocal audio beside the manifest's
-   * `lyrics.alignment.file` and runs desilence-align on it. So the align.json
-   * is generated either way; only the producing task differs.
+   * Whether to wire an `align` TASK into this recipe (default true). False
+   * only for a song with no vocal audio to align.
    */
   canAlign?: boolean;
-  /** Vocal stem to align (default the 4-stem convention). */
+  /** Vocal audio to align: the split's vocal stem by default, or a multitrack song's lead vocal track. */
   alignStem?: string;
   /** Alignment sidecar to write (default the 4-stem convention). */
   alignFile?: string;
+  /**
+   * Where the aligner's lyric text comes from: the lookup's lyrics (default),
+   * or the manifest's lines, for a multitrack song with no lookup to align
+   * against.
+   */
+  lyricsFrom?: "lookup" | "manifest";
+}
+
+/** What `alignTask` and `lyricsTxtTaskFor` need to know about a song. */
+interface AlignOpts {
+  rel: string;
+  slug: string;
+  alignStem: string;
+  alignFile: string;
+  lyricsFrom: "lookup" | "manifest";
+}
+
+/**
+ * The align task: desilence-concatenate forced alignment of the lyric text
+ * against the vocal audio (see authoring/desilence-align-cli.ts), writing the
+ * alignment and its segment map. STANDALONE: the build reads the alignment
+ * file as an input, so slow alignment never runs as part of a build.
+ */
+function alignTask(o: AlignOpts, has: (task: string) => boolean): Task {
+  const lyricsTxt = `${o.slug}.lyrics.txt`;
+  const segments = o.alignFile.replace(/\.align\.json$/, ".desilence.json");
+  const deps = (o.lyricsFrom === "lookup" ? ["split", "lyrics-txt"] : ["lyrics-txt"]).filter(has);
+  return {
+    command: `npx tsx ${o.rel}/src/authoring/desilence-align-cli.ts "${o.alignStem}" --text "${lyricsTxt}" -o "${o.alignFile}" --debug "${segments}"`,
+    files: [o.alignStem, lyricsTxt],
+    output: [o.alignFile, segments],
+    ...(deps.length ? { dependencies: deps } : {}),
+  };
+}
+
+/** lyrics-txt: the aligner's flat lyric text, file-to-file so the lyrics never pass through the model. */
+function lyricsTxtTaskFor(o: AlignOpts): Task {
+  const lyricsTxt = `${o.slug}.lyrics.txt`;
+  if (o.lyricsFrom === "manifest") {
+    const manifest = `${o.slug}.song.json`;
+    return { command: `npx tsx ${o.rel}/src/authoring/lyrics-text-cli.ts --manifest ${manifest} ${lyricsTxt}`, files: [manifest], output: [lyricsTxt] };
+  }
+  const lookupJson = `${o.slug}.lookup.json`;
+  return { command: `npx tsx ${o.rel}/src/authoring/lyrics-text-cli.ts ${lookupJson} ${lyricsTxt}`, files: [lookupJson], output: [lyricsTxt], dependencies: ["lookup"] };
+}
+
+/**
+ * What a song aligns, from its manifest: a split song's vocal stem against the
+ * lookup lyrics, or, for a multitrack song, the audio beside its alignment file
+ * (`kv/lead-vocal.align.json` → `kv/lead-vocal.mp3`) against the manifest's
+ * lines. Null when the manifest declares no alignment or there's no audio.
+ */
+export function alignSource(
+  dir: string,
+  manifest: { lyrics?: { alignment?: { file: string } }; sources?: { stems?: { dir?: string; files?: Record<string, string> } } },
+): { alignStem: string; alignFile: string; lyricsFrom: "lookup" | "manifest" } | null {
+  const alignFile = manifest.lyrics?.alignment?.file;
+  if (!alignFile) return null;
+  const stems = manifest.sources?.stems;
+  const vocals = stems?.files?.vocals;
+  if (vocals) {
+    const stem = join(stems!.dir ?? "stems/", vocals);
+    if (existsSync(join(dir, stem))) return { alignStem: stem, alignFile, lyricsFrom: "lookup" };
+  }
+  const base = alignFile.replace(/\.align\.json$/, "");
+  const audio = [".wav", ".mp3", ".m4a"].map((ext) => base + ext).find((f) => existsSync(join(dir, f)));
+  return audio ? { alignStem: audio, alignFile, lyricsFrom: "manifest" } : null;
+}
+
+/** The align commands upgradeAlign replaces: the binary's single-shot `align`. */
+const BINARY_ALIGN = /\/clickbait-audio align "[^"]+" --text "[^"]+" -o "[^"]+"$/;
+
+/**
+ * Upgrade a recipe's alignment to the desilence align task as songRecipe
+ * writes it now: a binary `align` task is replaced, and a recipe with none (a
+ * multitrack song aligned out-of-band before) gets one, with the lyrics-txt
+ * task it reads when its text comes from the manifest. The song's other
+ * tasks are kept. An align command it doesn't recognize is an error, not
+ * overwritten.
+ */
+export function upgradeAlign(recipe: Record<string, unknown>, o: AlignOpts): Record<string, unknown> {
+  const scripts = { ...(recipe.scripts as Record<string, string>) };
+  const wireit = { ...(recipe.wireit as Record<string, Task>) };
+  const current = wireit.align?.command;
+  if (current?.includes("/src/authoring/desilence-align-cli.ts")) return recipe;
+  if (current !== undefined && !BINARY_ALIGN.test(current)) throw new Error(`don't recognize the align command, so leaving it alone: ${current}`);
+  if (o.lyricsFrom === "manifest" && !wireit["lyrics-txt"]) {
+    wireit["lyrics-txt"] = lyricsTxtTaskFor(o);
+    scripts["lyrics-txt"] = "wireit";
+  }
+  wireit.align = alignTask(o, (t) => t in wireit);
+  scripts.align = "wireit";
+  return { ...recipe, scripts, wireit };
 }
 
 /** Shell-quote a value that goes inside a double-quoted command argument. */
@@ -135,12 +224,8 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
 
   // lyrics-txt: flat lyric text for the aligner, extracted file-to-file so the
   // lyrics never pass through the model.
-  const lyricsTxtTask = {
-    command: `npx tsx ${rel}/src/authoring/lyrics-text-cli.ts ${lookupJson} ${lyricsTxt}`,
-    files: [lookupJson],
-    output: [lyricsTxt],
-    dependencies: ["lookup"],
-  };
+  const alignOpts: AlignOpts = { rel, slug, alignStem, alignFile, lyricsFrom: opts.lyricsFrom ?? "lookup" };
+  const lyricsTxtTask = lyricsTxtTaskFor(alignOpts);
 
   // beats: single drum-stem detection (energy activation). STANDALONE — nothing
   // depends on it, so `build` never re-runs it. Hand-tune the tempo window (and
@@ -153,17 +238,9 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     dependencies: ["split"],
   };
 
-  // align: single-shot wav2vec2 CTC forced alignment of the authored lyrics
-  // against the vocal stem. (A chunked aligner is being explored on a feature
-  // branch; when it lands, swap this one command.)
-  const align = canAlign
-    ? {
-        command: `${bin} align "${alignStem}" --text "${lyricsTxt}" -o "${alignFile}"`,
-        files: [alignStem, lyricsTxt],
-        output: [alignFile],
-        dependencies: ["split", "lyrics-txt"],
-      }
-    : undefined;
+  // align: desilence-concatenate forced alignment (see alignTask). Standalone,
+  // like beats: the build reads the alignment file.
+  const align = canAlign ? alignTask(alignOpts, () => true) : undefined;
 
   // init-manifest: the mechanical first-cut manifest from beats + lookup + align.
   // STANDALONE one-shot — never a dependency (so a rebuild can't clobber the

@@ -33,7 +33,6 @@
     "song:media": "npx tsx src/visuals/media-cli.ts",
     "songs": "npx tsx scripts/songs.ts",
     "show:teleprompter": "npx tsx scripts/teleprompter.ts",
-    "realign-all": "npx tsx scripts/realign-all.ts",
     "dev:bundle": "node scripts/build.mjs",
     "dev:skill": "npx tsx scripts/render-skill.ts",
     "dev:sandbox": "scripts/sandbox.sh"

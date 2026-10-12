@@ -25,7 +25,7 @@ import { buildChartsFile } from "../charts/build.js";
 import { buildRows } from "../teleprompter/build-rows.js";
 import { drawNotation } from "../charts/notation-svg.js";
 import { parseNotes, type Note } from "../teleprompter/card.js";
-import { songRecipe } from "./song-recipe.js";
+import { alignSource, songRecipe } from "./song-recipe.js";
 import { findGigVideo, videoSeconds } from "./gig-video.js";
 import { extractSections } from "./sections.js";
 import { cueOnset } from "./cue-onset.js";
@@ -327,21 +327,11 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !ex
   const recFile = manifest.sources.recording.file;
   const minBpm = Math.round(manifest.bpm * 0.9);
   const maxBpm = Math.round(manifest.bpm * 1.1);
-  // Forced alignment is a build output: derive the vocal stem from the manifest's
-  // alignment.file (`<stem>.align.json` → `<stem>.wav`) and align the authored
-  // `<slug>.lyrics.txt` against it. The emitted task is the single-shot binary
-  // `align` (see song-recipe.ts); the desilence-concatenate aligner is currently
-  // run out-of-band by `npm run realign-all`, not wired per-song here.
-  //
-  // Only emit the task when the manifest declares an alignment AND the standard
-  // inputs exist. A KV multitrack has no demucs vocal stem, so no task is
-  // emitted — that song's align.json is still GENERATED, just by realign-all,
-  // which finds the `lead vocal` audio beside the manifest's alignment.file.
-  const alignFile = manifest.lyrics?.alignment?.file;
-  const alignStem = alignFile?.replace(/\.align\.json$/, ".wav");
-  const lyricsTxt = `${slug}.lyrics.txt`;
-  const canAlign =
-    !!alignFile && !!alignStem && existsSync(join(dir, alignStem)) && existsSync(join(dir, lyricsTxt));
+  // The align task: a split song's vocal stem against its lookup lyrics, or a
+  // multitrack song's lead vocal track against the manifest's lines (see
+  // alignSource). No task when the manifest declares no alignment or there's
+  // no vocal audio.
+  const align = alignSource(dir, manifest);
   // Recipe shape lives in song-recipe.ts, shared with `init-song` (which writes
   // it up front). Here it's the legacy fallback: only fires for a song that
   // never went through init and still lacks a package.json.
@@ -354,9 +344,8 @@ if (readdirSync(dir).filter((f) => f.endsWith(".song.json")).length === 1 && !ex
     minBpm,
     maxBpm,
     recFile,
-    canAlign,
-    alignStem,
-    alignFile,
+    canAlign: align !== null,
+    ...(align ?? {}),
   });
   writeFileSync(pkgPath, JSON.stringify(unit, null, 2) + "\n");
 }

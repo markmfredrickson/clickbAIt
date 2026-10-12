@@ -64,6 +64,15 @@ export function parseGeniusSections(block: string): GeniusSection[] {
  * context. The line order here must match the sections' `lines` order in the
  * manifest — both come from the same parse, so they agree by construction.
  */
+/**
+ * The aligner's lyric text from a manifest: every section's lines in order,
+ * one per line. For a song with no lookup lyrics to align against (a
+ * multitrack song), the manifest's lines are the text.
+ */
+export function lyricsTextFromManifest(manifest: { sections?: { lines?: { text: string }[] }[] }): string {
+  return (manifest.sections ?? []).flatMap((s) => (s.lines ?? []).map((l) => l.text)).join("\n");
+}
+
 export function lyricsTextFromLookup(lookupText: string): string {
   return parseGeniusSections(lyricBlockFromLookup(lookupText))
     .flatMap((s) => s.lines)

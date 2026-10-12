@@ -355,6 +355,64 @@ fn leading_silence_samples(samples: &[f32], sr: u32) -> usize {
     onset_sample.saturating_sub(lead_in)
 }
 
+/// How many trailing (near-)silent samples to trim before alignment.
+///
+/// Symmetric to [`leading_silence_samples`]. A sustained/instrumental TAIL on the
+/// vocal stem (reverb, a held note, bleed) gives CTC nothing to anchor the LAST
+/// words to, so forced alignment spreads them into the tail and the final word
+/// drifts late. This bites hardest under chunked alignment, where a chunk's last
+/// lyric word is the final token with nothing after it to pin it in place.
+///
+/// Trimming the tail removes that empty runway. Only the END is removed, so —
+/// unlike the leading trim — no offset correction is needed; every emitted
+/// timestamp already falls before the cut. Mirrors the leading detector: finds
+/// the last frame that ENDS a sustained run of energy (so a late stray click
+/// doesn't count as the vocal offset), then keeps a release margin after it.
+/// Returns 0 when the audio ends hot or is silent throughout (both no-ops).
+fn trailing_silence_samples(samples: &[f32], sr: u32) -> usize {
+    if samples.is_empty() {
+        return 0;
+    }
+    let win = (sr as usize / 50).max(1); // ~20ms frames
+    let mut rms: Vec<f32> = Vec::new();
+    let mut i = 0;
+    while i < samples.len() {
+        let end = (i + win).min(samples.len());
+        let mut sum = 0.0f64;
+        for &s in &samples[i..end] {
+            sum += (s as f64) * (s as f64);
+        }
+        rms.push((sum / (end - i) as f64).sqrt() as f32);
+        i += win;
+    }
+    let peak = rms.iter().cloned().fold(0.0f32, f32::max);
+    if peak <= 0.0 {
+        return 0;
+    }
+    let thresh = (peak * 0.08).max(1e-3);
+    let sustain = 5usize; // ~100ms
+    // Scan backward for the last frame that ends a sustained run (frames
+    // [f-sustain+1 ..= f] all up), so a trailing blip isn't the vocal offset.
+    let mut offset_frame = None;
+    for f in (0..rms.len()).rev() {
+        if rms[f] >= thresh {
+            let lo = (f + 1).saturating_sub(sustain);
+            let hold = (lo..=f).all(|k| rms[k] >= thresh);
+            if hold {
+                offset_frame = Some(f);
+                break;
+            }
+        }
+    }
+    let offset_sample = match offset_frame {
+        Some(f) => ((f + 1) * win).min(samples.len()), // end of that frame
+        None => return 0,
+    };
+    let release = (sr as usize * 250) / 1000; // keep 250ms after the offset
+    let keep_end = (offset_sample + release).min(samples.len());
+    samples.len() - keep_end
+}
+
 /// Log-softmax a logits row in place-returning form.
 fn log_softmax(row: &[f32]) -> Vec<f32> {
     let m = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -412,7 +470,7 @@ pub fn run(file: &str, text_arg: &str, output: Option<&str>, trim_silence: bool)
         0
     };
     let offset_ms = (trim_samples as f64 / TARGET_SR as f64 * 1000.0) as u64;
-    let audio16k = if trim_samples > 0 {
+    let mut audio16k = if trim_samples > 0 {
         eprintln!(
             "trimmed {:.2}s leading silence before alignment (offset added back to timestamps)",
             offset_ms as f64 / 1000.0
@@ -421,6 +479,20 @@ pub fn run(file: &str, text_arg: &str, output: Option<&str>, trim_silence: bool)
     } else {
         audio16k
     };
+
+    // Trim a silent/instrumental tail too, so the last words can't spread into
+    // it and drift late. Only the end is removed — timestamps stay in frame, so
+    // no offset correction is needed (unlike the leading trim above).
+    if trim_silence {
+        let trail = trailing_silence_samples(&audio16k, TARGET_SR);
+        if trail > 0 {
+            eprintln!(
+                "trimmed {:.2}s trailing silence before alignment",
+                trail as f64 / TARGET_SR as f64
+            );
+            audio16k.truncate(audio16k.len() - trail);
+        }
+    }
 
     // Load ONNX session.
     let mut session = Session::builder()?
@@ -668,6 +740,49 @@ mod tests {
         let mut s = silence(SR as usize / 20); // 50ms < 250ms lead-in
         s.extend(tone(SR as usize));
         assert_eq!(leading_silence_samples(&s, SR), 0);
+    }
+
+    #[test]
+    fn trim_tone_then_trailing_silence() {
+        // 1s tone, then 1s silence. Offset ~ sample 16000; keep offset + release.
+        let mut s = tone(SR as usize);
+        s.extend(silence(SR as usize));
+        let trimmed = trailing_silence_samples(&s, SR);
+        let expected = SR as usize - LEAD_IN; // total(2*SR) - (SR + release)
+        assert!(
+            (trimmed as isize - expected as isize).abs() < (SR as isize / 25),
+            "trimmed {trimmed}, expected ~{expected}"
+        );
+    }
+
+    #[test]
+    fn trim_hot_end_is_noop() {
+        // Tone to the last sample: offset is at the end, release clamps trim to 0.
+        let s = tone(SR as usize);
+        assert_eq!(trailing_silence_samples(&s, SR), 0);
+    }
+
+    #[test]
+    fn trim_trailing_all_silence_is_noop() {
+        let s = silence(SR as usize * 2);
+        assert_eq!(trailing_silence_samples(&s, SR), 0);
+    }
+
+    #[test]
+    fn trim_ignores_a_click_in_the_outro() {
+        // Real (sustained) vocal, silence, a 20ms click, more silence. Should
+        // trim toward the end of the real vocal, not the late click.
+        let mut s = tone(SR as usize);
+        let real_offset = s.len();
+        s.extend(silence(SR as usize / 2));
+        s.extend(tone(SR as usize / 50)); // ~20ms click (< sustain window)
+        s.extend(silence(SR as usize / 2));
+        let trimmed = trailing_silence_samples(&s, SR);
+        let expected = s.len() - (real_offset + LEAD_IN);
+        assert!(
+            (trimmed as isize - expected as isize).abs() < (SR as isize / 25),
+            "trimmed {trimmed}, expected ~{expected} (should skip the click)"
+        );
     }
 
     #[test]

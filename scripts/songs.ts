@@ -61,7 +61,9 @@ for (const d of dirs) {
   // Wireit keeps each task's state in .wireit/<task name in hex>.
   if (force) rmSync(join(d, ".wireit", Buffer.from(task).toString("hex")), { recursive: true, force: true });
   try {
-    execSync(`npm run ${task}`, { cwd: d, stdio: "inherit" });
+    // No wireit output cache: it keeps a second copy of every output (each
+    // visuals render is GBs), and freshness comes from fingerprints anyway.
+    execSync(`npm run ${task}`, { cwd: d, stdio: "inherit", env: { ...process.env, WIREIT_CACHE: process.env.WIREIT_CACHE ?? "none" } });
     ok++;
   } catch {
     failed.push(d);

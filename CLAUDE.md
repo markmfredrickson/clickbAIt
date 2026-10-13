@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Don't race ahead.** The user communicates in short messages. Multiple messages may be part of one thought. Do NOT immediately edit files or run commands after each message. Wait until it's clear the user is done and you understand the full picture before acting. When in doubt, ask.
 
-**Editing the clickbait skill.** When the user says "edit the skill" (or anything equivalent), they mean edit the source template under `skill/` (e.g. `skill/SKILL.md.njk`, `skill/stems.md`, `skill/teleprompter.md`) and then rebuild with `npm run build:skill`. Never hand-edit `.claude/skills/clickbait/SKILL.md` directly — it is a generated artifact and will be overwritten.
+**Editing the clickbait skill.** When the user says "edit the skill" (or anything equivalent), they mean edit the source template under `skill/` (e.g. `skill/SKILL.md.njk`, `skill/stems.md`, `skill/teleprompter.md`) and then rebuild with `npm run dev:skill`. Never hand-edit `.claude/skills/clickbait/SKILL.md` directly — it is a generated artifact and will be overwritten.
 
 **Don't guess what's derived — read the recipe.** Before claiming a file is hand-written, open the song's `package.json` wireit block and check whether some task declares it as an `output`. Most files in a song folder are generated. See "Build Model" below.
 

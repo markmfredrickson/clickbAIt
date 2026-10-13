@@ -98,6 +98,12 @@ npx tsx scripts/teleprompter.ts --songs-dir songs/<group>/<artist-slug>/<song-sl
 npx tsx scripts/teleprompter.ts --songs-dir songs/<group>/<artist-a>/<song-a> --songs-dir songs/<group>/<artist-b>/<song-b>
 ```
 
+With no `--songs-dir`, it reads `.clickbait.json` at the repo root: every built song under its `"songs"` folders, plus its `"setlist"` file (one song folder per line, in playing order, `#` for comments) when there is one:
+
+```json
+{ "songs": ["songs/my-band", "songs/duo"], "setlist": "local/setlist.txt" }
+```
+
 ## Security
 
 - Song lookup uses sanitized slugs only — no arbitrary file paths

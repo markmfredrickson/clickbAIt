@@ -19,8 +19,10 @@ export interface SongsArgs {
 }
 
 export interface ClickbaitConfig {
-  /** Folders `npm run songs` searches when none are named. */
+  /** Folders `npm run songs` and the teleprompter search when none are named. */
   songs?: string[];
+  /** The set list file (one song folder per line, in playing order). */
+  setlist?: string;
 }
 
 const isDir = (p: string): boolean => existsSync(p) && statSync(p).isDirectory();
@@ -48,7 +50,7 @@ export function songRoots(words: string[], defaults: string[] = []): string[] {
   return roots;
 }
 
-/** The `.clickbait.json` in `dir`, with its song folders resolved against `dir`. Empty if there is none. */
+/** The `.clickbait.json` in `dir`, with its paths resolved against `dir`. Empty if there is none. */
 export function readClickbaitConfig(dir: string): ClickbaitConfig {
   const file = join(dir, ".clickbait.json");
   if (!existsSync(file)) return {};
@@ -58,10 +60,17 @@ export function readClickbaitConfig(dir: string): ClickbaitConfig {
   } catch (err) {
     throw new Error(`${file}: ${(err as Error).message}`);
   }
-  const songs = (raw as { songs?: unknown }).songs;
-  if (songs === undefined) return {};
-  if (!Array.isArray(songs) || !songs.every((s) => typeof s === "string")) {
-    throw new Error(`${file}: "songs" must be a list of folders`);
+  const { songs, setlist } = raw as { songs?: unknown; setlist?: unknown };
+  const config: ClickbaitConfig = {};
+  if (songs !== undefined) {
+    if (!Array.isArray(songs) || !songs.every((s) => typeof s === "string")) {
+      throw new Error(`${file}: "songs" must be a list of folders`);
+    }
+    config.songs = songs.map((s) => resolve(dir, s));
   }
-  return { songs: songs.map((s) => resolve(dir, s)) };
+  if (setlist !== undefined) {
+    if (typeof setlist !== "string") throw new Error(`${file}: "setlist" must be a file path`);
+    config.setlist = resolve(dir, setlist);
+  }
+  return config;
 }

@@ -48,3 +48,10 @@ LAST_REGION_NAME s/lastregion/name
 LAST_REGION_NUMBER s/lastregion/number/str
 LAST_REGION_TIME f/lastregion/time
 LAST_REGION_LENGTH f/lastregion/length
+
+# Control from the relay (prompter → REAPER). These add no outbound traffic.
+# ACTION fires a command by ID; the /cc form passes a value the action (or a
+# ReaScript, via get_action_context) can read.
+ACTION i/action s/action/str t/action/@ f/action/@/cc
+GOTO_REGION i/region t/region/@
+GOTO_MARKER i/marker t/marker/@

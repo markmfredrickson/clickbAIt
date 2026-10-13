@@ -7,6 +7,7 @@
 
 import { networkInterfaces } from "node:os";
 import { readdirSync } from "node:fs";
+import { basename } from "node:path";
 import { startRelay, songSlugsFromFiles } from "./relay.js";
 import { buildClient } from "./build-client.js";
 import { exportSongPayload } from "./export.js";
@@ -20,6 +21,8 @@ export interface TeleprompterOptions {
   songsDir?: string;
   /** One or more directories containing song JSON files (takes precedence over songsDir) */
   songsDirs?: string[];
+  /** Song folders in playing order (the set list), when there is one. */
+  setlist?: string[];
   httpPort?: number;
   oscPort?: number;
 }
@@ -66,9 +69,13 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   if (payload) {
     console.log(`  Now playing: ${payload.title}${payload.artist ? ` — ${payload.artist}` : ""}`);
   }
-  if (songsDirs && songsDirs.length > 0) {
+  if (songsDirs && songsDirs.length > 0 && songsDirs.length <= 5) {
     console.log(`  Songs dir${songsDirs.length > 1 ? "s" : ""}:`);
     for (const d of songsDirs) console.log(`    ${d}`);
+  }
+  if (opts.setlist) {
+    console.log(`  Set list (${opts.setlist.length}):`);
+    opts.setlist.forEach((d, i) => console.log(`    ${i + 1}. ${basename(d)}`));
   }
   console.log(`  ${url}  (pick a display: ${url}/pick)`);
   console.log("");

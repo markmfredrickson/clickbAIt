@@ -6,9 +6,11 @@
  *   npx tsx scripts/teleprompter.ts --songs-dir ./dir                  # multi-song
  *   npx tsx scripts/teleprompter.ts --songs-dir ./a --songs-dir ./b    # multiple dirs
  *   npx tsx scripts/teleprompter.ts <song.ts> --songs-dir ./dir        # both
+ *   npx tsx scripts/teleprompter.ts                                    # the songs and set list in .clickbait.json
  */
 
 import { resolve } from "node:path";
+import { relaySongs } from "../src/teleprompter/catalog.js";
 import { startTeleprompter } from "../src/teleprompter/index.js";
 
 const args = process.argv.slice(2);
@@ -23,16 +25,21 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-if (!songPath && songsDirs.length === 0) {
-  console.error("Usage:");
-  console.error("  npx tsx scripts/teleprompter.ts <song-file.ts>");
-  console.error("  npx tsx scripts/teleprompter.ts --songs-dir ./output/songs");
-  console.error("  npx tsx scripts/teleprompter.ts --songs-dir ./a --songs-dir ./b");
-  process.exit(1);
+let setlist: string[] | undefined;
+if (!songPath) {
+  try {
+    const found = relaySongs(songsDirs, process.cwd());
+    songsDirs.splice(0, songsDirs.length, ...found.songsDirs);
+    setlist = found.setlist;
+    if (found.unbuilt.length) console.error(`not built yet (skipped): ${found.unbuilt.join(", ")}`);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
 }
 
 const song = songPath
   ? (await import(resolve(songPath))).default
   : undefined;
 
-await startTeleprompter({ song, songsDirs });
+await startTeleprompter({ song, songsDirs, setlist });

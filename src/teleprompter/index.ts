@@ -7,8 +7,8 @@
 
 import { networkInterfaces } from "node:os";
 import { readdirSync } from "node:fs";
-import { basename } from "node:path";
 import { startRelay, songSlugsFromFiles } from "./relay.js";
+import { songSlugOf } from "./catalog.js";
 import { buildClient } from "./build-client.js";
 import { exportSongPayload } from "./export.js";
 import type { Song } from "../core/dsongl/index.js";
@@ -52,11 +52,13 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
   const songsDirs = opts.songsDirs && opts.songsDirs.length > 0
     ? opts.songsDirs
     : (opts.songsDir ? [opts.songsDir] : undefined);
+  const setlist = opts.setlist?.map(songSlugOf);
   const relay = startRelay({
     httpPort,
     oscPort,
     song: payload,
     songsDirs,
+    setlist,
   });
 
   const ip = getLocalIP();
@@ -73,9 +75,9 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
     console.log(`  Songs dir${songsDirs.length > 1 ? "s" : ""}:`);
     for (const d of songsDirs) console.log(`    ${d}`);
   }
-  if (opts.setlist) {
-    console.log(`  Set list (${opts.setlist.length}):`);
-    opts.setlist.forEach((d, i) => console.log(`    ${i + 1}. ${basename(d)}`));
+  if (setlist) {
+    console.log(`  Set list (${setlist.length}):`);
+    setlist.forEach((slug, i) => console.log(`    ${i + 1}. ${slug}`));
   }
   console.log(`  ${url}  (pick a display: ${url}/pick)`);
   console.log("");

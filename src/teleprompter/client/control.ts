@@ -9,6 +9,9 @@
  * The relay owns the authoritative state — this page sends intents and renders
  * whatever comes back, so two phones and the lyrics display never disagree.
  * `show-state.ts` is imported rather than reimplemented for the same reason.
+ *
+ * Above the bar sit the set list (previous, next song, the full list to jump
+ * from) and the player buttons. Those go to REAPER through the relay as well.
  */
 
 import { controlLabel, isControllable, sectionAt, type ShowSection, type ShowState } from "../show-state.js";
@@ -22,6 +25,8 @@ const bannerLabel = $("banner-label"), bannerName = $("banner-name");
 const warn = $("warn"), mapEl = $("map"), rowsEl = $("rows"), conn = $("conn");
 const drawer = $("drawer"), drawerTitle = $("drawer-title"), drawerRows = $("drawer-rows");
 const dVamp = $("d-vamp"), dStop = $("d-stop"), drawerClose = $("drawer-close");
+const setNav = $("set"), sPrev = $("s-prev") as HTMLButtonElement, sNext = $("s-next") as HTMLButtonElement;
+const sNextName = $("s-next-name"), sList = $("s-list"), setlistEl = $("setlist"), noticeEl = $("notice");
 
 let sections: ShowSection[] = [];
 // The same sections with their meters, for the song map (shared with the prompter).
@@ -32,6 +37,9 @@ let playing = false;
 let ws: WebSocket | null = null;
 let drawerOpen = false, anchorIdx = 0, endIdx = 0, stopArmed = false;
 let segEls: HTMLElement[] = [], rowEls: HTMLElement[] = [], drawerRowEls: HTMLElement[] = [];
+let setSongs: { slug: string; title: string }[] = [];
+let currentSlug = "";
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
 // ── Song ──
 
@@ -220,13 +228,60 @@ dStop.addEventListener("click", () => {
 });
 drawerClose.addEventListener("click", closeDrawer);
 
+// ── Set list and player ──
+
+function sendRaw(msg: unknown): void {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
+
+function renderSet(): void {
+  setNav.hidden = setSongs.length === 0;
+  const at = setSongs.findIndex((s) => s.slug === currentSlug);
+  // With no set-list song showing yet, "next" starts the set.
+  const next = at < 0 ? (currentSlug ? undefined : setSongs[0]) : setSongs[at + 1];
+  sNextName.textContent = next ? next.title : at === setSongs.length - 1 ? "End of the set" : "—";
+  sNext.disabled = !next;
+  sPrev.disabled = at <= 0;
+  setlistEl.replaceChildren(
+    ...setSongs.map((s, i) => {
+      const row = document.createElement("div");
+      row.className = "set-row" + (s.slug === currentSlug ? " here" : "");
+      const n = document.createElement("span");
+      n.textContent = String(i + 1);
+      row.append(n, s.title);
+      row.addEventListener("click", () => {
+        sendRaw({ type: "song", intent: { to: "song", slug: s.slug } });
+        setlistEl.classList.remove("on");
+      });
+      return row;
+    }),
+  );
+}
+
+function showNotice(text: string): void {
+  noticeEl.textContent = text;
+  noticeEl.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { noticeEl.hidden = true; }, 5000);
+}
+
+sNext.addEventListener("click", () => sendRaw({ type: "song", intent: { to: "next" } }));
+sPrev.addEventListener("click", () => sendRaw({ type: "song", intent: { to: "prev" } }));
+sList.addEventListener("click", () => setlistEl.classList.toggle("on"));
+for (const b of document.querySelectorAll<HTMLButtonElement>("#tport button")) {
+  b.addEventListener("click", () => sendRaw({ type: "player", action: b.dataset.player }));
+}
+
 // ── Relay socket ──
 
 function connect(): void {
   ws = new WebSocket((location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host);
   ws.onopen = () => { conn.textContent = "Connected"; conn.className = "ok"; };
   ws.onmessage = (ev) => {
-    let msg: { type?: string; beat?: number; state?: ShowState; playing?: boolean };
+    let msg: {
+      type?: string; beat?: number; state?: ShowState; playing?: boolean;
+      slug?: string; songs?: { slug: string; title: string }[]; text?: string;
+    };
     try { msg = JSON.parse(ev.data as string); } catch { return; }
     if (msg.type === "position" && typeof msg.beat === "number") { beat = msg.beat; render(); }
     else if (msg.type === "play") { playing = true; render(); }
@@ -236,7 +291,13 @@ function connect(): void {
       if (typeof msg.playing === "boolean") playing = msg.playing;
       render();
     }
-    else if (msg.type === "song-changed") loadSong();
+    else if (msg.type === "song-changed") {
+      if (typeof msg.slug === "string") currentSlug = msg.slug;
+      renderSet();
+      loadSong();
+    }
+    else if (msg.type === "setlist" && Array.isArray(msg.songs)) { setSongs = msg.songs; renderSet(); }
+    else if (msg.type === "notice" && typeof msg.text === "string") showNotice(msg.text);
   };
   ws.onclose = () => {
     conn.textContent = "Disconnected";

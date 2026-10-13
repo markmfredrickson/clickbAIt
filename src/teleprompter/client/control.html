@@ -39,6 +39,30 @@
     #conn.ok { color: var(--live); }
     #conn.bad { color: var(--stop); }
 
+    /* Set list: next song is the one-tap path, the list is for jumping. */
+    #set { display: grid; grid-template-columns: 52px 1fr 64px; border-bottom: 1px solid var(--line); }
+    #set[hidden] { display: none !important; }
+    #set button, #tport button {
+      border: 0; background: var(--panel); color: var(--text); font: inherit; cursor: pointer;
+      padding: 12px 8px; border-right: 1px solid var(--line);
+    }
+    #set button:last-child, #tport button:last-child { border-right: 0; }
+    #set button:disabled { color: #3b444d; cursor: default; }
+    #s-next { text-align: left; padding-left: 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--live); }
+    #s-next small { display: block; font-size: 17px; letter-spacing: 0; text-transform: none; color: var(--text); margin-top: 2px; }
+    #s-next:disabled, #s-next:disabled small { color: #3b444d; }
+    #s-prev { font-size: 20px; }
+    #s-list { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+    #tport { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
+    #tport button { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 10px 4px; }
+    #notice { padding: 9px 14px; font-size: 12px; border-bottom: 1px solid var(--line); background: rgba(255,77,94,.15); color: var(--stop); }
+    #notice[hidden] { display: none !important; }
+    #setlist { position: absolute; inset: 0; background: var(--panel); display: none; overflow-y: auto; z-index: 5; }
+    #setlist.on { display: block; }
+    .set-row { padding: 14px; border-bottom: 1px solid #1f252c; font-size: 17px; font-weight: 600; color: #8b96a1; cursor: pointer; }
+    .set-row span { display: inline-block; width: 2em; color: #4d5760; font-variant-numeric: tabular-nums; }
+    .set-row.here { color: var(--live); }
+
     /* Song map — the arrangement as a strip. */
     #map { display: flex; gap: 2px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
     .seg { height: 14px; border-radius: 2px; background: #2b333c; transition: background .12s linear; }
@@ -140,6 +164,19 @@
     <div id="conn">Connecting…</div>
   </header>
 
+  <nav id="set" hidden>
+    <button id="s-prev" type="button" aria-label="Previous song">◀</button>
+    <button id="s-next" type="button">Next<small id="s-next-name">—</small></button>
+    <button id="s-list" type="button">Set</button>
+  </nav>
+  <div id="tport">
+    <button type="button" data-player="play">Play</button>
+    <button type="button" data-player="stop">Stop</button>
+    <button type="button" data-player="video">Video</button>
+    <button type="button" data-player="fullscreen">Full screen</button>
+  </div>
+  <div id="notice" hidden></div>
+
   <div id="map"></div>
 
   <div id="banner">
@@ -151,6 +188,7 @@
 
   <main>
     <div id="rows"></div>
+    <div id="setlist"></div>
     <div id="drawer">
       <div id="drawer-head">
         <span id="drawer-title">Vamp from here</span>

@@ -66,3 +66,11 @@ function songFolders(roots: string[]): string[] {
 }
 
 const isBuilt = (dir: string): boolean => readdirSync(dir).some((f) => f.endsWith(".lyrics-display.json"));
+
+/** A built song folder's slug: the name of its one `<slug>.lyrics-display.json`. */
+export function songSlugOf(dir: string): string {
+  const found = readdirSync(dir).filter((f) => f.endsWith(".lyrics-display.json")).sort();
+  if (found.length === 0) throw new Error(`no built lyrics display in ${dir}`);
+  if (found.length > 1) throw new Error(`${found.length} lyrics displays in ${dir} (${found.join(", ")})`);
+  return found[0].slice(0, -".lyrics-display.json".length);
+}

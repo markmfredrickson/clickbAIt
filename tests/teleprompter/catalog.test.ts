@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { relaySongs, readSetlist } from "../../src/teleprompter/catalog.js";
+import { relaySongs, readSetlist, songSlugOf } from "../../src/teleprompter/catalog.js";
 
 /**
  * A temp repo: band/ holds two built songs and one with a manifest but no build;
@@ -83,5 +83,23 @@ describe("readSetlist", () => {
     const file = join(r.root, "setlist.txt");
     writeFileSync(file, "band/police/roxanne\n");
     expect(() => readSetlist(file, r.root, [r.lonely, r.creep, r.saveMe])).toThrow(/band\/police\/roxanne/);
+  });
+});
+
+describe("songSlugOf", () => {
+  it("is the name of the folder's built lyrics display", () => {
+    const r = repo();
+    expect(songSlugOf(r.lonely)).toBe("x-artist");
+  });
+
+  it("names a folder with no built lyrics display", () => {
+    const r = repo();
+    expect(() => songSlugOf(r.draft)).toThrow(r.draft);
+  });
+
+  it("names a folder with more than one", () => {
+    const r = repo();
+    writeFileSync(join(r.lonely, "y-artist.lyrics-display.json"), "{}");
+    expect(() => songSlugOf(r.lonely)).toThrow(/x-artist.*y-artist|y-artist.*x-artist/);
   });
 });

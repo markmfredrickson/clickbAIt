@@ -27,6 +27,8 @@ import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
 import { toSlug } from "../core/dsongl/index.js";
 import { Curve, type Anchor } from "../core/curve.js";
 import { encode, asFloat } from "../core/osc.js";
+import { reaperDriver } from "./reaper-driver.js";
+import { afterReport, firstAttempt, parseSongIntent, targetSong, type SongIntent } from "./song-select.js";
 import {
   apply as applyIntent,
   advance as advanceShow,
@@ -65,6 +67,8 @@ export interface RelayOptions {
   tracks?: { click?: number; cues?: number; stems?: number };
   /** Where rendered e-ink pages are cached (default: a folder in the OS temp dir). */
   einkCacheDir?: string;
+  /** Song slugs in playing order — REAPER's project tabs, opened from the same set list. */
+  setlist?: string[];
 }
 
 function escapeHtml(s: string): string {
@@ -258,6 +262,8 @@ export function startRelay(opts: RelayOptions) {
     });
   }
 
+  const player = reaperDriver((m) => toReaper(m.address, m.args.map(asFloat)));
+
   /** Sections in the shape the state machine wants, from either song format. */
   function showSections(song: LoadedSong | null): ShowSection[] {
     if (!song) return [];
@@ -388,6 +394,77 @@ export function startRelay(opts: RelayOptions) {
     qrSvgCache = null; // reset QR (song title changed)
     console.log(`  Switched to: ${entry.payload.title}${entry.payload.artist ? ` — ${entry.payload.artist}` : ""}`);
     broadcast(JSON.stringify({ type: "song-changed", slug }));
+  }
+
+  // ── Song select (prompter → REAPER project tabs) ──
+  const setlist = opts.setlist ?? [];
+  /** Extra project tabs in front of the set (an untitled project, say), learned from REAPER's answers. */
+  let tabOffset = 0;
+  let selecting = false;
+  /** Set while a tab switch waits for REAPER to name the song it landed on. */
+  let reportWaiter: ((slug: string | null) => void) | null = null;
+
+  function awaitReport(ms: number): Promise<string | null> {
+    return new Promise((resolve) => {
+      reportWaiter = resolve;
+      setTimeout(() => {
+        if (reportWaiter === resolve) {
+          reportWaiter = null;
+          resolve(null);
+        }
+      }, ms);
+    });
+  }
+
+  /** A region name from REAPER: a song's slug answers a waiting tab switch, and switches the display. */
+  async function onRegionName(slug: string): Promise<void> {
+    if (!(await loadSong(slug))) return; // a section name, not a song
+    if (reportWaiter) {
+      const answer = reportWaiter;
+      reportWaiter = null;
+      answer(slug);
+    }
+    await switchSong(slug);
+  }
+
+  function notice(text: string): void {
+    console.log(`  ⚠ ${text}`);
+    broadcast(JSON.stringify({ type: "notice", text }));
+  }
+
+  async function selectSong(intent: SongIntent): Promise<void> {
+    if (setlist.length === 0) return notice("no set list: add \"setlist\" to .clickbait.json");
+    if (selecting) return;
+    const target = targetSong(setlist, currentSlug || undefined, intent);
+    if ("reject" in target) return notice(target.reject);
+    if (setlist[target.index] === currentSlug) return;
+    selecting = true;
+    try {
+      if (playing) player.stop();
+      let attempt = firstAttempt(target.index, tabOffset);
+      for (;;) {
+        const report = awaitReport(1000);
+        player.selectTab(attempt.tab);
+        const result = afterReport(attempt, await report, setlist);
+        if ("done" in result) {
+          tabOffset = result.offset;
+          console.log(`  ⇥ set list ${target.index + 1}/${setlist.length}: ${setlist[target.index]} (tab ${attempt.tab})`);
+          return;
+        }
+        if ("error" in result) return notice(result.error);
+        attempt = result.retry;
+      }
+    } finally {
+      selecting = false;
+    }
+  }
+
+  /** The set list with titles, for the control page. */
+  async function setlistMessage(): Promise<string> {
+    const songs = await Promise.all(
+      setlist.map(async (slug) => ({ slug, title: (await loadSong(slug))?.payload.title ?? slug })),
+    );
+    return JSON.stringify({ type: "setlist", songs });
   }
 
   /** Poll the currently loaded song's file for mtime changes. If the file was
@@ -678,13 +755,26 @@ export function startRelay(opts: RelayOptions) {
       ws.send(JSON.stringify({ type: "song-changed", slug: currentSlug }));
     }
     ws.send(JSON.stringify({ type: "show-state", state: showState, playing }));
+    if (setlist.length > 0) void setlistMessage().then((m) => ws.send(m));
 
     // Control intents arrive here from /control. Anything on this socket is
     // untrusted input off the LAN, so a malformed message is dropped rather
     // than allowed to throw and take the relay down mid-show.
     ws.on("message", (raw) => {
-      let msg: { type?: string; intent?: Intent };
+      let msg: { type?: string; intent?: Intent; action?: unknown };
       try { msg = JSON.parse(String(raw)); } catch { return; }
+      if (msg.type === "song") {
+        const intent = parseSongIntent(msg.intent);
+        if (intent) selectSong(intent).catch((err) => console.error("  ✗ song select failed:", err));
+        return;
+      }
+      if (msg.type === "player") {
+        if (msg.action === "play") player.play();
+        else if (msg.action === "stop") player.stop();
+        else if (msg.action === "video") player.toggleVideo();
+        else if (msg.action === "fullscreen") player.toggleFullscreen();
+        return;
+      }
       if (msg.type !== "intent" || !msg.intent || typeof msg.intent.action !== "string") return;
 
       // Belt and braces: a throw in here would kill this socket's handler and
@@ -766,7 +856,7 @@ export function startRelay(opts: RelayOptions) {
           onPosition(beat);
         } else if ((parsed.address === "/lastmarker/name" || parsed.address === "/lastregion/name") && parsed.value) {
           const slug = toSlug(parsed.value);
-          if (slug) switchSong(slug);
+          if (slug) void onRegionName(slug);
         }
       }
     }

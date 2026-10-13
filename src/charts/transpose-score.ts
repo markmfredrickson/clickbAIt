@@ -13,18 +13,23 @@
  *     the top fret of the highest), an octave back toward the instrument.
  *
  * Notes on a staff without strings (keys, horns) move by `steps` as written.
- * Drum tracks are left alone. Key signatures move with the notes.
+ * Drum tracks are left alone. Key signatures move with the notes, and chord
+ * names are respelled for `key` (the key played; sharps when not given). A
+ * chord diagram shifts with them when every fret still fits on the neck, and
+ * is hidden otherwise: a new fingering is a musical choice, not arithmetic.
  */
 
 import * as alphaTab from "@coderline/alphatab";
+import { transposeChord } from "./chord-label.js";
 
 const TOP_FRET = 24;
 
-export function transposeScore(score: alphaTab.model.Score, steps: number): alphaTab.model.Score {
+export function transposeScore(score: alphaTab.model.Score, steps: number, key = "C"): alphaTab.model.Score {
   if (steps === 0) return score;
   for (const track of score.tracks) {
     for (const staff of track.staves) {
       if (staff.isPercussion) continue;
+      for (const chord of staff.chords?.values() ?? []) transposeChordSymbol(chord, steps, key);
       // alphaTab lists tunings from the highest string down, and numbers strings from the lowest up.
       const open = (string: number) => staff.tuning[staff.tuning.length - string];
       for (const bar of staff.bars) {
@@ -49,6 +54,19 @@ export function transposeScore(score: alphaTab.model.Score, steps: number): alph
     mb.keySignature = (k > 6 ? k - 12 : k) as alphaTab.model.KeySignature;
   }
   return score;
+}
+
+function transposeChordSymbol(chord: alphaTab.model.Chord, steps: number, key: string): void {
+  if (chord.name) chord.name = transposeChord(chord.name, steps, key);
+  // A negative fret marks a muted string; only the fretted ones move.
+  if (chord.strings.some((f) => f >= 0 && (f + steps < 0 || f + steps > TOP_FRET))) {
+    chord.showDiagram = false;
+    return;
+  }
+  const shifted = chord.strings.map((f) => (f < 0 ? f : f + steps));
+  chord.strings = shifted;
+  const fretted = shifted.filter((f) => f > 0);
+  chord.firstFret = fretted.length > 0 ? Math.max(1, Math.min(...fretted)) : 1;
 }
 
 /** Place `pitch` on the note's string, or the nearest string that can hold it. */

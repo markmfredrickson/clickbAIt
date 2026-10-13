@@ -54,3 +54,25 @@ KickHit.4`;
     expect(score.masterBars[0].keySignature).toBe(3); // A: three sharps
   });
 });
+
+describe("transposeScore: chord names and diagrams", () => {
+  const chordScore = () => tex(GUITAR(`\\chord "Ab" 4 4 5 6 6 4\n4.6.4{ch "Ab"}`));
+  const chord = (score: alphaTab.model.Score) => [...score.tracks[0].staves[0].chords!.values()][0];
+
+  it("renames the chords, spelled for the new key", () => {
+    expect(chord(transposeScore(chordScore(), -4, "A")).name).toBe("E");
+  });
+
+  it("shifts a diagram that still fits on the neck", () => {
+    const c = chord(transposeScore(chordScore(), -4, "A"));
+    expect(c.strings.slice(0, 6)).toEqual([0, 0, 1, 2, 2, 0]);
+    expect(c.firstFret).toBe(1);
+    expect(c.showDiagram).toBe(true);
+  });
+
+  it("hides a diagram that would need a fret below 0, rather than invent a fingering", () => {
+    const score = chordScore();
+    chord(score).strings = [2, 4, 3, -1, -1, -1];
+    expect(chord(transposeScore(score, -4, "A")).showDiagram).toBe(false);
+  });
+});

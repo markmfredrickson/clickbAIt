@@ -32,6 +32,7 @@ if (!input || !output || !output.endsWith(".gp") || (!manifest && stepsArg === u
 }
 
 let steps: number;
+let key: string | undefined;
 if (manifest) {
   const transpose = JSON.parse(readFileSync(manifest, "utf8")).transpose;
   if (transpose === undefined) {
@@ -39,10 +40,11 @@ if (manifest) {
     process.exit(1);
   }
   steps = transposeSteps(transpose);
+  if (typeof transpose === "object" && typeof transpose.to === "string") key = transpose.to;
 } else {
   steps = Number(stepsArg);
 }
 
-const score = transposeScore(loadScore(new Uint8Array(readFileSync(input)), basename(input)), steps);
+const score = transposeScore(loadScore(new Uint8Array(readFileSync(input)), basename(input)), steps, key);
 writeFileSync(output, toGuitarPro(score));
 console.log(`${basename(output)}: ${steps > 0 ? "+" : ""}${steps} semitones`);

@@ -42,6 +42,8 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   let curve: Curve | null = null;     // Curve built from the display's curve (bundle mode)
   let ws: WebSocket | null = null;
   let autoScroll = true;
+  /** Whether the track is running. Stopped, the reader scrolls the panes freely. */
+  let running = false;
   let offsetBeats = 0;
   let rawBeat = -1;      // most recent beat from OSC (no offset applied)
   let heard: number | null = null; // the last beat heard for this song, or null before any
@@ -291,6 +293,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     statusEl.textContent = "Bundle mode";
     statusEl.className = "connected";
     function playing(on: boolean) {
+      setRunning(on);
       document.body.classList.toggle("paused", !on);
       playBtn.textContent = on ? "❚❚" : "▶";
       playBtn.setAttribute("aria-label", on ? "Pause" : "Play");
@@ -545,9 +548,24 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     try { p.el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" }); } catch (e) { p.el.scrollTop = top; }
   }
 
-  /** Manual scroll lets the reader scroll each pane; auto turns them. */
+  /**
+   * Manual scroll lets the reader scroll each pane; auto turns them, but only
+   * while the track runs. Stopped, there is nothing to follow, so the reader
+   * can look anywhere in the song.
+   */
   function showScrollClass() {
-    container.classList.toggle("manual", !autoScroll);
+    container.classList.toggle("manual", !autoScroll || !running);
+  }
+
+  /** The track started or stopped. Starting puts every pane back on the page being played. */
+  function setRunning(on: boolean) {
+    if (on === running) return;
+    running = on;
+    showScrollClass();
+    if (on) {
+      panes.forEach(function (p) { p.page = -1; });
+      onBeatUpdate(rawBeat);
+    }
   }
 
   // ── Show state (bail / vamp), pushed by the relay ──
@@ -577,7 +595,12 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
       try { msg = JSON.parse(event.data); } catch (e) { return; }
       if (msg.type === "position") clock.emit(msg.beat);
       else if (msg.type === "song-changed") loadSong();
-      else if (msg.type === "show-state") applyShowState(msg.state);
+      else if (msg.type === "show-state") {
+        applyShowState(msg.state);
+        if (typeof msg.playing === "boolean") setRunning(msg.playing);
+      }
+      else if (msg.type === "play") setRunning(true);
+      else if (msg.type === "stop") setRunning(false);
     };
     ws.onclose = function () {
       statusEl.textContent = "Disconnected — retrying…";
@@ -613,7 +636,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     const reading = itemsAt(doc, readingBeat);
     const playing = itemsAt(doc, beat);
     panes.forEach(function (p) {
-      if (autoScroll) showPage(p, panePageAt(p.pages, readingBeat), true);
+      if (autoScroll && running) showPage(p, panePageAt(p.pages, readingBeat), true);
       const at = isChart(p.channel) ? playing[p.channel.id] : reading[p.channel.id];
       light(p, at, isChart(p.channel) ? beat : readingBeat);
     });

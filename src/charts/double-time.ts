@@ -88,6 +88,8 @@ function splitMasterBar(mb: Obj, count: number): Obj[] {
     out.set("timesignaturedenominator", 4);
     out.set("timesignaturecommon", false);
     if (k > 0) out.delete("section");
+    // A double bar line ends its bar, so only the last new bar keeps it.
+    if (k < count - 1) out.delete("isdoublebar");
     out.set(
       "tempoautomations",
       tempos

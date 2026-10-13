@@ -95,6 +95,12 @@ KickHit.4 SnareHit.4 KickHit.4 SnareHit.4`;
     expect(score.masterBars.map((mb) => mb.section?.text ?? null)).toEqual(["Intro", null, "Verse", null]);
   });
 
+  it("puts a double bar line on the last of its two bars, where the source bar ended", () => {
+    const source = tex(GUITAR("0.6.1 | 0.6.1"));
+    source.masterBars[0].isDoubleBar = true;
+    expect(doubleTime(source).masterBars.map((mb) => mb.isDoubleBar)).toEqual([false, true, false, false]);
+  });
+
   it("refuses repeats", () => {
     expect(() => doubled(GUITAR("\\ro 0.6.1 | \\rc 2 0.6.1"))).toThrow(/repeat/);
   });

@@ -84,15 +84,16 @@ Note the split inside lyrics: the lyric **text** lives in the manifest (nested u
 **Regenerating everything from manifests** is the build half, and it cannot touch sections or lyrics:
 
 ```sh
-npm run songs                   # every changed song → RPP, lyrics-display, cues
+npm run songs                   # every changed song under the folders in .clickbait.json
+npm run songs -- songs/duo      # only the songs under a folder
 npm run songs -- bundle         # also render the mix + bundle
 ```
 
 Wireit content-hashes inputs, so unchanged songs no-op. After changing clickbait's own tool code (not a tracked input), force it: `npm run songs -- build --force` (clears only that task's wireit state, so its dependencies, like the stem split, don't re-run).
 
 **Caveats.**
-- Songs live at `songs/<group>/<artist>/<song>/`, where the group is the ensemble (`deermouse`, `duo`). Retired songs go to `songs/archive/<artist>/<song>/`, which `npm run songs` never visits. Recipes reach the repo root with `../../../../`.
-- `npm run songs` only visits folders whose `package.json` has a `wireit` block. Prepped-only folders still at `songs/<artist>/<song>/` (no manifest yet) are skipped.
+- The tools assume no layout: `npm run songs` and the align upgrade search the folders they're given, or the `"songs"` list in the gitignored `.clickbait.json`, and `song:init` takes `--dir`. This checkout keeps songs at `songs/<group>/<artist>/<song>/` (groups `deermouse` and `duo`), with retired songs in `songs/archive/`, which `.clickbait.json` leaves out. Recipes reach the repo root with `../../../../`.
+- `npm run songs` only visits folders whose `package.json` has a `wireit` block. Prepped-only folders still at `songs/<artist>/<song>/` (no manifest yet) are outside the configured folders anyway.
 - Recipes are **not uniform**. Songs scaffolded before the recipe grew `beats`/`smooth` still lack those tasks and read `*.beats.json`/`*.beatmap.json` as globs instead. Check the actual recipe before reasoning about a specific song.
 - The build needs the Rust binary. `.claude/skills/clickbait/bin/clickbait-audio` is a **symlink into `target/release/`**, so a `cargo clean` silently breaks both the build and `tests/build-rpp.test.ts`. Fix: `cargo build --release -p clickbait-audio` (a from-scratch build takes 10–20 min — it compiles `burn` and `wgpu`).
 

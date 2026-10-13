@@ -5,20 +5,30 @@
  * with an align command it doesn't recognize, is left alone and listed.
  *
  * Usage:
- *   npx tsx src/build/upgrade-align-cli.ts [filter]
+ *   npx tsx src/build/upgrade-align-cli.ts [folder...]   # default: the folders in .clickbait.json
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
+import { readClickbaitConfig, songRoots } from "../core/songs-args.js";
 import { alignSource, upgradeAlign } from "./song-recipe.js";
 
 const root = resolve(import.meta.dirname, "..", "..");
-const filter = process.argv[2];
-const manifests = execSync("find songs -name '*.song.json' -not -path '*/.wireit/*' -not -path 'songs/archive/*'", { cwd: root, encoding: "utf8" })
-  .trim()
-  .split("\n")
-  .filter((m) => m && (!filter || m.includes(filter)))
+let roots: string[];
+try {
+  roots = songRoots(process.argv.slice(2).map((a) => resolve(a)), readClickbaitConfig(root).songs);
+} catch (err) {
+  console.error((err as Error).message);
+  process.exit(1);
+}
+const manifests = roots
+  .flatMap((r) =>
+    execFileSync("find", [relative(root, r) || ".", "-name", "*.song.json", "-not", "-path", "*/.wireit/*"], { cwd: root, encoding: "utf8" })
+      .trim()
+      .split("\n")
+      .filter(Boolean),
+  )
   .sort();
 
 for (const m of manifests) {

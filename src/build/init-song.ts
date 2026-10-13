@@ -1,17 +1,17 @@
 /**
  * init-song — scaffold a new song folder and its wireit build recipe UP FRONT,
  * before any analysis has run. This is the first step for a new song: it writes
- * `songs/<group>/<artist>/<slug>/package.json` with the whole pipeline (split, lookup,
+ * `<dir>/package.json` with the whole pipeline (split, lookup,
  * beats, align, scaffold, smooth, build, bundle) as tasks, so every step from
  * raw audio to finished RPP is a content-hashed, re-runnable wireit task.
  *
  * Usage:
- *   npm run song:init -- --group deermouse --title "Billie Jean" --artist "Michael Jackson" \
+ *   npm run song:init -- --dir songs/my-band/michael-jackson/billie-jean \
+ *     --title "Billie Jean" --artist "Michael Jackson" \
  *     [--key F#m] [--bpm 117] [--model 4stem] [--source songs/dls/whatever.m4a]
  *
- * --group is the ensemble the song is for (`deermouse`, `duo`, …), one folder
- * under songs/. It is required: a song filed under the wrong ensemble is easy
- * to miss, so the tool asks rather than picking one.
+ * --dir is the song's folder, anywhere and at any depth: every band lays its
+ * songs out differently, so the tool is told where rather than guessing.
  *
  * --source, if given, is MOVED and renamed to <songdir>/source.m4a. Otherwise
  * you place source.m4a in the folder yourself. --bpm is an optional hint that
@@ -19,15 +19,16 @@
  * you narrow it after `npm run lookup` reports the BPM.
  *
  * After init:
- *   cd songs/<group>/<artist>/<slug>
+ *   cd <dir>
  *   npm run analyze          # split + lookup + lyrics-txt + beats + align
  *   npm run init-manifest    # first-cut manifest (author it after)
  *   npm run build            # smooth + align + generate → RPP
  */
 
-import { existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, renameSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { toSlug } from "../core/dsongl/slug.js";
+import { initSongDir } from "./init-song-dir.js";
 import { songRecipe } from "./song-recipe.js";
 
 function flag(name: string): string | undefined {
@@ -37,12 +38,10 @@ function flag(name: string): string | undefined {
 
 const title = flag("title");
 const artist = flag("artist");
-const group = flag("group");
-if (!title || !group) {
+if (!title) {
   console.error(
-    'usage: npm run song:init -- --group <ensemble> --title "<t>" [--artist "<a>"] [--key <k>] [--bpm <n>] [--model 4stem|6stem] [--source <file>]',
+    'usage: npm run song:init -- --dir <song folder> --title "<t>" [--artist "<a>"] [--key <k>] [--bpm <n>] [--model 4stem|6stem] [--source <file>]',
   );
-  if (!group) console.error("  --group is required: the ensemble folder under songs/, e.g. deermouse or duo");
   process.exit(1);
 }
 
@@ -52,17 +51,15 @@ const bpmHint = flag("bpm") ? Number(flag("bpm")) : undefined;
 const sourceArg = flag("source");
 
 const root = process.cwd();
-const artistSlug = artist ? toSlug(artist) : "unknown-artist";
 const slug = toSlug(title);
-const songDir = join(root, "songs", toSlug(group), artistSlug, slug);
-
-if (existsSync(join(songDir, "package.json"))) {
-  console.error(`refusing to overwrite existing recipe: ${relative(root, join(songDir, "package.json"))}`);
-  console.error("(delete it first if you really mean to re-init this song)");
+let songDir: string;
+let rel: string;
+try {
+  ({ songDir, rel } = initSongDir(flag("dir"), root));
+} catch (err) {
+  console.error((err as Error).message);
   process.exit(1);
 }
-
-mkdirSync(songDir, { recursive: true });
 
 // Move the source into place as source.m4a, if given.
 const dest = join(songDir, "source.m4a");
@@ -81,7 +78,6 @@ if (sourceArg) {
 const minBpm = bpmHint ? Math.round(bpmHint * 0.9) : 80;
 const maxBpm = bpmHint ? Math.round(bpmHint * 1.1) : 160;
 
-const rel = relative(songDir, root) || ".";
 const unit = songRecipe({ slug, title, artist, key, rel, model, minBpm, maxBpm });
 const pkgPath = join(songDir, "package.json");
 writeFileSync(pkgPath, JSON.stringify(unit, null, 2) + "\n");

@@ -5,10 +5,10 @@
 When the user provides a full mix (MP3, WAV, etc.) and wants stems:
 
 ```bash
-.claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<artist-slug>/<song-slug>/stems" --model 4stem
+.claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<group>/<artist-slug>/<song-slug>/stems" --model 4stem
 ```
 
-**Always split into the song's project directory** (`songs/<artist-slug>/<song-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the manifest.
+**Always split into the song's project directory** (`songs/<group>/<artist-slug>/<song-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the manifest.
 
 Models: `4stem` (default — vocals, drums, bass, other), `6stem` (vocals, drums, bass, guitar, piano, other — use when piano/guitar separation is needed), `finetune` (best quality 4-stem, slower). The model auto-downloads on first use (~84-333 MB, cached).
 

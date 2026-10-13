@@ -1,13 +1,17 @@
 /**
  * init-song — scaffold a new song folder and its wireit build recipe UP FRONT,
  * before any analysis has run. This is the first step for a new song: it writes
- * `songs/<artist>/<slug>/package.json` with the whole pipeline (split, lookup,
+ * `songs/<group>/<artist>/<slug>/package.json` with the whole pipeline (split, lookup,
  * beats, align, scaffold, smooth, build, bundle) as tasks, so every step from
  * raw audio to finished RPP is a content-hashed, re-runnable wireit task.
  *
  * Usage:
- *   npm run song:init -- --title "Billie Jean" --artist "Michael Jackson" \
+ *   npm run song:init -- --group deermouse --title "Billie Jean" --artist "Michael Jackson" \
  *     [--key F#m] [--bpm 117] [--model 4stem] [--source songs/dls/whatever.m4a]
+ *
+ * --group is the ensemble the song is for (`deermouse`, `duo`, …), one folder
+ * under songs/. It is required: a song filed under the wrong ensemble is easy
+ * to miss, so the tool asks rather than picking one.
  *
  * --source, if given, is MOVED and renamed to <songdir>/source.m4a. Otherwise
  * you place source.m4a in the folder yourself. --bpm is an optional hint that
@@ -15,7 +19,7 @@
  * you narrow it after `npm run lookup` reports the BPM.
  *
  * After init:
- *   cd songs/<artist>/<slug>
+ *   cd songs/<group>/<artist>/<slug>
  *   npm run analyze          # split + lookup + lyrics-txt + beats + align
  *   npm run init-manifest    # first-cut manifest (author it after)
  *   npm run build            # smooth + align + generate → RPP
@@ -33,10 +37,12 @@ function flag(name: string): string | undefined {
 
 const title = flag("title");
 const artist = flag("artist");
-if (!title) {
+const group = flag("group");
+if (!title || !group) {
   console.error(
-    'usage: npm run song:init -- --title "<t>" [--artist "<a>"] [--key <k>] [--bpm <n>] [--model 4stem|6stem] [--source <file>]',
+    'usage: npm run song:init -- --group <ensemble> --title "<t>" [--artist "<a>"] [--key <k>] [--bpm <n>] [--model 4stem|6stem] [--source <file>]',
   );
+  if (!group) console.error("  --group is required: the ensemble folder under songs/, e.g. deermouse or duo");
   process.exit(1);
 }
 
@@ -48,7 +54,7 @@ const sourceArg = flag("source");
 const root = process.cwd();
 const artistSlug = artist ? toSlug(artist) : "unknown-artist";
 const slug = toSlug(title);
-const songDir = join(root, "songs", artistSlug, slug);
+const songDir = join(root, "songs", toSlug(group), artistSlug, slug);
 
 if (existsSync(join(songDir, "package.json"))) {
   console.error(`refusing to overwrite existing recipe: ${relative(root, join(songDir, "package.json"))}`);

@@ -92,10 +92,10 @@ The teleprompter reads the built `<slug>.lyrics-display.json` files (produced by
 
 ```bash
 # One song folder
-npx tsx scripts/teleprompter.ts --songs-dir songs/<artist-slug>/<song-slug>
+npx tsx scripts/teleprompter.ts --songs-dir songs/<group>/<artist-slug>/<song-slug>
 
 # Several folders (searched in order; first slug match wins)
-npx tsx scripts/teleprompter.ts --songs-dir songs/<artist-a>/<song-a> --songs-dir songs/<artist-b>/<song-b>
+npx tsx scripts/teleprompter.ts --songs-dir songs/<group>/<artist-a>/<song-a> --songs-dir songs/<group>/<artist-b>/<song-b>
 ```
 
 ## Security

@@ -14,8 +14,7 @@
  * behind it) still run only if their own inputs changed.
  *
  * A song whose recipe has no such task is skipped and listed (recipes from
- * before a task existed lack it). A flat folder holding several manifests has
- * no recipe; build those with `npm run song:build -- <manifest>`.
+ * before a task existed lack it). Songs under songs/archive/ are never visited.
  */
 
 import { execSync } from "node:child_process";
@@ -39,7 +38,7 @@ function recipe(dir: string): Record<string, unknown> | null {
 
 const dirs = [
   ...new Set(
-    execSync("find songs -name '*.song.json'", { encoding: "utf8" })
+    execSync("find songs -name '*.song.json' -not -path 'songs/archive/*'", { encoding: "utf8" })
       .trim()
       .split("\n")
       .filter(Boolean)

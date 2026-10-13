@@ -15,7 +15,7 @@ import { alignSource, upgradeAlign } from "./song-recipe.js";
 
 const root = resolve(import.meta.dirname, "..", "..");
 const filter = process.argv[2];
-const manifests = execSync("find songs -name '*.song.json' -not -path '*/.wireit/*'", { cwd: root, encoding: "utf8" })
+const manifests = execSync("find songs -name '*.song.json' -not -path '*/.wireit/*' -not -path 'songs/archive/*'", { cwd: root, encoding: "utf8" })
   .trim()
   .split("\n")
   .filter((m) => m && (!filter || m.includes(filter)))

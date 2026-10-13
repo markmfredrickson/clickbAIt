@@ -41,14 +41,14 @@ For the manifest format, authoring rules, section patterns, and cue/meter detail
 
 ## Directory convention (IMPORTANT)
 
-Every song gets its own folder: **`songs/<artist-slug>/<song-slug>/`**. All of a song's files — manifest, stems, cues, sidecars, RPP, lyrics-display — live inside it. Never put a song's files flat in the artist folder. The source audio lives in the song folder as **`source.m4a`** (rename it off any download filename); the manifest's `sources.recording.file` is just `"source.m4a"`. `songs/dls/` is only a staging area — move and rename the file into the song folder; don't reference `dls/` from a manifest.
+Every song gets its own folder: **`songs/<group>/<artist-slug>/<song-slug>/`**, where `<group>` is the ensemble the song is for (one folder per band or side project, e.g. the band name and `duo`; ask the user which one if it isn't clear). Retired songs move to `songs/archive/<artist-slug>/<song-slug>/`, which the build loop skips. All of a song's files — manifest, stems, cues, sidecars, RPP, lyrics-display — live inside it. Never put a song's files flat in the artist folder. The source audio lives in the song folder as **`source.m4a`** (rename it off any download filename); the manifest's `sources.recording.file` is just `"source.m4a"`. `songs/dls/` is only a staging area — move and rename the file into the song folder; don't reference `dls/` from a manifest.
 
 ## Step 1: Initialize the song
 
-Create the song folder and its wireit build recipe **up front, before any analysis**. This writes `songs/<artist-slug>/<song-slug>/package.json` with the whole pipeline (split, lookup, beats, align, init-manifest, smooth, build, bundle) as tasks:
+Create the song folder and its wireit build recipe **up front, before any analysis**. This writes `songs/<group>/<artist-slug>/<song-slug>/package.json` with the whole pipeline (split, lookup, beats, align, init-manifest, smooth, build, bundle) as tasks:
 
 ```bash
-npm run song:init -- --title "<title>" --artist "<artist>" [--key <key>] [--bpm <hint>] --source "songs/dls/<download>.m4a"
+npm run song:init -- --group <ensemble> --title "<title>" --artist "<artist>" [--key <key>] [--bpm <hint>] --source "songs/dls/<download>.m4a"
 ```
 
 - `--source` **moves and renames** the download to `<songdir>/source.m4a`. If the audio is already in place, put it at `<songdir>/source.m4a` yourself and omit `--source`.
@@ -62,7 +62,7 @@ npm run song:init -- --title "<title>" --artist "<artist>" [--key <key>] [--bpm 
 From the song folder, run the analysis half — every task fans out through wireit and caches on its inputs:
 
 ```bash
-cd songs/<artist-slug>/<song-slug>
+cd songs/<group>/<artist-slug>/<song-slug>
 npm run analyze
 ```
 
@@ -137,14 +137,14 @@ npm run songs                   # build every song whose manifest/beatmap/align/
 npm run songs -- bundle         # also render the mix + rebuild the bundle (on demand)
 ```
 
-Or per song from its folder: `npm run analyze` (once), `npm run init-manifest`, author the sections, then `npm run build`. Re-run `npm run beats` after changing detection flags. Editing a `.song.json` re-runs only the affected song (wireit content-hashes inputs); **bundling is opt-in** (`-- bundle`). The rig (`default.json`) is a tracked input, so a routing change re-triggers the affected songs. After changing **clickbait itself** (tool code — not a tracked input), force a rebuild: `rm -rf songs/*/*/.wireit` then `npm run build:songs`.
+Or per song from its folder: `npm run analyze` (once), `npm run init-manifest`, author the sections, then `npm run build`. Re-run `npm run beats` after changing detection flags. Editing a `.song.json` re-runs only the affected song (wireit content-hashes inputs); **bundling is opt-in** (`-- bundle`). The rig (`default.json`) is a tracked input, so a routing change re-triggers the affected songs. After changing **clickbait itself** (tool code — not a tracked input), force a rebuild: `npm run songs -- build --force`.
 
 ## Using the show track
 
 - **Open the RPP in REAPER** (close it first if open — no hot-reload).
 - **Run the teleprompter** (browser lyrics + OSC relay + QR code), reading the built `<song-slug>.lyrics-display.json`:
   ```bash
-  npm run show:teleprompter -- --songs-dir "songs/<artist-slug>/<song-slug>"
+  npm run show:teleprompter -- --songs-dir "songs/<group>/<artist-slug>/<song-slug>"
   ```
   See `skill/teleprompter.md` for the REAPER OSC setup.
 

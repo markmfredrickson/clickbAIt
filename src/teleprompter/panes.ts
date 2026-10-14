@@ -35,37 +35,24 @@ export function panePageAt(pages: readonly { start: number }[], beat: number): n
   return page;
 }
 
-/** A row as laid out: its box in the pane's scroll space, and the beats it spans. */
-export interface RowBox {
-  top: number;
-  height: number;
-  start: number;
-  end: number;
-}
-
 /**
- * The beat at a scroll offset: the row under it, read in proportion. Panes
- * scrolled by hand move together through this and `offsetAtBeat`, since the
- * same bar sits at different heights in different panes.
+ * Pages that fill a pane of `available` height, for a page that has a screen
+ * (or a frame of one) to itself rather than a set number of rows. A page holds
+ * as many whole rows as fit; a row taller than the space gets a page alone.
+ * Each page starts on the last row of the one before, as with `panePages`,
+ * when that row and the next fit together; otherwise it starts on the next.
  */
-export function beatAtOffset(rows: readonly RowBox[], offset: number): number {
-  if (rows.length === 0) return 0;
-  let i = 0;
-  while (i + 1 < rows.length && rows[i + 1].top <= offset) i++;
-  const r = rows[i];
-  const frac = r.height > 0 ? Math.min(1, Math.max(0, (offset - r.top) / r.height)) : 0;
-  return r.start + frac * (r.end - r.start);
-}
-
-/** The scroll offset of a beat: its row's top, plus how far through the row it falls. */
-export function offsetAtBeat(rows: readonly RowBox[], beat: number): number {
-  if (rows.length === 0) return 0;
-  let i = 0;
-  while (i + 1 < rows.length && rows[i + 1].start <= beat) i++;
-  const r = rows[i];
-  const span = r.end - r.start;
-  const frac = span > 0 ? Math.min(1, Math.max(0, (beat - r.start) / span)) : 0;
-  // A beat past this row's end but before the next row's start reads as the next row's top.
-  if (beat >= r.end && i + 1 < rows.length) return rows[i + 1].top;
-  return r.top + frac * r.height;
+export function pagesByHeight(rows: readonly { start: number; height: number }[], available: number): PanePage[] {
+  const pages: PanePage[] = [];
+  let first = 0;
+  while (first < rows.length) {
+    let last = first;
+    let used = rows[first].height;
+    while (last + 1 < rows.length && used + rows[last + 1].height <= available) used += rows[++last].height;
+    pages.push({ first, last, start: rows[first].start });
+    if (last === rows.length - 1) break;
+    const repeat = last > first && rows[last].height + rows[last + 1].height <= available;
+    first = repeat ? last : last + 1;
+  }
+  return pages;
 }

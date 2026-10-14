@@ -4,7 +4,12 @@ import { parseDisplayOptions, displayQuery, PRESETS, presetHref } from "../../sr
 const SIZED = ["lyrics", "chords"];
 
 describe("parseDisplayOptions", () => {
-  it("reads the channels to show", () => {
+  it("reads the one view a prompter page shows", () => {
+    expect(parseDisplayOptions("?view= drums ", SIZED).view).toBe("drums");
+    expect(parseDisplayOptions("", SIZED).view).toBeUndefined();
+  });
+
+  it("reads the channels an e-ink page stacks", () => {
     expect(parseDisplayOptions("?channels= lyrics, chords,,", SIZED).channels).toEqual(["lyrics", "chords"]);
   });
 
@@ -47,10 +52,10 @@ describe("displayQuery", () => {
   it("writes the options in a fixed order, keeping commas readable", () => {
     expect(
       displayQuery(
-        { channels: ["lyrics", "chords"], sizes: { chords: 0.9, lyrics: 2 }, rows: { chords: 2 }, offset: 1, scroll: "manual", theme: "light" },
+        { view: "chords", sizes: { chords: 0.9, lyrics: 2 }, rows: { chords: 2 }, offset: 1, scroll: "manual", theme: "light" },
         SIZED,
       ),
-    ).toBe("?channels=lyrics,chords&lyrics=2&chords=0.9&chords.rows=2&offset=1&scroll=manual&theme=light");
+    ).toBe("?view=chords&lyrics=2&chords=0.9&chords.rows=2&offset=1&scroll=manual&theme=light");
   });
 
   it("is empty when there's nothing to say", () => {
@@ -58,7 +63,7 @@ describe("displayQuery", () => {
   });
 
   it("reads back as the same options", () => {
-    const options = { channels: ["chords"], sizes: { chords: 1.25 }, rows: { chords: 3 }, offset: 2, theme: "light" as const };
+    const options = { view: "chords", sizes: { chords: 1.25 }, rows: { chords: 3 }, offset: 2, theme: "light" as const };
     expect(parseDisplayOptions(displayQuery(options, SIZED), SIZED)).toEqual(options);
   });
 });
@@ -66,10 +71,10 @@ describe("displayQuery", () => {
 describe("presets", () => {
   it("links each preset to its page with its options", () => {
     expect(PRESETS.map((p) => [p.name, presetHref(p)])).toEqual([
-      ["Lyrics", "/prompt?channels=lyrics"],
-      ["Chords + lyrics", "/prompt?channels=chords,lyrics"],
-      ["Chords only", "/prompt?channels=chords"],
-      ["Drums + lyrics", "/prompt?channels=drums,lyrics"],
+      ["Lyrics", "/prompt?view=lyrics"],
+      ["Chords", "/prompt?view=chords"],
+      ["Chords + lyrics", "/split?view=chords&view=lyrics"],
+      ["Drums + lyrics", "/split?view=drums&view=lyrics"],
       ["E-ink lyrics", "/eink?channels=lyrics"],
       ["E-ink chords + lyrics", "/eink?channels=chords,lyrics"],
       ["E-ink drums", "/eink?channels=drums"],

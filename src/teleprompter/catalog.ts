@@ -10,7 +10,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve, sep } from "node:path";
 import { readClickbaitConfig } from "../core/songs-args.js";
 
 export interface RelaySongs {
@@ -53,13 +53,15 @@ export function readSetlist(file: string, base: string, built: string[]): string
     });
 }
 
-/** Every folder holding a manifest under the given roots. */
+/** Every folder holding a manifest under the given roots, outside hidden folders. */
 function songFolders(roots: string[]): string[] {
   const found = roots.flatMap((r) =>
-    execFileSync("find", [r, "-name", "*.song.json", "-not", "-path", "*/.wireit/*"], { encoding: "utf8" })
+    execFileSync("find", [r, "-name", "*.song.json"], { encoding: "utf8" })
       .trim()
       .split("\n")
       .filter(Boolean)
+      // Nothing under a hidden folder (.wireit, a .trash) is a song.
+      .filter((m) => !relative(r, m).split(sep).some((part) => part.startsWith(".")))
       .map(dirname),
   );
   return [...new Set(found)].sort();

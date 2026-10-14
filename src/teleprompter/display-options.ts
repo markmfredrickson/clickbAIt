@@ -2,10 +2,12 @@
  * A display's options, carried in its URL so a setup is a link: open it on
  * another screen and it looks the same.
  *
- *   /prompt?channels=chords,lyrics&lyrics=2&lyrics.rows=6&chords.rows=2&offset=1&scroll=manual&theme=light
+ *   /prompt?view=drums&drums=1.4&drums.rows=3&offset=1&scroll=manual&theme=light
  *
- * `channels` lists what to show, in the order the panes stack. Each channel
- * takes its size under its own name, and its pane's rows as `<name>.rows`.
+ * A prompter page shows one `view`; more at once is the split page's job
+ * (split-options.ts). An e-ink page stacks `channels`, in order, since a
+ * Kindle can't tile pages. Each channel takes its size under its own name,
+ * and its pane's rows as `<name>.rows`.
  * A page ignores what it can't use, and a URL that doesn't say leaves the
  * choice to the page (and what the screen remembers).
  *
@@ -15,6 +17,9 @@
 const MAX_ROWS = 50;
 
 export interface DisplayOptions {
+  /** The one channel a prompter page shows. */
+  view?: string;
+  /** The channels an e-ink page stacks, top to bottom. */
   channels?: string[];
   /** Size in rem, by channel name. */
   sizes: Record<string, number>;
@@ -31,6 +36,8 @@ export interface DisplayOptions {
 export function parseDisplayOptions(query: string, sizedChannels: readonly string[]): DisplayOptions {
   const q = new URLSearchParams(query);
   const options: DisplayOptions = { sizes: {}, rows: {} };
+  const view = q.get("view")?.trim();
+  if (view) options.view = view;
   const channels = q.get("channels");
   if (channels !== null) options.channels = channels.split(",").map((c) => c.trim()).filter(Boolean);
   for (const channel of sizedChannels) {
@@ -53,6 +60,7 @@ export function parseDisplayOptions(query: string, sizedChannels: readonly strin
 /** The query string for `options` ("" when there's nothing to say), in a fixed order. */
 export function displayQuery(options: DisplayOptions, sizedChannels: readonly string[]): string {
   const parts: string[] = [];
+  if (options.view) parts.push("view=" + encodeURIComponent(options.view));
   if (options.channels) parts.push("channels=" + options.channels.map(encodeURIComponent).join(","));
   for (const channel of sizedChannels) {
     if (options.sizes[channel] !== undefined) parts.push(`${encodeURIComponent(channel)}=${options.sizes[channel]}`);
@@ -69,16 +77,16 @@ export interface Preset {
   name: string;
   /** What it's for, under the name on the picker. */
   note: string;
-  page: "prompt" | "eink";
+  page: "prompt" | "split" | "eink";
   /** The query string, without the leading "?". */
   query?: string;
 }
 
 export const PRESETS: readonly Preset[] = [
-  { name: "Lyrics", note: "Words, following the song", page: "prompt", query: "channels=lyrics" },
-  { name: "Chords + lyrics", note: "The chord chart above the words", page: "prompt", query: "channels=chords,lyrics" },
-  { name: "Chords only", note: "A chart, bar by bar", page: "prompt", query: "channels=chords" },
-  { name: "Drums + lyrics", note: "Grooves above the words", page: "prompt", query: "channels=drums,lyrics" },
+  { name: "Lyrics", note: "Words, following the song", page: "prompt", query: "view=lyrics" },
+  { name: "Chords", note: "A chart, bar by bar", page: "prompt", query: "view=chords" },
+  { name: "Chords + lyrics", note: "The chord chart above the words, split screen", page: "split", query: "view=chords&view=lyrics" },
+  { name: "Drums + lyrics", note: "Grooves above the words, split screen", page: "split", query: "view=drums&view=lyrics" },
   { name: "E-ink lyrics", note: "Pages for an e-ink browser", page: "eink", query: "channels=lyrics" },
   { name: "E-ink chords + lyrics", note: "Chords above the words, on e-ink", page: "eink", query: "channels=chords,lyrics" },
   { name: "E-ink drums", note: "The drum chart, on e-ink", page: "eink", query: "channels=drums" },

@@ -19,7 +19,7 @@ import type { LyricsDisplay } from "../lyrics-display.js";
 import { parseDisplayOptions, displayQuery } from "../display-options.js";
 import { songMap, songProgress } from "../song-map.js";
 import { channelName, channelTitle, itemsAt, resolveChannels, type ChannelPosition, type RowChannel, type RowDocument } from "../rows.js";
-import { panePages, panePageAt, type PanePage, beatAtOffset, offsetAtBeat, type RowBox } from "../panes.js";
+import { panePages, panePageAt, type PanePage, pagesByHeight } from "../panes.js";
 import { channelView, fitRows, placeDrawing, showPass, type ChannelView } from "./pane-view.js";
 import { drawingKey } from "../drawings.js";
 import { cardShowing } from "../card.js";
@@ -145,16 +145,21 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   function remember(key: string, value: string): void {
     try { localStorage.setItem("clickbait." + key, value); } catch (e) { /* private window */ }
   }
+  function forget(key: string): void {
+    try { localStorage.removeItem("clickbait." + key); } catch (e) { /* private window */ }
+  }
 
-  /** The panes to show: the URL's channels, else what this screen showed last, else lyrics. */
+  /**
+   * The one channel this page shows: the URL's view, else what this screen
+   * showed last, else lyrics, else the song's first channel. More than one at
+   * once is the split page's job, a frame per view.
+   */
   function wantedOrder(): string[] {
-    if (urlOptions.channels) return resolve(urlOptions.channels);
-    const saved = remembered("channels");
-    if (saved !== null) {
-      try { return resolve(JSON.parse(saved)); } catch (e) { /* ignore */ }
+    for (const id of [urlOptions.view, remembered("view"), "lyrics"]) {
+      const found = id ? resolve([id]) : [];
+      if (found.length) return found.slice(0, 1);
     }
-    const lyrics = resolve(["lyrics"]);
-    return lyrics.length ? lyrics : doc!.channels.slice(0, 1).map(function (c) { return c.id; });
+    return doc!.channels.slice(0, 1).map(function (c) { return c.id; });
   }
 
   function sizeOf(channel: RowChannel): number {
@@ -163,9 +168,14 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     return isNaN(v) ? k.size : Math.min(k.max, Math.max(k.min, v));
   }
 
-  function rowsOf(channel: RowChannel): number {
+  /** The rows a page shows when someone set them (URL or this screen), else null: pages fill the window. */
+  function setRows(channel: RowChannel): number | null {
     const v = urlOptions.rows[channel.id] ?? parseInt(remembered("rows." + channel.id) ?? "", 10);
-    return isNaN(v) ? kindOf(channel).rows : Math.min(MAX_ROWS, Math.max(1, v));
+    return isNaN(v) ? null : Math.min(MAX_ROWS, Math.max(1, v));
+  }
+
+  function rowsOf(channel: RowChannel): number {
+    return setRows(channel) ?? kindOf(channel).rows;
   }
 
   function headerSize(): number {
@@ -176,7 +186,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   /** Rewrite the URL to match the page, so copying it copies the setup. */
   function writeUrl() {
     const options = {
-      channels: order.slice(),
+      view: order[0],
       sizes: {},
       rows: {},
       offset: offsetBeats !== 0 ? offsetBeats : undefined,
@@ -189,14 +199,15 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
       names.push(c.id);
       if (order.indexOf(c.id) < 0) return;
       if (sizeOf(c) !== kindOf(c).size) options.sizes[c.id] = sizeOf(c);
-      if (rowsOf(c) !== kindOf(c).rows) options.rows[c.id] = rowsOf(c);
+      const rows = setRows(c);
+      if (rows !== null) options.rows[c.id] = rows;
     });
     try { history.replaceState(null, "", location.pathname + displayQuery(options, names)); } catch (e) { /* file:// */ }
   }
 
   /** Change what's shown and re-render in place, keeping the beat. */
   function changed() {
-    remember("channels", JSON.stringify(order));
+    if (order[0]) remember("view", order[0]);
     writeUrl();
     renderPanes();
     renderDrawerChannels();
@@ -475,6 +486,8 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     if (!cardEl.hidden) cardEl.style.top = byId("header").offsetHeight + "px";
   }
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(placeCard).observe(byId("header"));
+  // A page fills the window, so a resize (or a split's divider moving) repages.
+  window.addEventListener("resize", function () { panes.forEach(sizePane); });
 
   function renderPanes() {
     container.innerHTML = "";
@@ -520,39 +533,25 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
         });
       }
       if (typeof ResizeObserver !== "undefined") new ResizeObserver(function () { sizePane(pane); }).observe(rowsEl);
-      // Scrolled by hand, this pane leads and the others follow it to the same beat.
-      ["wheel", "touchstart", "pointerdown", "keydown"].forEach(function (type) {
-        el.addEventListener(type, function () { scrollLeader = pane; }, { passive: true });
-      });
-      el.addEventListener("scroll", function () { followScroll(pane); }, { passive: true });
     });
     panes.forEach(sizePane);
     showScrollClass();
-  }
-
-  /** The pane being scrolled by hand; the others follow it. */
-  let scrollLeader: Pane | null = null;
-
-  function rowBoxes(p: Pane): RowBox[] {
-    return p.view.rows.map(function (r, i) {
-      const row = p.channel.rows[i];
-      return { top: r.el.offsetTop, height: r.el.offsetHeight, start: row.start, end: row.end };
-    });
-  }
-
-  /** Move every other pane to the beat at the top of the one being scrolled. */
-  function followScroll(leader: Pane) {
-    if (leader !== scrollLeader) return; // a follower moving, or a page turn
-    const beat = beatAtOffset(rowBoxes(leader), leader.el.scrollTop);
-    panes.forEach(function (p) {
-      if (p !== leader) p.el.scrollTop = offsetAtBeat(rowBoxes(p), beat);
-    });
   }
 
   /** Make a pane tall enough for its tallest page, and put it back on its page. */
   function sizePane(p: Pane) {
     fitRows(p.view);
     const rows = p.view.rows.map(function (r) { return r.el; });
+    if (setRows(p.channel) === null) {
+      // No row count set: a page is as many rows as fit between the header and the status bar.
+      const available = Math.max(80, window.innerHeight - byId("header").offsetHeight - byId("status-bar").offsetHeight - 16);
+      p.pages = pagesByHeight(rows.map(function (el, i) { return { start: p.channel.rows[i].start, height: el.offsetHeight }; }), available);
+      p.el.style.height = available + "px";
+      const turned = p.page;
+      p.page = -1;
+      if (turned >= 0) showPage(p, Math.min(turned, p.pages.length - 1), false);
+      return;
+    }
     let height = 0;
     p.pages.forEach(function (pg) {
       const top = rows[pg.first].offsetTop;
@@ -588,7 +587,6 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     document.body.classList.toggle("running", on);
     showScrollClass();
     if (on) {
-      scrollLeader = null;
       panes.forEach(function (p) { p.page = -1; });
       onBeatUpdate(rawBeat);
     }
@@ -710,48 +708,22 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     const list = document.createElement("section");
     list.className = "drawer-section";
     const listHead = document.createElement("h2");
-    listHead.textContent = "Channels";
+    listHead.textContent = "Show";
     list.appendChild(listHead);
-    const offered = doc ? doc.channels.slice() : [];
-    // Shown channels first, in their order, then the rest.
-    offered.sort(function (a, b) {
-      const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-    });
-    offered.forEach(function (c) {
+    (doc ? doc.channels : []).forEach(function (c) {
       const label = document.createElement("label");
       label.className = "channel-row";
-      const box = document.createElement("input");
-      box.type = "checkbox";
-      box.checked = order.indexOf(c.id) >= 0;
-      box.addEventListener("change", function () {
-        order = box.checked ? order.concat([c.id]) : order.filter(function (id) { return id !== c.id; });
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "view";
+      radio.checked = order[0] === c.id;
+      radio.addEventListener("change", function () {
+        if (!radio.checked) return;
+        order = [c.id];
         changed();
       });
       label.appendChild(document.createTextNode(channelLabel(c)));
-      const i = order.indexOf(c.id);
-      if (i >= 0) {
-        const move = document.createElement("span");
-        move.className = "move";
-        [["↑", -1], ["↓", 1]].forEach(function (m) {
-          const btn = document.createElement("button");
-          btn.textContent = m[0] as string;
-          btn.title = m[1] === -1 ? "Move up" : "Move down";
-          const j = i + (m[1] as number);
-          btn.disabled = j < 0 || j >= order.length;
-          btn.addEventListener("click", function (e) {
-            e.preventDefault();
-            const next = order.slice();
-            next[i] = order[j];
-            next[j] = order[i];
-            order = next;
-            changed();
-          });
-          move.appendChild(btn);
-        });
-        label.appendChild(move);
-      }
-      label.appendChild(box);
+      label.appendChild(radio);
       list.appendChild(label);
     });
     drawerChannels.appendChild(list);
@@ -817,12 +789,16 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     input.type = "number";
     input.min = "1";
     input.max = String(MAX_ROWS);
-    input.value = String(rowsOf(c));
+    const set = setRows(c);
+    input.value = set === null ? "" : String(set);
+    input.placeholder = "Fit";
     input.className = "rows-input";
     input.addEventListener("change", function () {
-      const v = Math.min(MAX_ROWS, Math.max(1, parseInt(input.value, 10) || 1));
       delete urlOptions.rows[c.id];
-      remember("rows." + c.id, String(v));
+      // Blank goes back to filling the window.
+      const v = parseInt(input.value, 10);
+      if (isNaN(v)) forget("rows." + c.id);
+      else remember("rows." + c.id, String(Math.min(MAX_ROWS, Math.max(1, v))));
       changed();
     });
     label.appendChild(document.createTextNode("Rows"));

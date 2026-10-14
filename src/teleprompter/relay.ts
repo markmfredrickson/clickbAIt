@@ -728,6 +728,7 @@ export function startRelay(opts: RelayOptions) {
       "/prompt": "index.html",
       "/lyrics": "index.html",
       "/control": "control.html",
+      "/split": "split.html",
       "/eink": "eink.html",
     };
     const filePath = pages[path] ?? path.slice(1);

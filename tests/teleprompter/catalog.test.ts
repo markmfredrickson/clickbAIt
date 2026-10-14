@@ -103,3 +103,15 @@ describe("songSlugOf", () => {
     expect(() => songSlugOf(r.lonely)).toThrow(/x-artist.*y-artist|y-artist.*x-artist/);
   });
 });
+
+describe("relaySongs: hidden folders", () => {
+  it("skips songs inside hidden folders, like a .trash", () => {
+    const r = repo();
+    const hidden = join(r.root, "band/radiohead/creep/.trash-old");
+    mkdirSync(hidden, { recursive: true });
+    writeFileSync(join(hidden, "old.song.json"), "{}");
+    writeFileSync(join(hidden, "old-artist.lyrics-display.json"), "{}");
+    r.config({ songs: ["band"] });
+    expect(relaySongs([], r.root).songsDirs).not.toContain(hidden);
+  });
+});

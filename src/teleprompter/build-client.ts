@@ -25,7 +25,7 @@ export async function buildClient(dir = clientDir): Promise<void> {
     // logic can't drift between them. The e-ink client shares eink/layout
     // with the relay's page renderer, and eink-page is the page that renderer
     // draws in headless Chrome, with the prompter's own pane-view.
-    entryPoints: [join(dir, "teleprompter.ts"), join(dir, "control.ts"), join(dir, "eink.ts"), join(dir, "eink-page.ts")],
+    entryPoints: [join(dir, "teleprompter.ts"), join(dir, "control.ts"), join(dir, "split.ts"), join(dir, "eink.ts"), join(dir, "eink-page.ts")],
     outdir: dir,
     bundle: true,
     platform: "browser",

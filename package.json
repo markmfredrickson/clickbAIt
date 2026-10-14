@@ -29,6 +29,7 @@
     "song:chords-draft": "npx tsx src/authoring/chords-draft-cli.ts",
     "song:chart-questions": "npx tsx src/authoring/chart-questions-cli.ts",
     "song:chart-review": "npx tsx src/authoring/chart-review-cli.ts",
+    "song:sheets": "npx tsx src/teleprompter/sheets-cli.ts",
     "song:visuals-preview": "npx tsx src/visuals/preview-cli.ts",
     "song:media": "npx tsx src/visuals/media-cli.ts",
     "songs": "npx tsx scripts/songs.ts",

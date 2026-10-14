@@ -161,7 +161,7 @@ export const CHORD_FILE_GLOB = "*.chords.lab";
 /** What every visuals render reads: the scene, the timing, the stems' features, the footage. */
 export const RENDER_FILES = ["*.scene.js", "*.lyrics-display.json", "*.rows.json", "*.beat-features.json", "footage/footage.json", "footage/*.mp4"];
 /** What the timing half of generate writes. */
-export const TIMING_OUTPUT = ["*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**"];
+export const TIMING_OUTPUT = ["*.lyrics-display.json", "*.charts.json", "*.rows.json", "cues/**", "sheets/**"];
 
 /**
  * Build the per-song wireit unit (the parsed package.json object). Callers

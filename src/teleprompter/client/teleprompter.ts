@@ -65,6 +65,8 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     litRow: number;
     litItem: number;
     litPass?: number;
+    /** The box lit over the bar playing in a figure run. */
+    litBar?: HTMLElement | null;
   }
   let panes: Pane[] = [];
   let order: string[] = [];  // channel ids shown, top to bottom
@@ -692,6 +694,13 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     if (p.channel.kind === "lyrics" && at.row >= 0) {
       const row = p.channel.rows[at.row];
       rows[at.row].items.forEach(function (w, i) { w.classList.toggle("sung", row.items[i].start <= beat && i !== at.item); });
+    }
+    // The bar playing in a figure run.
+    const bar = at.row >= 0 && at.item >= 0 && at.bar !== undefined ? rows[at.row].runBars?.[at.item]?.[at.bar] ?? null : null;
+    if (bar !== p.litBar) {
+      p.litBar?.classList.remove("now");
+      bar?.classList.add("now");
+      p.litBar = bar;
     }
     p.litRow = at.row;
     p.litItem = at.item;

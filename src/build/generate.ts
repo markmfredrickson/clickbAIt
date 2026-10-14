@@ -24,6 +24,7 @@ import { buildLyricsDisplay } from "./lyrics-display.js";
 import { buildChartsFile } from "../charts/build.js";
 import { buildRows } from "../teleprompter/build-rows.js";
 import { drawNotation } from "../charts/notation-svg.js";
+import { writeSheets } from "../teleprompter/sheets.js";
 import { parseNotes, type Note } from "../teleprompter/card.js";
 import { alignSource, songRecipe } from "./song-recipe.js";
 import { findGigVideo, videoSeconds } from "./gig-video.js";
@@ -312,6 +313,8 @@ if (writeTiming && chartsFile?.charts.length) {
   rows.notation = await drawNotation(rows, (path) => (existsSync(join(dir, path)) ? new Uint8Array(readFileSync(join(dir, path))) : null));
 }
 if (writeTiming) writeFileSync(join(outDir, `${slug}.rows.json`), JSON.stringify(rows, null, 2));
+// Every channel as a sheet to pass around or print.
+if (writeTiming) await writeSheets(rows, { title: manifest.title, artist: manifest.artist, key: manifest.key, bpm: manifest.bpm }, join(outDir, "sheets"));
 
 // Scaffold the per-song build unit — a package.json wireit recipe — but ONLY if
 // it doesn't already exist. The recipe is AUTHORED (you tune --min-bpm/--max-bpm,

@@ -23,6 +23,8 @@ export interface RowView {
   items: HTMLElement[];
   /** Chord rows: one element per bar. */
   bars?: HTMLElement[];
+  /** Figure rows: per run, a box over each bar of its phrase (none for bars with no score). */
+  runBars?: (HTMLElement | null)[][];
 }
 
 /** Where to draw a range of score bars, and the boxes to place over its bars. */
@@ -136,28 +138,35 @@ function chordRow(row: ChordRow, width: number, held: string | null): RowView {
 
 function figureRow(row: FigureRow, notation: NotationTarget[]): RowView {
   const line = el("div", "row figure-row");
+  const runBars: (HTMLElement | null)[][] = [];
   const items = row.items.map((run) => {
     const runEl = el("div", "figure-run");
+    const bars: (HTMLElement | null)[] = run.scoreBars.map(() => null);
     if (run.scoreBars.every((b) => b === null)) {
       // Bars the score has nothing for: "– ×2".
       runEl.appendChild(el("span", "figure-label", "–"));
     } else {
-      // In line: the run's bars, and its count after: "[bars] ×8".
+      // The run's bars, a box over each to light while it plays, and its count after: "[bars] ×8".
       const body = el("div", "figure-body");
       for (const seg of barSegments(run.scoreBars)) {
         if (seg.start === null) continue;
+        const segEl = el("div", "figure-seg");
         const staff = el("div", "notation");
-        body.appendChild(staff);
-        notation.push({ el: staff, start: seg.start, count: seg.count, boxes: [] });
+        segEl.appendChild(staff);
+        const boxes: HTMLElement[] = [];
+        for (let i = 0; i < seg.count; i++) boxes.push((bars[seg.first + i] = segEl.appendChild(el("span", "score-bar"))));
+        body.appendChild(segEl);
+        notation.push({ el: staff, start: seg.start, count: seg.count, boxes });
       }
       runEl.appendChild(body);
     }
+    runBars.push(bars);
     runEl.appendChild(el("span", "figure-label figure-count"));
     showPass(runEl, run, 0);
     line.appendChild(runEl);
     return runEl;
   });
-  return { el: line, items };
+  return { el: line, items, runBars };
 }
 
 function scoreRow(row: ScoreRow, notation: NotationTarget[]): RowView {

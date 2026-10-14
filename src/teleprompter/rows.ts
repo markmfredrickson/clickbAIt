@@ -160,6 +160,18 @@ export interface ChannelPosition {
   /** Figure runs: which time through the phrase this is, of how many. */
   pass?: number;
   of?: number;
+  /** Figure runs: which bar of the phrase is playing, from 0. */
+  bar?: number;
+}
+
+/** Which bar of a figure run's phrase plays at `beat`, from 0, on whichever pass. */
+export function barOfRun(run: FigureItem, beat: number): number {
+  let at = (((beat - run.start) % run.phraseBeats) + run.phraseBeats) % run.phraseBeats;
+  for (let i = 0; i < run.barBeats.length; i++) {
+    if (at < run.barBeats[i]) return i;
+    at -= run.barBeats[i];
+  }
+  return run.barBeats.length - 1;
 }
 
 /** Where each channel is at `beat`, by channel id. */
@@ -183,6 +195,7 @@ export function itemsAt(doc: RowDocument, beat: number): Record<string, ChannelP
         const run = chartRow.items[pos.item];
         pos.pass = Math.floor((beat - run.start) / run.phraseBeats) + 1;
         pos.of = run.count;
+        pos.bar = barOfRun(run, beat);
       }
     }
     out[channel.id] = pos;

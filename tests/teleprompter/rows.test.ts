@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildRows, rowsFromDisplay, type RowInput } from "../../src/teleprompter/build-rows.js";
-import { channelName, channelTitle, itemsAt, resolveChannels, selectChannels } from "../../src/teleprompter/rows.js";
+import { barOfRun, channelName, channelTitle, itemsAt, resolveChannels, selectChannels, type FigureItem } from "../../src/teleprompter/rows.js";
 import { figureChart } from "../../src/charts/figures.js";
 import { songSections, type MappedBar } from "../../src/charts/bar-map.js";
 
@@ -315,10 +315,34 @@ describe("itemsAt", () => {
       song: { timeSignature: [4, 4], sections: [{ name: "Verse", bars: 8 }] },
       charts: [{ id: "bass", kind: "tab", instrument: "bass", source: "s.gp5", track: 0, style: "chart", bars, figures: figureChart(bars, ["4[1]", "4[2]"], sections) }],
     });
-    expect(itemsAt(doc, 0).bass).toEqual({ row: 0, item: 0, pass: 1, of: 4 });
-    expect(itemsAt(doc, 7.9).bass).toEqual({ row: 0, item: 0, pass: 1, of: 4 });
-    expect(itemsAt(doc, 21).bass).toEqual({ row: 0, item: 0, pass: 3, of: 4 });
+    expect(itemsAt(doc, 0).bass).toEqual({ row: 0, item: 0, pass: 1, of: 4, bar: 0 });
+    expect(itemsAt(doc, 7.9).bass).toEqual({ row: 0, item: 0, pass: 1, of: 4, bar: 1 });
+    expect(itemsAt(doc, 21).bass).toEqual({ row: 0, item: 0, pass: 3, of: 4, bar: 1 });
     expect(itemsAt(doc, 32).bass).toEqual({ row: 0, item: -1 });
+  });
+
+  it("gives the bar of the phrase playing, from 0, on every pass", () => {
+    // A two-bar phrase (score bars 1, 2) three times over 6 bars.
+    const sections = songSections([{ name: "Verse", bars: 6 }], [4, 4]);
+    const bars: MappedBar[] = Array.from({ length: 6 }, (_, i) => ({ songBar: i + 1, section: 0, startBeat: i * 4, beats: 4, scoreBar: (i % 2) + 1 }));
+    const doc = buildRows({
+      slug: "s",
+      title: "S",
+      song: { timeSignature: [4, 4], sections: [{ name: "Verse", bars: 6 }] },
+      charts: [{ id: "drums", kind: "drums", instrument: "drums", source: "s.gp5", track: 0, style: "chart", bars, figures: figureChart(bars, ["4[1]", "4[2]"], sections) }],
+    });
+    const at = (beat: number) => [itemsAt(doc, beat).drums.bar, itemsAt(doc, beat).drums.pass];
+    expect([at(0), at(4), at(8), at(23.9)]).toEqual([[0, 1], [1, 1], [0, 2], [1, 3]]);
+  });
+
+  it("finds the bar in a phrase whose bars differ in length", () => {
+    const run: FigureItem = { start: 0, end: 18, scoreBars: [1, 2], barBeats: [4, 2], count: 3, phraseBeats: 6, songBar: 1 };
+    expect([barOfRun(run, 3.9), barOfRun(run, 5), barOfRun(run, 6), barOfRun(run, 16)]).toEqual([0, 1, 0, 1]);
+  });
+
+  it("gives a bar played over and over as bar 0 throughout", () => {
+    const run: FigureItem = { start: 0, end: 24, scoreBars: [1], barBeats: [4], count: 6, phraseBeats: 4, songBar: 1 };
+    expect([0, 5, 23.9].map((b) => barOfRun(run, b))).toEqual([0, 0, 0]);
   });
 });
 

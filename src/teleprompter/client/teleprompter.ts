@@ -561,6 +561,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   function setRunning(on: boolean) {
     if (on === running) return;
     running = on;
+    document.body.classList.toggle("running", on);
     showScrollClass();
     if (on) {
       panes.forEach(function (p) { p.page = -1; });

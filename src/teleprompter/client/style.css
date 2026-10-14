@@ -275,6 +275,12 @@ body {
   display: none;
 }
 
+/* Stopped, the card heads the page instead of covering it: the score follows
+   below, free to scroll. Running, it covers the panes until the pre-roll. */
+body:not(.running) #card {
+  position: static;
+}
+
 .card-title {
   font-size: 2rem;
   font-weight: 700;

@@ -34,3 +34,38 @@ export function panePageAt(pages: readonly { start: number }[], beat: number): n
   for (let i = 1; i < pages.length && pages[i].start <= beat; i++) page = i;
   return page;
 }
+
+/** A row as laid out: its box in the pane's scroll space, and the beats it spans. */
+export interface RowBox {
+  top: number;
+  height: number;
+  start: number;
+  end: number;
+}
+
+/**
+ * The beat at a scroll offset: the row under it, read in proportion. Panes
+ * scrolled by hand move together through this and `offsetAtBeat`, since the
+ * same bar sits at different heights in different panes.
+ */
+export function beatAtOffset(rows: readonly RowBox[], offset: number): number {
+  if (rows.length === 0) return 0;
+  let i = 0;
+  while (i + 1 < rows.length && rows[i + 1].top <= offset) i++;
+  const r = rows[i];
+  const frac = r.height > 0 ? Math.min(1, Math.max(0, (offset - r.top) / r.height)) : 0;
+  return r.start + frac * (r.end - r.start);
+}
+
+/** The scroll offset of a beat: its row's top, plus how far through the row it falls. */
+export function offsetAtBeat(rows: readonly RowBox[], beat: number): number {
+  if (rows.length === 0) return 0;
+  let i = 0;
+  while (i + 1 < rows.length && rows[i + 1].start <= beat) i++;
+  const r = rows[i];
+  const span = r.end - r.start;
+  const frac = span > 0 ? Math.min(1, Math.max(0, (beat - r.start) / span)) : 0;
+  // A beat past this row's end but before the next row's start reads as the next row's top.
+  if (beat >= r.end && i + 1 < rows.length) return rows[i + 1].top;
+  return r.top + frac * r.height;
+}

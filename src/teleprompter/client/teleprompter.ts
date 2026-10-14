@@ -19,7 +19,7 @@ import type { LyricsDisplay } from "../lyrics-display.js";
 import { parseDisplayOptions, displayQuery } from "../display-options.js";
 import { songMap, songProgress } from "../song-map.js";
 import { channelName, channelTitle, itemsAt, resolveChannels, type ChannelPosition, type RowChannel, type RowDocument } from "../rows.js";
-import { panePages, panePageAt, type PanePage } from "../panes.js";
+import { panePages, panePageAt, type PanePage, beatAtOffset, offsetAtBeat, type RowBox } from "../panes.js";
 import { channelView, fitRows, placeDrawing, showPass, type ChannelView } from "./pane-view.js";
 import { drawingKey } from "../drawings.js";
 import { cardShowing } from "../card.js";
@@ -520,9 +520,33 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
         });
       }
       if (typeof ResizeObserver !== "undefined") new ResizeObserver(function () { sizePane(pane); }).observe(rowsEl);
+      // Scrolled by hand, this pane leads and the others follow it to the same beat.
+      ["wheel", "touchstart", "pointerdown", "keydown"].forEach(function (type) {
+        el.addEventListener(type, function () { scrollLeader = pane; }, { passive: true });
+      });
+      el.addEventListener("scroll", function () { followScroll(pane); }, { passive: true });
     });
     panes.forEach(sizePane);
     showScrollClass();
+  }
+
+  /** The pane being scrolled by hand; the others follow it. */
+  let scrollLeader: Pane | null = null;
+
+  function rowBoxes(p: Pane): RowBox[] {
+    return p.view.rows.map(function (r, i) {
+      const row = p.channel.rows[i];
+      return { top: r.el.offsetTop, height: r.el.offsetHeight, start: row.start, end: row.end };
+    });
+  }
+
+  /** Move every other pane to the beat at the top of the one being scrolled. */
+  function followScroll(leader: Pane) {
+    if (leader !== scrollLeader) return; // a follower moving, or a page turn
+    const beat = beatAtOffset(rowBoxes(leader), leader.el.scrollTop);
+    panes.forEach(function (p) {
+      if (p !== leader) p.el.scrollTop = offsetAtBeat(rowBoxes(p), beat);
+    });
   }
 
   /** Make a pane tall enough for its tallest page, and put it back on its page. */
@@ -564,6 +588,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     document.body.classList.toggle("running", on);
     showScrollClass();
     if (on) {
+      scrollLeader = null;
       panes.forEach(function (p) { p.page = -1; });
       onBeatUpdate(rawBeat);
     }

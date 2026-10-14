@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { figureChart, unrepeatedSections } from "../../src/charts/figures.js";
+import { figureChart, unrepeatedSections, write } from "../../src/charts/figures.js";
 import { songSections, type MappedBar } from "../../src/charts/bar-map.js";
 
 /**
@@ -98,5 +98,20 @@ describe("unrepeatedSections", () => {
   it("doesn't count a section that comes back to a bar, however late", () => {
     const { placed, mapped } = bars([3, 4, 6, 3]);
     expect(unrepeatedSections(mapped, SIGS, placed)).toEqual([]);
+  });
+});
+
+describe("write: even groups break ties", () => {
+  const runs = (keys: string) => write(keys.split("")).map((s) => `${s.length}x${s.count}`).join(" ");
+
+  it("starts a repeat a bar early when that leaves even groups (Sugar, verse 1)", () => {
+    // Six of one bar, two unique bars, then F E repeated with a bar either side.
+    // Read from F, the pairs come out 2x3 and the leftovers pair up.
+    expect(runs("AAAAAABCFEFEFEFG")).toBe("1x6 2x1 2x3 2x1");
+  });
+
+  it("still takes the shortest chart over an even one", () => {
+    // Three of a bar beats any even split of them.
+    expect(runs("AAAB")).toBe("1x3 1x1");
   });
 });

@@ -87,12 +87,16 @@ const SEP = "\u0001";
  * The runs that write a section's bars shortest: a dynamic program over where
  * each run starts, minimizing the bars drawn plus the runs read. A run is up
  * to MAX_RUN bars played one or more times back to back, or a stretch of bars
- * with no score (nothing drawn). Longer runs are tried first, so a tie keeps
- * the bigger unit.
+ * with no score (nothing drawn). Between charts equally short, the one with
+ * fewer runs over an odd number of bars wins: music comes in even phrases, so
+ * "2 bars, [2 bars] ×3, 2 bars" reads truer than "3 bars, [2 bars] ×3, 1 bar".
+ * After that, longer runs are tried first, so a tie keeps the bigger unit.
  */
 export function write(keys: readonly (string | null)[]): Step[] {
   const n = keys.length;
   const best: number[] = new Array(n + 1).fill(Infinity);
+  /** Runs over an odd number of bars in the best chart from each bar on. */
+  const odd: number[] = new Array(n + 1).fill(0);
   const step: (Step | null)[] = new Array(n + 1).fill(null);
   best[n] = 0;
   const at = (i: number, len: number) => keys.slice(i, i + len).join(SEP);
@@ -101,6 +105,7 @@ export function write(keys: readonly (string | null)[]): Step[] {
       let j = i;
       while (j < n && keys[j] === null) j++;
       best[i] = 1 + best[j];
+      odd[i] = odd[j];
       step[i] = { length: 1, count: j - i };
       continue;
     }
@@ -111,8 +116,10 @@ export function write(keys: readonly (string | null)[]): Step[] {
       while (i + (count + 1) * len <= n && at(i + count * len, len) === s) count++;
       for (let k = count; k >= 1; k--) {
         const cost = len + 1 + best[i + k * len];
-        if (cost < best[i]) {
+        const odds = ((len * k) % 2) + odd[i + k * len];
+        if (cost < best[i] || (cost === best[i] && odds < odd[i])) {
           best[i] = cost;
+          odd[i] = odds;
           step[i] = { length: len, count: k };
         }
       }

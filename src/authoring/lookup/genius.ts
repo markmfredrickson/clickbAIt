@@ -53,17 +53,26 @@ export async function searchLyrics(
 
 /** Scrape + minimal cleanup of the Genius lyric page.
  *
- *  Three page-chrome patterns worth stripping up-front (sampled ~20 pages;
- *  carried over from the Rust version):
- *    1. "NN ContributorsTranslations…Lyrics" preamble before the container.
- *       Sentinel: the literal word "Lyrics".
- *    2. An editorial annotation blurb ending with "Read More" (~90% of
- *       pages; the rest go straight to a section marker).
- *    3. Stray `<img src="…genius.com/avatars/…">` tags (~25% of pages).
+ *  Current pages open the first lyric container with a header element
+ *  marked `data-exclude-from-selection` (contributor count, title, and an
+ *  optional description). Dropping marked elements removes all of it. The
+ *  description doesn't always end in "Read More", and without a line break
+ *  before it, its text ran into the first section marker.
+ *
+ *  Older pages without the header get the text-sentinel cleanup carried
+ *  over from the Rust version:
+ *    1. "NN ContributorsTranslations…Lyrics" preamble. Sentinel: the
+ *       literal word "Lyrics".
+ *    2. An editorial annotation blurb ending with "Read More".
+ *  Stray `<img src="…genius.com/avatars/…">` tags are stripped either way.
  */
-function extractLyricsText(html: string): string {
+export function extractLyricsText(html: string): string {
   const $ = load(html);
   const parts: string[] = [];
+
+  const excluded = $("[data-lyrics-container] [data-exclude-from-selection]");
+  const hasHeader = excluded.length > 0;
+  excluded.remove();
 
   $("[data-lyrics-container]").each((_, container) => {
     // Replace <br> with newlines, then take the text.
@@ -73,11 +82,13 @@ function extractLyricsText(html: string): string {
 
   let text = parts.join("\n");
 
-  const lyricsIdx = text.indexOf("Lyrics");
-  if (lyricsIdx >= 0) text = text.slice(lyricsIdx + "Lyrics".length);
+  if (!hasHeader) {
+    const lyricsIdx = text.indexOf("Lyrics");
+    if (lyricsIdx >= 0) text = text.slice(lyricsIdx + "Lyrics".length);
 
-  const readMoreIdx = text.indexOf("Read More");
-  if (readMoreIdx >= 0) text = text.slice(readMoreIdx + "Read More".length);
+    const readMoreIdx = text.indexOf("Read More");
+    if (readMoreIdx >= 0) text = text.slice(readMoreIdx + "Read More".length);
+  }
 
   return stripHtmlTags(text).trim();
 }

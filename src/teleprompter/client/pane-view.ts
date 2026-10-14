@@ -201,29 +201,33 @@ export function showPass(runEl: HTMLElement, run: FigureItem, pass: number): voi
 }
 
 /**
- * Scale down any notation too wide for its row: a figure run or a piece of a
- * score row wider than the row gets a smaller zoom (the `--fit` variable its
- * notation multiplies by), so nothing runs off the side of the screen.
+ * Scale down notation too wide for its row, all of a part's at once: the
+ * smallest zoom any figure run or piece of a score row needs to fit its row
+ * (the `--fit` variable its notation multiplies by) applies to every one, so
+ * the music stays one size through the song, leaving room at some row ends.
  */
 export function fitRows(view: ChannelView): void {
-  for (const row of view.rows) fitRow(row.el);
+  fitTogether(view.rows.map((r) => r.el));
 }
 
-/** fitRows for one row's element (the card's figures are rows on their own). */
-export function fitRow(rowEl: HTMLElement): void {
-  {
+/** fitRows for row elements outside a view (the card's figures). */
+export function fitTogether(rowEls: readonly HTMLElement[]): void {
+  const parts: HTMLElement[] = [];
+  let fit = 1;
+  for (const rowEl of rowEls) {
     const room = rowEl.clientWidth;
-    if (!room) return;
+    if (!room) continue;
     rowEl.querySelectorAll<HTMLElement>(".figure-run, .score-seg").forEach((part) => {
       if (!part.querySelector(".notation")) return;
+      parts.push(part);
       part.style.setProperty("--fit", "1");
       const width = part.scrollWidth;
       if (width <= room) return;
       // Only the notation shrinks; the letters and count around it keep their size.
       let staves = 0;
       part.querySelectorAll(".notation").forEach((n) => (staves += n.getBoundingClientRect().width));
-      const fit = staves > 0 ? (room - (width - staves) - 2) / staves : 1;
-      part.style.setProperty("--fit", String(Math.max(0.3, Math.min(1, fit))));
+      if (staves > 0) fit = Math.min(fit, (room - (width - staves) - 2) / staves);
     });
   }
+  for (const part of parts) part.style.setProperty("--fit", String(Math.max(0.3, fit)));
 }

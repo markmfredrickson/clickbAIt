@@ -10,7 +10,7 @@ import type { FigureRow, RowChannel, RowDocument, ScoreRow } from "../rows.js";
 import { channelTitle } from "../rows.js";
 import { notesFor } from "../card.js";
 import { drawingKey } from "../drawings.js";
-import { channelView, fitRow, placeDrawing } from "./pane-view.js";
+import { channelView, fitTogether, placeDrawing } from "./pane-view.js";
 
 export interface CardSong {
   title: string;
@@ -58,9 +58,9 @@ export function cardView(doc: RowDocument, song: CardSong, shown: readonly strin
   return card;
 }
 
-/** Scale down any of the card's figures too wide for it, once it's on the page. */
+/** Scale down the card's figures, all to one size, to fit it once it's on the page. */
 export function fitCard(card: HTMLElement): void {
-  card.querySelectorAll<HTMLElement>(".card-figure > .row").forEach(fitRow);
+  fitTogether([...card.querySelectorAll<HTMLElement>(".card-figure > .row")]);
 }
 
 /**

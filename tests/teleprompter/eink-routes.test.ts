@@ -134,6 +134,13 @@ describe("GET /eink/deck — panes", () => {
     expect(rendered[0].rows).toEqual({ chords: 2 });
   });
 
+  it("says the song lacks a channel instead of rendering an empty deck", async () => {
+    const res = await deck("&channels=bass");
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe("This song has no bass part.");
+    expect(renders).toBe(0);
+  });
+
   it("renders each view as its own deck", async () => {
     await deck("&channels=lyrics");
     await deck("&channels=chords,lyrics");

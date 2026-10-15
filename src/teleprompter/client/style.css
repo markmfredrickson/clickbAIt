@@ -27,18 +27,23 @@ html {
   height: 100%;
 }
 
+/* The page is exactly one screen: the header, the panes in what's left, and
+   the status bar. The page never scrolls; a pane scrolls inside its box. */
 body {
-  min-height: 100%;
+  height: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
-  overflow-x: hidden;
 }
 
 /* ── Header ── */
 #header {
-  position: sticky;
-  top: 0;
+  flex: none;
+  position: relative;
   z-index: 10;
   background: var(--header-bg);
   padding: 0.5rem 1rem;
@@ -279,6 +284,9 @@ body {
    below, free to scroll. Running, it covers the panes until the pre-roll. */
 body:not(.running) #card {
   position: static;
+  /* Above the panes, never squeezed, and never more than a share of the screen. */
+  flex: none;
+  max-height: 40dvh;
 }
 
 .card-title {
@@ -316,26 +324,101 @@ body:not(.running) #card {
   --notation-zoom: 1.1;
 }
 
-/* ── Panes: one per channel, stacked in the viewer's order ── */
-/* A pane shows a set number of its rows and turns them all at once (the
-   client sets its height and scroll). Manual scroll lets the reader scroll it. */
+/* ── Panes: one, or two split by a divider ── */
+/* A pane pages its rows by its own box and turns them all at once (the
+   client sets its scroll). Manual scroll lets the reader scroll it. The
+   min sizes let a pane shrink to its share instead of growing to its rows. */
 #panes {
-  padding: 0.5rem 1rem 3rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
 }
+
+#panes.split-horizontal {
+  flex-direction: column;
+}
+
+.slot {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 1rem 0;
+}
+
+#panes.two .slot:first-child {
+  flex: 0 0 auto;
+}
+
+.divider {
+  flex: none;
+  background: var(--text-dim);
+  opacity: 0.5;
+  touch-action: none;
+}
+
+#panes.split-vertical .divider { width: 6px; cursor: col-resize; }
+#panes.split-horizontal .divider { height: 6px; cursor: row-resize; }
+#panes.dragging { user-select: none; }
 
 .pane {
+  flex: 1 1 auto;
+  min-height: 0;
   position: relative;
   overflow: hidden;
+  overscroll-behavior: contain;
   /* Room for the outline round a row's first item, which overflow would clip. */
-  padding: 0 6px;
+  padding: 0 6px 0.2em;
   scrollbar-width: none;
-  border-bottom: 1px solid var(--text-dim);
-  padding-bottom: 0.2em;
-  margin-bottom: 0.6rem;
 }
 
-.pane:last-child {
-  border-bottom: none;
+/* A pane with nothing picked: the song's channels, one button each. */
+.chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.5rem 0;
+  max-width: 420px;
+  overflow-y: auto;
+}
+
+.chooser p {
+  color: var(--text-dim);
+}
+
+.chooser button {
+  padding: 0.8rem 1rem;
+  font-size: 1.1rem;
+  text-align: left;
+  color: var(--text);
+  background: var(--section-bg);
+  border: 1px solid var(--text-dim);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.chooser button:hover { border-color: var(--accent); }
+
+.layout-btn {
+  flex: none;
+  width: 2.2rem;
+  height: 2.2rem;
+  font-size: 1.2rem;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.layout-btn svg {
+  width: 1.2rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  vertical-align: middle;
 }
 
 /* The pane's name, pinned to its top-right corner as it turns, taking no room. */
@@ -587,10 +670,7 @@ body:not(.running) #card {
 
 /* ── Status bar ── */
 #status-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex: none;
   display: flex;
   justify-content: space-between;
   padding: 0.3rem 1rem;
@@ -615,8 +695,10 @@ body:not(.running) #card {
 @media print {
   #header, #status-bar, #drawer, #drawer-scrim { display: none; }
   .row, .chord { color: #000 !important; opacity: 1 !important; }
+  body { height: auto; display: block; overflow: visible; }
   .pane { height: auto !important; overflow: visible !important; }
-  #panes { padding: 0; }
+  #panes { display: block; }
+  .divider, .chooser { display: none; }
   body { background: #fff; color: #000; }
 }
 

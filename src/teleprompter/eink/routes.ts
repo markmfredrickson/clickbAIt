@@ -154,8 +154,13 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         json(res, 400, { error: "bad size" });
         return true;
       }
+      const view = parseView(url.searchParams, cur.rows);
+      if (!view.channels.length) {
+        json(res, 404, { error: `This song has no ${url.searchParams.get("channels")} part.` });
+        return true;
+      }
       try {
-        json(res, 200, await deckFor(cur, cur.rows, size, parseView(url.searchParams, cur.rows)));
+        json(res, 200, await deckFor(cur, cur.rows, size, view));
       } catch (err) {
         console.error(`  ✗ e-ink render failed: ${err instanceof Error ? err.message : err}`);
         json(res, 500, { error: "render failed" });

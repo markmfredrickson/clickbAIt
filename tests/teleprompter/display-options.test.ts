@@ -1,84 +1,36 @@
 import { describe, it, expect } from "vitest";
-import { parseDisplayOptions, displayQuery, PRESETS, presetHref } from "../../src/teleprompter/display-options.js";
-
-const SIZED = ["lyrics", "chords"];
+import { parseDisplayOptions, displayQuery } from "../../src/teleprompter/display-options.js";
 
 describe("parseDisplayOptions", () => {
-  it("reads the one view a prompter page shows", () => {
-    expect(parseDisplayOptions("?view= drums ", SIZED).view).toBe("drums");
-    expect(parseDisplayOptions("", SIZED).view).toBeUndefined();
-  });
-
-  it("reads the channels an e-ink page stacks", () => {
-    expect(parseDisplayOptions("?channels= lyrics, chords,,", SIZED).channels).toEqual(["lyrics", "chords"]);
-  });
-
-  it("leaves the channels to the page when the URL doesn't say", () => {
-    expect(parseDisplayOptions("", SIZED).channels).toBeUndefined();
-  });
-
-  it("reads a size for each channel that has one, by the channel's name", () => {
-    expect(parseDisplayOptions("?lyrics=2&chords=0.9&tab=3", SIZED).sizes).toEqual({ lyrics: 2, chords: 0.9 });
-  });
-
-  it("reads how many rows each channel's pane shows", () => {
-    expect(parseDisplayOptions("?lyrics.rows=6&chords.rows=2&tab.rows=3", SIZED).rows).toEqual({ lyrics: 6, chords: 2 });
-  });
-
-  it("takes only a whole number of rows from 1 to 50", () => {
-    expect(parseDisplayOptions("?lyrics.rows=0&chords.rows=2.5", SIZED).rows).toEqual({});
-    expect(parseDisplayOptions("?lyrics.rows=51", SIZED).rows).toEqual({});
-  });
-
   it("reads the role a screen's player has, for the notes they see", () => {
-    expect(parseDisplayOptions("?role=Guitar", SIZED).role).toBe("guitar");
-    expect(displayQuery({ sizes: {}, rows: {}, role: "guitar" }, SIZED)).toBe("?role=guitar");
+    expect(parseDisplayOptions("?role=Guitar").role).toBe("guitar");
+    expect(displayQuery({ role: "guitar" })).toBe("?role=guitar");
   });
 
   it("reads the offset, scroll mode and theme", () => {
-    expect(parseDisplayOptions("?offset=1.5&scroll=manual&theme=light", SIZED)).toMatchObject({
+    expect(parseDisplayOptions("?offset=1.5&scroll=manual&theme=light")).toEqual({
       offset: 1.5,
       scroll: "manual",
       theme: "light",
     });
   });
 
-  it("ignores values it can't use", () => {
-    expect(parseDisplayOptions("?lyrics=big&chords=-1&offset=x&scroll=fast&theme=blue", SIZED)).toEqual({ sizes: {}, rows: {} });
+  it("ignores values it can't use, and the layout's options", () => {
+    expect(parseDisplayOptions("?offset=x&scroll=fast&theme=blue&panes=2&view=lyrics&lyrics=2")).toEqual({});
   });
 });
 
 describe("displayQuery", () => {
-  it("writes the options in a fixed order, keeping commas readable", () => {
-    expect(
-      displayQuery(
-        { view: "chords", sizes: { chords: 0.9, lyrics: 2 }, rows: { chords: 2 }, offset: 1, scroll: "manual", theme: "light" },
-        SIZED,
-      ),
-    ).toBe("?view=chords&lyrics=2&chords=0.9&chords.rows=2&offset=1&scroll=manual&theme=light");
+  it("writes the options in a fixed order", () => {
+    expect(displayQuery({ theme: "light", scroll: "manual", offset: 1 })).toBe("?offset=1&scroll=manual&theme=light");
   });
 
   it("is empty when there's nothing to say", () => {
-    expect(displayQuery({ sizes: {}, rows: {} }, SIZED)).toBe("");
+    expect(displayQuery({})).toBe("");
   });
 
   it("reads back as the same options", () => {
-    const options = { view: "chords", sizes: { chords: 1.25 }, rows: { chords: 3 }, offset: 2, theme: "light" as const };
-    expect(parseDisplayOptions(displayQuery(options, SIZED), SIZED)).toEqual(options);
-  });
-});
-
-describe("presets", () => {
-  it("links each preset to its page with its options", () => {
-    expect(PRESETS.map((p) => [p.name, presetHref(p)])).toEqual([
-      ["Lyrics", "/prompt?view=lyrics"],
-      ["Chords", "/prompt?view=chords"],
-      ["Chords + lyrics", "/split?view=chords&view=lyrics"],
-      ["Drums + lyrics", "/split?view=drums&view=lyrics"],
-      ["E-ink lyrics", "/eink?channels=lyrics"],
-      ["E-ink chords + lyrics", "/eink?channels=chords,lyrics"],
-      ["E-ink drums", "/eink?channels=drums"],
-      ["Custom", "/prompt?settings=open"],
-    ]);
+    const options = { offset: 2, theme: "light" as const };
+    expect(parseDisplayOptions(displayQuery(options))).toEqual(options);
   });
 });

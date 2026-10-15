@@ -2,9 +2,9 @@
  * E-ink client (Kindle browser): shows the relay's pre-rendered panes for the
  * current song and follows the beat.
  *
- * The page asks the relay for the song at its own size, as panes stacked in
- * the order of `channels=` (drums above lyrics, say). Each pane is its own
- * set of page images and turns on its own, as its bottom row starts (see
+ * The page asks the relay for the song at its own size, showing the one
+ * channel its URL names (`channel=drums`; without one, the relay serves a
+ * page to pick it from instead). The pane is a set of page images and turns, as its bottom row starts (see
  * panes.ts); a box inverts what's playing in it, and under a figure run a
  * bar fills one step per time through. A strip at the top names the song and
  * section. Before the song, a card covers the panes (the song's notes and
@@ -16,8 +16,8 @@
  * reminder after a song (or near the timer's end) and treats a tap on the
  * reminder or the top strip as a touch that doesn't turn a page.
  *
- * Query options: ?channels=drums,lyrics, ?<channel>.rows=<n> (rows a pane
- * shows; the last pane fills the screen unless told), ?lookahead=<beats>
+ * Query options: ?channel=drums, ?<channel>.rows=<n> (rows the pane shows;
+ * it fills the screen unless told), ?lookahead=<beats>
  * (turn and light early; default 1), ?marker=bar|0, ?font=<px>,
  * ?sleep=<minutes> (the Kindle's sleep timer; default 10).
  */
@@ -144,14 +144,19 @@ function follow(): void {
 async function loadDeck(): Promise<void> {
   const gen = ++generation;
   say("Loading pages…");
-  const passOn = ["font", "channels"].filter((k) => params.has(k)).map((k) => `&${k}=${encodeURIComponent(params.get(k)!)}`);
+  const passOn = params.has("font") ? [`&font=${encodeURIComponent(params.get("font")!)}`] : [];
+  if (params.has("channel")) passOn.push(`&channels=${encodeURIComponent(params.get("channel")!)}`);
   for (const [k, v] of params) if (k.endsWith(".rows")) passOn.push(`&${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
   const q = `/eink/deck?w=${W}&h=${H - HEAD}&dpr=${DPR}` + passOn.join("");
   let next: EinkDeck;
   let song: { title?: string; display?: { sections?: { name: string; startBeat: number }[] } } = {};
   try {
     const [res, songRes] = await Promise.all([fetch(q), fetch("/song.json")]);
-    if (res.status === 404) return say("Waiting for a song…");
+    // The song may lack this page's channel, which the relay names.
+    if (res.status === 404) {
+      const missing = await res.json().then((b: { error?: string }) => (b.error?.startsWith("This song has no") ? b.error : null), () => null);
+      return say(missing ? missing + " Open /eink to pick another." : "Waiting for a song…");
+    }
     if (!res.ok) return say(`Couldn't load pages (${res.status}).`);
     next = await res.json();
     if (songRes.ok) song = await songRes.json();

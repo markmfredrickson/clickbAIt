@@ -104,15 +104,17 @@ pub fn spectral_flux_activation(samples: &[f32], sample_rate: u32, fps: f64) -> 
         flux.push(sum);
     }
 
-    // Resample flux (at STFT rate) to target fps using linear interpolation
-    let stft_fps = sr / hop_size as f64;
+    // Resample flux (at STFT rate) to target fps using linear interpolation.
+    // STFT frame i covers samples [i*hop, i*hop + fft_size), so it describes the
+    // moment at its window's center, fft_size/2 samples after its start. Stamping
+    // it at its start would put every onset half a window (23 ms) early.
     let duration = samples.len() as f64 / sr;
     let n_out = (duration * fps).ceil() as usize;
     let mut activation = Vec::with_capacity(n_out);
 
     for i in 0..n_out {
         let t = i as f64 / fps;
-        let stft_pos = t * stft_fps;
+        let stft_pos = ((t * sr - (fft_size / 2) as f64) / hop_size as f64).max(0.0);
         let idx = stft_pos as usize;
         let frac = stft_pos - idx as f64;
 
@@ -295,6 +297,45 @@ mod tests {
             peaks.len() >= 6 && peaks.len() <= 12,
             "expected ~8 peaks at 100 BPM, got {}", peaks.len()
         );
+    }
+
+    /// Activation frames are stamped at the time they describe, so each peak
+    /// lands on its transient, within one activation frame. A frame stamped at
+    /// its window's start instead of its center reads half a window (23 ms for
+    /// a 2048-sample FFT) early.
+    fn assert_peaks_on_transients(act: &[f64], fps: f64, bpm: f64) {
+        let interval = 60.0 / bpm;
+        let mut checked = 0;
+        for i in 1..act.len() - 1 {
+            if act[i] > 0.3 && act[i] >= act[i - 1] && act[i] >= act[i + 1] {
+                let t = i as f64 / fps;
+                if t < interval / 2.0 {
+                    continue; // the first transient sits on the file edge
+                }
+                let nearest = (t / interval).round() * interval;
+                assert!(
+                    (t - nearest).abs() <= 1.0 / fps + 1e-9, // one activation frame
+                    "peak at {:.3}s is {:+.0} ms from the transient at {:.3}s",
+                    t, (t - nearest) * 1000.0, nearest
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked >= 5, "expected at least 5 peaks to check, got {}", checked);
+    }
+
+    #[test]
+    fn spectral_flux_peaks_land_on_transients() {
+        let (sr, fps, bpm) = (44100u32, 100.0, 100.0);
+        let signal = make_drum_signal(bpm, sr, 5.0);
+        assert_peaks_on_transients(&spectral_flux_activation(&signal, sr, fps), fps, bpm);
+    }
+
+    #[test]
+    fn energy_peaks_land_on_transients() {
+        let (sr, fps, bpm) = (44100u32, 100.0, 100.0);
+        let signal = make_drum_signal(bpm, sr, 5.0);
+        assert_peaks_on_transients(&energy_activation(&signal, sr, fps), fps, bpm);
     }
 
     #[test]

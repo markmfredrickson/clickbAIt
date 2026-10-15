@@ -13,7 +13,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve, dirname, join, relative } from "node:path";
-import { SongManifestSchema, sectionStarts, resolveBeatMap } from "../manifest.js";
+import { SongManifestSchema, sectionStarts, resolveBeatMap, longestBar } from "../manifest.js";
 import { beatMapCurve, beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
 import { chordWav } from "./tone.js";
@@ -121,7 +121,8 @@ const song = manifestToSong(manifest, dir);
 // Cue/count WAVs — same collection as the .ts path, run on the converted Song.
 const sections = extractSections(song);
 const events = linearize(song);
-const maxBeatsPerBar = Math.max(...sections.map((s) => s.timeSignature[0]), song.timeSignature[0]);
+// Counts reach the longest bar anywhere, including single bars with their own meter.
+const maxBeatsPerBar = longestBar(manifest.sections, manifest.timeSignature);
 // Every spoken word is a cue: section announcements, the title, manual cues, and
 // the count numbers (a count-in is just cues "1","2","3",…). One unique set, so
 // each distinct word is synthesized exactly once and reused everywhere.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SongManifestSchema, sectionStarts, barBeats, chartStyle, type SongManifest } from "../src/manifest.js";
+import { SongManifestSchema, sectionStarts, barBeats, longestBar, chartStyle, type SongManifest } from "../src/manifest.js";
 
 /** A fresh, fully-valid manifest object each test can mutate in isolation. */
 function validManifest(): unknown {
@@ -494,6 +494,19 @@ describe("barBeats", () => {
 
   it("ends a fractional section on a part bar", () => {
     expect(barBeats({ bars: 2.5 }, [4, 4])).toEqual([4, 4, 2]);
+  });
+});
+
+describe("longestBar", () => {
+  it("is the most beats in any bar, counting bars with their own meter", () => {
+    // Get Back's out-chorus ends on one 6/4 bar; its count-in needs "5" and "6".
+    const sections = [{ bars: 8 }, { bars: 10, meters: [{ bar: 10, timeSignature: [6, 4] as [number, number] }] }];
+    expect(longestBar(sections, [4, 4])).toBe(6);
+  });
+
+  it("counts a section's own meter and the song's", () => {
+    expect(longestBar([{ bars: 4 }], [4, 4])).toBe(4);
+    expect(longestBar([{ bars: 4 }, { bars: 2, timeSignature: [7, 8] }], [4, 4])).toBe(7);
   });
 });
 

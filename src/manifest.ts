@@ -674,6 +674,11 @@ export function barBeats(section: PlaceableSection, defaultTimeSignature: readon
   return out;
 }
 
+/** The most beats in any bar of the song: how high a count-in can count. */
+export function longestBar(sections: readonly PlaceableSection[], defaultTimeSignature: readonly [number, number]): number {
+  return Math.max(defaultTimeSignature[0], ...sections.flatMap((s) => barBeats(s, defaultTimeSignature).map(Math.ceil)));
+}
+
 /**
  * The absolute start beat of each section, inferred from order + length.
  *

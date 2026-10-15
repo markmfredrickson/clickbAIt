@@ -85,6 +85,46 @@ export function fixDrumNotes(score: alphaTab.model.Score): void {
   }
 }
 
+/** How a score plays, bar by bar: what drafting sections from it needs. */
+export interface ScoreLayout {
+  /** Written bar numbers (1-based) in play order, with repeats, alternate
+   *  endings and D.S./coda jumps expanded. */
+  playOrder: number[];
+  /** Section markers, by written bar (1-based). */
+  markers: { bar: number; text: string }[];
+  /** Per written bar: [beats, beat unit]. */
+  meters: [number, number][];
+  /** Per written bar: true when every track rests the whole bar. */
+  silent: boolean[];
+}
+
+export function scoreLayout(score: alphaTab.model.Score): ScoreLayout {
+  // alphaTab's MIDI generator walks the score the way a player would, so its
+  // tick lookup is the play order, jumps included.
+  const generator = new alphaTab.midi.MidiFileGenerator(
+    score,
+    new alphaTab.Settings(),
+    new alphaTab.midi.AlphaSynthMidiFileHandler(new alphaTab.midi.MidiFile()),
+  );
+  generator.generate();
+  const playOrder = generator.tickLookup.masterBars.map((l) => l.masterBar.index + 1);
+
+  const silent = score.masterBars.map((mb) =>
+    score.tracks.every((t) =>
+      t.staves.every((s) => s.bars[mb.index].voices.every((v) => v.beats.every((b) => b.isRest || b.notes.length === 0))),
+    ),
+  );
+
+  return {
+    playOrder,
+    markers: score.masterBars
+      .filter((mb) => mb.section)
+      .map((mb) => ({ bar: mb.index + 1, text: mb.section!.text || mb.section!.marker })),
+    meters: score.masterBars.map((mb) => [mb.timeSignatureNumerator, mb.timeSignatureDenominator]),
+    silent,
+  };
+}
+
 export function readScoreInfo(bytes: Uint8Array, fileName: string): ScoreInfo {
   let score: alphaTab.model.Score;
   try {

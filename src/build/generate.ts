@@ -17,6 +17,7 @@ import { SongManifestSchema, sectionStarts, resolveBeatMap, longestBar } from ".
 import { beatMapCurve, beatMapToBeats, expandBeatMap } from "../core/beat-map.js";
 import { manifestToSong } from "./manifest-to-song.js";
 import { chordWav } from "./tone.js";
+import { transposeCents } from "./transpose.js";
 import { RigSchema } from "../rig.js";
 import { buildRpp } from "./rpp.js";
 import { stemTrackName } from "./bundle-variants.js";
@@ -146,7 +147,8 @@ for (const e of events) {
   if (e.type !== "cue" || !e.tone) continue;
   const beatsPerBar = manifest.timeSignature[0];
   const seconds = (e.toneBars ?? 1) * beatsPerBar * (60 / manifest.bpm);
-  writeFileSync(join(cueDir, `${cueFileSlug(e.value)}.wav`), chordWav(e.tone, seconds));
+  const cents = manifest.transpose !== undefined ? transposeCents(manifest.transpose) : 0;
+  writeFileSync(join(cueDir, `${cueFileSlug(e.value)}.wav`), chordWav(e.tone, seconds, 44100, cents));
 }
 
 // Absolute section start beats, inferred from section order + length (a

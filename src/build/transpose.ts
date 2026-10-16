@@ -44,6 +44,7 @@ export type TransposeSpec =
       steps?: number;
       from?: string;
       to?: string;
+      cents?: number;
       stems?: Record<string, number>;
       shifters?: Record<string, string | number>;
     };
@@ -81,12 +82,20 @@ export function transposeNote(note: string, steps: number): string {
   return `${SHARP_NAMES[((abs % 12) + 12) % 12]}${oct}`;
 }
 
-/** Song-level steps from a spec. */
+/** Song-level whole-semitone steps from a spec. Cents are left out: chords,
+ *  charts and prep-tone note names move only by whole semitones. */
 export function transposeSteps(spec: TransposeSpec): number {
   if (typeof spec === "number") return spec;
   if (spec.steps !== undefined) return spec.steps;
   if (spec.from !== undefined && spec.to !== undefined) return keyToSemitones(spec.from, spec.to);
-  throw new Error("transpose spec needs `steps` or a `from`/`to` key pair");
+  if (spec.cents !== undefined) return 0;
+  throw new Error("transpose spec needs `steps`, a `from`/`to` key pair, or `cents`");
+}
+
+/** The spec's tuning correction in cents (0 when absent). It applies to the
+ *  audio and the prep-tone pitch, never to note or chord names. */
+export function transposeCents(spec: TransposeSpec): number {
+  return typeof spec === "number" ? 0 : (spec.cents ?? 0);
 }
 
 /** Whether a stem name means the lead/backing voice ("vocals", "lead vocal"). */
@@ -116,7 +125,9 @@ export function stemPlayback(
   if (spec === undefined) return { pitch: 0, mode: PROJECT_DEFAULT };
   const songSteps = transposeSteps(spec);
   const overrides = typeof spec === "number" ? undefined : spec.stems;
-  const pitch = overrides?.[stem] ?? songSteps;
+  // Cents retune the whole recording, so they apply even to a stem whose
+  // semitone steps are overridden (or pinned to 0).
+  const pitch = (overrides?.[stem] ?? songSteps) + transposeCents(spec) / 100;
   if (pitch === 0) return { pitch: 0, mode: PROJECT_DEFAULT };
 
   const shifters = typeof spec === "number" ? undefined : spec.shifters;

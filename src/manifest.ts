@@ -267,7 +267,10 @@ const Section = z
  * fifth instead of down a fourth; `drums: 0` pins a clean drum stem back to
  * unshifted). `shifters` overrides the pitch-shift
  * engine per stem, by name (see SHIFTER_MODES in build/transpose.ts) or raw
- * REAPER pitchmode int. Lyric/beat timing is untouched — pitch-only.
+ * REAPER pitchmode int. `cents` (under ±100) is a tuning correction for a
+ * recording that isn't at A440: it adds to every stem's shift, including a
+ * stem pinned to 0, and to the prep-tone pitch, but chords and charts ignore it.
+ * Lyric/beat timing is untouched — pitch-only.
  */
 const TransposeSpec = z.union([
   z.number().int(),
@@ -276,13 +279,21 @@ const TransposeSpec = z.union([
       steps: z.number().int().optional(),
       from: z.string().min(1).optional(),
       to: z.string().min(1).optional(),
+      cents: z.number().gt(-100).lt(100).optional(),
       stems: z.record(z.string(), z.number().int()).optional(),
       shifters: z.record(z.string(), z.union([z.string().min(1), z.number().int()])).optional(),
     })
     .strict()
-    .refine((t) => (t.steps !== undefined) !== (t.from !== undefined && t.to !== undefined), {
-      message: "transpose needs exactly one of `steps` or a full `from`/`to` key pair",
-    }),
+    .refine(
+      (t) => {
+        const steps = t.steps !== undefined;
+        const pair = t.from !== undefined && t.to !== undefined;
+        const partialPair = (t.from !== undefined) !== (t.to !== undefined);
+        if (partialPair || (steps && pair)) return false;
+        return steps || pair || t.cents !== undefined;
+      },
+      { message: "transpose needs `steps`, a full `from`/`to` key pair, or `cents` (steps and a key pair together are ambiguous)" },
+    ),
 ]);
 
 /**

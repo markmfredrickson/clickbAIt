@@ -19,10 +19,11 @@ export function noteToFreq(note: string): number {
 }
 
 /** 16-bit PCM mono WAV (Buffer) of the given notes sounded together, with a short
- *  fade in/out so it doesn't click. */
-export function chordWav(notes: string[], seconds: number, sampleRate = 44100): Buffer {
+ *  fade in/out so it doesn't click. `cents` detunes every note, so the tone
+ *  matches a song whose recording is off A440. */
+export function chordWav(notes: string[], seconds: number, sampleRate = 44100, cents = 0): Buffer {
   const n = Math.max(1, Math.round(seconds * sampleRate));
-  const freqs = notes.map(noteToFreq);
+  const freqs = notes.map((note) => noteToFreq(note) * Math.pow(2, cents / 1200));
   const fade = Math.min(Math.round(0.01 * sampleRate), Math.floor(n / 2)); // ~10ms
   const pcm = Buffer.alloc(n * 2);
   for (let i = 0; i < n; i++) {

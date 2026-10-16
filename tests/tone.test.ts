@@ -50,4 +50,18 @@ describe("chordWav", () => {
     }
     expect(peak).toBeGreaterThan(1000); // well above silence
   });
+
+  it("detunes every note by `cents` (tuning correction for an off-A440 song)", () => {
+    // Count upward zero crossings over one second of A4: one per cycle.
+    const cycles = (buf: Buffer) => {
+      let n = 0;
+      for (let off = 46; off + 1 < buf.length; off += 2) {
+        if (buf.readInt16LE(off - 2) < 0 && buf.readInt16LE(off) >= 0) n++;
+      }
+      return n;
+    };
+    expect(cycles(chordWav(["A4"], 1, 44100))).toBeCloseTo(440, -1);
+    // 440 * 2^(-35/1200) ≈ 431.2 Hz
+    expect(Math.abs(cycles(chordWav(["A4"], 1, 44100, -35)) - 431.2)).toBeLessThan(2);
+  });
 });

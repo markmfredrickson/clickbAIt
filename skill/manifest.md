@@ -216,6 +216,11 @@ Generated from `src/manifest.ts` (zod → JSON Schema). The source file is autho
               "type": "string",
               "minLength": 1
             },
+            "cents": {
+              "type": "number",
+              "exclusiveMinimum": -100,
+              "exclusiveMaximum": 100
+            },
             "stems": {
               "type": "object",
               "propertyNames": {

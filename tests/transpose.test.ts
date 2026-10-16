@@ -5,6 +5,7 @@ import {
   keyToSemitones,
   transposeNote,
   stemPlayback,
+  transposeSteps,
   SHIFTER_MODES,
 } from "../src/build/transpose.js";
 import { SongManifestSchema } from "../src/manifest.js";
@@ -162,6 +163,26 @@ describe("stemPlayback", () => {
   it("throws on an unknown shifter name", () => {
     expect(() => stemPlayback("vocals", { steps: -5, shifters: { vocals: "melodyne" } })).toThrow();
   });
+
+  it("cents alone retune every stem with the usual shifters", () => {
+    expect(stemPlayback("vocals", { cents: -35 })).toEqual({ pitch: -0.35, mode: SHIFTER_MODES.soloist });
+    expect(stemPlayback("bass", { cents: -35 })).toEqual({ pitch: -0.35, mode: SHIFTER_MODES.pro });
+  });
+
+  it("cents add to the semitone steps", () => {
+    expect(stemPlayback("bass", { steps: 1, cents: -35 }).pitch).toBeCloseTo(0.65);
+  });
+
+  it("cents still apply to a stem whose steps are pinned to 0", () => {
+    expect(stemPlayback("drums", { steps: -5, cents: -35, stems: { drums: 0 } }).pitch).toBeCloseTo(-0.35);
+  });
+});
+
+describe("transposeSteps", () => {
+  it("leaves cents out, so chords and charts move only by whole semitones", () => {
+    expect(transposeSteps({ steps: 1, cents: -35 })).toBe(1);
+    expect(transposeSteps({ cents: -35 })).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -234,6 +255,23 @@ describe("manifest transpose field", () => {
     expect(() => SongManifestSchema.parse(m)).toThrow();
   });
 
+  it("accepts cents alone (a tuning correction with no key change)", () => {
+    const m = { ...validManifest(), transpose: { cents: -35 } };
+    expect(SongManifestSchema.parse(m).transpose).toEqual({ cents: -35 });
+  });
+
+  it("accepts cents beside steps or a key pair", () => {
+    expect(() => SongManifestSchema.parse({ ...validManifest(), transpose: { steps: 1, cents: -35 } })).not.toThrow();
+    expect(() =>
+      SongManifestSchema.parse({ ...validManifest(), transpose: { from: "Eb", to: "E", cents: 10 } }),
+    ).not.toThrow();
+  });
+
+  it("rejects cents of a semitone or more (use steps)", () => {
+    expect(() => SongManifestSchema.parse({ ...validManifest(), transpose: { cents: -100 } })).toThrow();
+    expect(() => SongManifestSchema.parse({ ...validManifest(), transpose: { cents: 120 } })).toThrow();
+  });
+
   it("stays optional — a manifest without it still parses", () => {
     expect(SongManifestSchema.parse(validManifest()).transpose).toBeUndefined();
   });
@@ -285,6 +323,14 @@ describe("manifestToSong transpose plumbing", () => {
     const tones = findCues(s).filter((c) => c.tone);
     expect(tones).toHaveLength(1);
     expect(tones[0].tone).toEqual(["C#3", "F3", "G#3"]);
+  });
+
+  it("keeps prep-tone note names under a cents-only transpose", () => {
+    const base = validManifest();
+    base.sections[0].cues = [{ at: -4, tone: ["F#3", "A#3", "C#4"], bars: 1 }];
+    const m = SongManifestSchema.parse({ ...base, transpose: { cents: -35 } });
+    const s: any = manifestToSong(m, "/x");
+    expect(findCues(s).filter((c) => c.tone)[0].tone).toEqual(["F#3", "A#3", "C#4"]);
   });
 });
 

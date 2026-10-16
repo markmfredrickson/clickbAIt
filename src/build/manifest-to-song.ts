@@ -137,12 +137,16 @@ export function manifestToSong(
         }
         cursorBeat += lenBeats;
       }
-      // Clips must tile the section timeline, or audio and click drift apart.
+      // Clips start at the beat map's first beat (negative for a pickup) and
+      // must end with the sections or inside the ring-out, or audio and click
+      // drift apart.
       const clipsBeats = cursorBeat - offset;
       const songBeats = sectionStarts(manifest.sections, manifest.timeSignature).at(-1)!;
-      if (Math.abs(clipsBeats - songBeats) > 0.25) {
+      const ringOutBeats = manifest.ringOutBars * manifest.timeSignature[0];
+      if (cursorBeat < songBeats - 0.25 || cursorBeat > songBeats + ringOutBeats + 0.25) {
         throw new Error(
-          `clips span ${clipsBeats.toFixed(2)} beats but sections span ${songBeats} beats — they must match`,
+          `clips span ${clipsBeats.toFixed(2)} beats from beat ${offset}, ending at beat ${cursorBeat.toFixed(2)}, ` +
+            `but must end with the sections (beat ${songBeats}) or within the ${ringOutBeats}-beat ring-out`,
         );
       }
     } else {

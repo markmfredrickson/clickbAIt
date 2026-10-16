@@ -136,6 +136,40 @@ describe("manifestToSong clips", () => {
     });
     expect(() => manifestToSong(m, "/x")).toThrow(/clips span/);
   });
+
+  // A 2-beat pickup: the beat map starts at song beat -2 (beat i at 1 + 0.5i s,
+  // so song beat 0 is at 1.0 s), and the clips start there too.
+  const pickupRecording = { kind: "audio" as const, file: "s.m4a", beatMap: [{ startBeat: -2, times: mkTimes(60, 0.5) }] };
+  const pickupClips = (seconds: number) => ({
+    kind: "audio-group" as const, curveRef: "recording", dir: "stems/", files: { vocals: "v.wav" },
+    // 1 s of silence covers the 2 pickup beats; the clip then starts on song beat 0.
+    clips: [{ silence: 1 }, { from: 1, seconds }],
+  });
+
+  it("counts a pickup's clips from the beat map's first beat, ending with the sections", () => {
+    const m = SongManifestSchema.parse({
+      ...base,
+      sources: { recording: pickupRecording, stems: pickupClips(8) }, // 16 beats
+      sections: [{ name: "A", bars: 4 }], // 16 beats
+    });
+    const s: any = manifestToSong(m, "/x");
+    const audios = s.children.filter((c: any) => c.kind === "audio");
+    expect(audios[0]).toMatchObject({ offset: 0, soffs: 1, sourceEnd: 9 });
+  });
+
+  it("lets clips run into the ring-out, but not past it", () => {
+    const parse = (seconds: number) =>
+      SongManifestSchema.parse({
+        ...base,
+        ringOutBars: 1,
+        sources: { recording: pickupRecording, stems: pickupClips(seconds) },
+        sections: [{ name: "A", bars: 4 }], // 16 beats + 4 beats of ring-out
+      });
+    expect(() => manifestToSong(parse(10), "/x")).not.toThrow(); // ends at beat 20
+    expect(() => manifestToSong(parse(9), "/x")).not.toThrow(); // ends at beat 18
+    expect(() => manifestToSong(parse(12), "/x")).toThrow(/clips span/); // ends at beat 24
+    expect(() => manifestToSong(parse(7), "/x")).toThrow(/clips span/); // ends at beat 14
+  });
 });
 
 describe("manifestToSong cue marks", () => {

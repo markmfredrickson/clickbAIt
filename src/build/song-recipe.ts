@@ -227,14 +227,22 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   const alignOpts: AlignOpts = { rel, slug, alignStem, alignFile, lyricsFrom: opts.lyricsFrom ?? "lookup" };
   const lyricsTxtTask = lyricsTxtTaskFor(alignOpts);
 
-  // beats: single drum-stem detection (energy activation). STANDALONE — nothing
-  // depends on it, so `build` never re-runs it. Hand-tune the tempo window (and
-  // add --start/--until to crop a loose intro/outro) after lookup. For songs
-  // with drum-SILENT passages, detect two-pass + `beats:unify` by hand instead.
+  // beats: detect on the drum stem (energy activation) and on the full mix
+  // (spectral flux), then merge: drum beats, except where the drum stem is
+  // silent (a dropped bar, a drumless intro), which take the full-mix beats.
+  // The merge prints the silences it found. STANDALONE — nothing depends on
+  // it, so `build` never re-runs it. Hand-tune the tempo window (and add
+  // --start/--until to crop a loose intro/outro) after lookup.
+  const drumBeats = `${recFile}.drums.beats.json`;
+  const fullBeats = `${recFile}.fullmix.beats.json`;
+  const window = `--min-bpm ${minBpm} --max-bpm ${maxBpm}`;
   const beats = {
-    command: `${bin} beats stems/source_drums.wav --min-bpm ${minBpm} --max-bpm ${maxBpm} > ${beatsJson}`,
-    files: ["stems/source_drums.wav"],
-    output: [beatsJson],
+    command:
+      `${bin} beats stems/source_drums.wav ${window} > ${drumBeats}` +
+      ` && ${bin} beats ${recFile} --activation spectral-flux ${window} > ${fullBeats}` +
+      ` && npx tsx ${rel}/src/authoring/unify-beats-cli.ts ${fullBeats} ${drumBeats} stems/source_drums.wav ${beatsJson}`,
+    files: ["stems/source_drums.wav", recFile],
+    output: [drumBeats, fullBeats, beatsJson],
     dependencies: ["split"],
   };
 

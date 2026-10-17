@@ -122,3 +122,19 @@ describe("alignSource", () => {
     expect(alignSource(dirWith([]), { lyrics: { alignment: { file: "kv/lead-vocal.align.json" } } })).toBeNull();
   });
 });
+
+describe("songRecipe: beats", () => {
+  it("detects on the drum stem and the full mix, then merges them over the drum stem's silences", () => {
+    const { wireit } = songRecipe(base) as Recipe;
+    const bin = "../../../.claude/skills/clickbait/bin/clickbait-audio";
+    expect(wireit.beats).toEqual({
+      command:
+        `${bin} beats stems/source_drums.wav --min-bpm 100 --max-bpm 120 > source.m4a.drums.beats.json` +
+        ` && ${bin} beats source.m4a --activation spectral-flux --min-bpm 100 --max-bpm 120 > source.m4a.fullmix.beats.json` +
+        ` && npx tsx ../../../src/authoring/unify-beats-cli.ts source.m4a.fullmix.beats.json source.m4a.drums.beats.json stems/source_drums.wav source.m4a.beats.json`,
+      files: ["stems/source_drums.wav", "source.m4a"],
+      output: ["source.m4a.drums.beats.json", "source.m4a.fullmix.beats.json", "source.m4a.beats.json"],
+      dependencies: ["split"],
+    });
+  });
+});

@@ -1,21 +1,22 @@
 /**
  * Unify two beat-detection passes into one grid.
  *
- * We run the DBN tracker twice (see the `beats` command): once on the full mix
- * with spectral-flux activation — which keeps a plausible pulse through
- * drum-silent passages (intros, breakdowns) — and once on the drum stem with
- * energy activation, which is tight where the drums actually play but
- * hallucinates a pulse where they don't. This merges them into the single grid
- * the manifest's `beatMap` is built from.
+ * We run the DBN tracker twice (see the `beats` command): once on the drum
+ * stem with energy activation, which is tight where the drums play but invents
+ * a pulse where they don't, and once on the full mix with spectral-flux
+ * activation, which keeps a pulse through drum-silent passages but jitters.
  *
- * v2 heuristic (deliberately simple; the parked drum-beat-model work will
- * refine it): the drum stem is authoritative across the span where it has
- * CONFIDENT beats — from the first strong drum beat to the last — EXCEPT inside
- * "holes": gaps between consecutive strong drum beats too large to be normal (a
- * mid-song drum breakdown, where the tracker hallucinates a fast pulse through
- * the silence and would cram in extra beats → a within-bar phase slip). The full
- * mix fills outside the span AND inside holes. At every seam we drop whichever
- * side's beat would double up, keeping the drum-side beat.
+ * The drum beats are used everywhere except inside the drum stem's silences
+ * (`drum-silence.ts`). A silence is filled at a constant tempo: the full mix
+ * says how many beats it holds, and they are spaced evenly between the drum
+ * beats on either side. A silent intro or ending, with a drum beat on one side
+ * only, gets the constant tempo that best fits the full-mix beats, through
+ * that drum beat. The full-mix beats are first shifted by their median offset
+ * from the drum beats.
+ *
+ * When a gap's full-mix count disagrees with the tempo around it (the full
+ * mix missed or doubled a beat), the count that tempo gives is used and
+ * `onNote` reports the gap, so it can be checked by ear.
  */
 
 export interface DetectedBeat {
@@ -24,31 +25,30 @@ export interface DetectedBeat {
 }
 
 export interface UnifyOptions {
-  /** A drum beat counts as "confident" when its strength is at least this
-   *  fraction of the loudest drum beat. Default 0.5. */
-  strongThreshold?: number;
-  /** Two beats closer than `seamFactor × median-IBI` are a collision at the
-   *  seam; the drum-side one is kept. Default 0.5. */
-  seamFactor?: number;
-  /** A gap between consecutive STRONG drum beats larger than `holeFactor ×
-   *  median-strong-IBI` is a drum-silent hole (a breakdown) filled from the full
-   *  mix instead of the tracker's hallucinated pulse. Default 1.75. */
-  holeFactor?: number;
+  /** Called with a message for each gap whose full-mix count was overruled. */
+  onNote?: (message: string) => void;
 }
 
 const byTime = (a: DetectedBeat, b: DetectedBeat) => a.time - b.time;
 
+function median(values: number[]): number | undefined {
+  if (values.length === 0) return undefined;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
 /** Median of consecutive gaps, or `undefined` for fewer than two beats. */
 function medianIbi(beats: DetectedBeat[]): number | undefined {
-  if (beats.length < 2) return undefined;
-  const gaps = beats.slice(1).map((b, i) => b.time - beats[i].time).sort((a, b) => a - b);
-  const mid = Math.floor(gaps.length / 2);
-  return gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2;
+  return median(beats.slice(1).map((b, i) => b.time - beats[i].time));
 }
+
+const clock = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 
 export function unifyBeats(
   fullMix: DetectedBeat[],
   drum: DetectedBeat[],
+  silences: Array<[number, number]>,
   opts: UnifyOptions = {},
 ): DetectedBeat[] {
   const full = [...fullMix].sort(byTime);
@@ -56,51 +56,60 @@ export function unifyBeats(
   if (drums.length === 0) return full;
   if (full.length === 0) return drums;
 
-  const strongThreshold = opts.strongThreshold ?? 0.5;
-  const seamFactor = opts.seamFactor ?? 0.5;
-  const holeFactor = opts.holeFactor ?? 1.75;
+  const inSilence = (t: number) => silences.some(([a, b]) => t >= a && t < b);
+  const kept = drums.filter((b) => !inSilence(b.time));
+  const ibi = medianIbi(kept) ?? medianIbi(drums) ?? medianIbi(full)!;
 
-  const maxStrength = Math.max(...drums.map((b) => b.strength));
-  const thr = strongThreshold * maxStrength;
-  const strong = drums.filter((b) => b.strength >= thr);
-  if (strong.length === 0) return full; // no confident drums anywhere → full mix
-
-  const spanStart = strong[0].time;
-  const spanEnd = strong[strong.length - 1].time;
-  const inSpan = (t: number) => t >= spanStart && t <= spanEnd;
-
-  // Holes: gaps between consecutive STRONG drum beats too large to be normal — a
-  // mid-song drum breakdown, where the drum tracker hallucinates a pulse through
-  // the silence. Fill these from the full mix, not the drum stem.
-  const strongIbi = medianIbi(strong) ?? Infinity;
-  const holes: Array<[number, number]> = [];
-  for (let i = 1; i < strong.length; i++) {
-    if (strong[i].time - strong[i - 1].time > holeFactor * strongIbi) {
-      holes.push([strong[i - 1].time, strong[i].time]);
-    }
+  // Full-mix offset from the drums, measured where both passes have a beat.
+  const offsets: number[] = [];
+  for (const d of kept) {
+    let best = Infinity;
+    for (const f of full) if (Math.abs(f.time - d.time) < Math.abs(best)) best = f.time - d.time;
+    if (Math.abs(best) < 0.25 * ibi) offsets.push(best);
   }
-  const inHole = (t: number) => holes.some(([a, b]) => t > a && t < b);
-  const drumCovered = (t: number) => inSpan(t) && !inHole(t);
+  const shift = median(offsets) ?? 0;
+  const shifted = full.map((b) => ({ ...b, time: b.time - shift }));
 
-  // Drum beats where they're covering; full mix outside the span AND in holes.
-  type Tagged = DetectedBeat & { _drum: boolean };
-  const inside: Tagged[] = drums.filter((b) => drumCovered(b.time)).map((b) => ({ ...b, _drum: true }));
-  const filler: Tagged[] = full.filter((b) => !drumCovered(b.time)).map((b) => ({ ...b, _drum: false }));
-  const merged = [...inside, ...filler].sort(byTime);
+  const out: DetectedBeat[] = [...kept];
+  for (const [a, b] of silences) {
+    const before = [...kept].reverse().find((d) => d.time < a);
+    const after = kept.find((d) => d.time >= b);
+    // The full-mix beats that belong to the gap: inside the silence (with a
+    // beat of slack at each edge), and clear of the drum beats that bound it.
+    const lo = Math.max(a - ibi, before ? before.time + ibi / 2 : -Infinity);
+    const hi = Math.min(b + ibi, after ? after.time - ibi / 2 : Infinity);
+    const inner = shifted.filter((f) => f.time > lo && f.time < hi);
+    const strength = median(inner.map((f) => f.strength)) ?? 0;
 
-  const ibi = medianIbi(drums) ?? medianIbi(full) ?? Infinity;
-  const minGap = seamFactor * ibi;
-
-  // Drop seam collisions, preferring the drum-side beat.
-  const out: Tagged[] = [];
-  for (const b of merged) {
-    const last = out[out.length - 1];
-    if (last && b.time - last.time < minGap) {
-      if (b._drum && !last._drum) out[out.length - 1] = b; // drum wins
-      // otherwise keep `last`, drop `b`
+    if (before && after) {
+      // Local tempo around the gap, for the count check: from the full mix,
+      // which has beats everywhere (the drum beats near a gap can be sparse).
+      const near = shifted.filter((f) => f.time > before.time - 8 * ibi && f.time < after.time + 8 * ibi);
+      const localIbi = medianIbi(near) ?? ibi;
+      const expected = (after.time - before.time) / localIbi;
+      let n = inner.length + 1;
+      if (Math.abs(n - expected) >= 0.5) {
+        n = Math.max(1, Math.round(expected));
+        opts.onNote?.(
+          `drum gap ${clock(before.time)}-${clock(after.time)}: the full mix has ${inner.length + 1} beats, ` +
+            `the tempo around it says ${n}; using ${n}, check by ear`,
+        );
+      }
+      const step = (after.time - before.time) / n;
+      for (let k = 1; k < n; k++) out.push({ time: before.time + k * step, strength });
+    } else if (before || after) {
+      // One drum anchor: the constant tempo that best fits the full-mix beats,
+      // through the anchor (least squares on the beat index).
+      const anchor = (before ?? after)!.time;
+      const dir = before ? 1 : -1;
+      const ordered = [...inner].sort((p, q) => dir * (p.time - q.time));
+      let num = 0, den = 0;
+      ordered.forEach((f, i) => { num += (i + 1) * dir * (f.time - anchor); den += (i + 1) ** 2; });
+      const step = den > 0 ? num / den : ibi;
+      ordered.forEach((_, i) => out.push({ time: anchor + dir * (i + 1) * step, strength }));
     } else {
-      out.push(b);
+      out.push(...inner);
     }
   }
-  return out.map(({ time, strength }) => ({ time, strength }));
+  return out.sort(byTime);
 }

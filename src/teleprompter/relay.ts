@@ -517,6 +517,22 @@ export function startRelay(opts: RelayOptions) {
     }
   }
 
+  /** Every served song's rows, set-list order first, for the e-ink landing page
+   *  before a song plays. Songs without a rows file are left out. */
+  async function setRows(): Promise<RowDocument[]> {
+    const found = new Map<string, RowDocument>();
+    for (const dir of songsDirs) {
+      let files: string[] = [];
+      try { files = await readdir(dir); } catch { continue; }
+      for (const slug of songSlugsFromFiles(files)) {
+        if (found.has(slug)) continue;
+        try { found.set(slug, JSON.parse(await readFile(join(dir, `${slug}.rows.json`), "utf8")) as RowDocument); } catch { /* no rows file */ }
+      }
+    }
+    const order = [...setlist.filter((s) => found.has(s)), ...[...found.keys()].filter((s) => !setlist.includes(s))];
+    return order.map((s) => found.get(s)!);
+  }
+
   // E-ink pages for the current song, rendered at each device's size.
   const eink = createEinkRoutes({
     current: () =>
@@ -567,7 +583,8 @@ export function startRelay(opts: RelayOptions) {
     // An e-ink page shows one channel; until it names one, it offers them.
     if (url.split("?")[0] === "/eink" && new URLSearchParams(url.slice("/eink".length)).getAll("channel").length !== 1) {
       res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-store" });
-      res.end(einkSplash(currentRows()));
+      const rows = currentRows();
+      res.end(einkSplash(rows, rows ? [] : await setRows()));
       return;
     }
 

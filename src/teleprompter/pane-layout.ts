@@ -125,25 +125,51 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * The e-ink page that comes before a channel is picked: a link per channel of
- * the song playing now. An e-ink page shows one channel. With no song yet, it
- * reloads itself until there is one.
+ * The channels across a set of songs, named by what carries from song to song
+ * (channel ids differ between songs): lyrics, chords, then each part by its
+ * instrument, once each, in the order they first appear.
  */
-export function einkSplash(doc: RowDocument | null): string {
+export function setChannelChoices(docs: RowDocument[]): { name: string; label: string }[] {
+  const seen = new Map<string, string>();
+  const rank = (name: string) => (name === "lyrics" ? 0 : name === "chords" ? 1 : 2);
+  for (const doc of docs) {
+    for (const c of doc.channels) {
+      const name = c.kind === "lyrics" || c.kind === "chords" ? c.kind : "instrument" in c && c.instrument ? c.instrument : c.id;
+      if (!seen.has(name)) seen.set(name, c.kind === "lyrics" || c.kind === "chords" ? channelName(c) : name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, " "));
+    }
+  }
+  return [...seen].map(([name, label], i) => ({ name, label, i })).sort((a, b) => rank(a.name) - rank(b.name) || a.i - b.i).map(({ name, label }) => ({ name, label }));
+}
+
+/**
+ * The e-ink page that comes before a channel is picked: a link per channel of
+ * the song playing now. An e-ink page shows one channel. With no song playing,
+ * it offers the set's channels (`set`), so a screen can be set up before the
+ * show; with no songs at all, it reloads itself until there are some.
+ */
+export function einkSplash(doc: RowDocument | null, set: RowDocument[] = []): string {
+  const links = (choices: { name: string; label: string }[]) =>
+    `  <ul>
+${choices.map((c) => `    <li><a href="/eink?channel=${encodeURIComponent(c.name)}">${escapeHtml(c.label)}</a></li>`).join("\n")}
+  </ul>`;
+  const setChoices = doc ? [] : setChannelChoices(set);
+  const waiting = !doc && setChoices.length === 0;
   const body = doc
     ? `<h1>${escapeHtml(doc.title)}</h1>
   <p>Pick what this screen shows.</p>
-  <ul>
-${channelChoices(doc).map((c) => `    <li><a href="/eink?channel=${encodeURIComponent(c.name)}">${escapeHtml(c.label)}</a></li>`).join("\n")}
-  </ul>`
-    : `<h1>Waiting for a song…</h1>
+${links(channelChoices(doc))}`
+    : !waiting
+      ? `<h1>Pick what this screen shows</h1>
+  <p>No song is playing yet. A song without the part you pick says so.</p>
+${links(setChoices)}`
+      : `<h1>Waiting for a song…</h1>
   <p>The channels to pick from appear once a song loads.</p>`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-${doc ? "" : `  <meta http-equiv="refresh" content="10">\n`}  <title>E-ink — clickbAIt</title>
+${waiting ? `  <meta http-equiv="refresh" content="10">\n` : ""}  <title>E-ink — clickbAIt</title>
   <style>
     body { background: #fff; color: #000; font-family: Georgia, serif; margin: 0; padding: 2rem; }
     h1 { font-size: 2rem; margin: 0 0 0.5rem; }

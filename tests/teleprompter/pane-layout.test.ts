@@ -169,4 +169,20 @@ describe("einkSplash", () => {
     expect(html).not.toContain("href=");
     expect(html).toContain('http-equiv="refresh"');
   });
+
+  it("with no song playing, offers the set's channels by what carries across songs: lyrics, chords, then instruments", () => {
+    const other: RowDocument = {
+      ...DOC,
+      slug: "other",
+      channels: [
+        { id: "guitar-nick", kind: "figures", chart: "tab", instrument: "guitar", source: "b.gp5", track: 0, rows: [] },
+        { id: "bass", kind: "figures", chart: "tab", instrument: "bass", source: "b.gp5", track: 2, rows: [] },
+        { id: "lyrics", kind: "lyrics", rows: [] },
+      ],
+    };
+    const html = einkSplash(null, [DOC, other]);
+    const links = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+    expect(links).toEqual(["/eink?channel=lyrics", "/eink?channel=chords", "/eink?channel=drums", "/eink?channel=guitar", "/eink?channel=bass"]);
+    expect(html).not.toContain('http-equiv="refresh"'); // a list to pick from, not a page that reloads under the finger
+  });
 });

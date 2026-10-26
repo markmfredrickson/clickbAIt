@@ -7,6 +7,7 @@ mod analyze;
 mod chunk;
 mod dbn;
 mod features;
+mod offset;
 mod setup;
 mod split;
 mod transcribe;
@@ -80,6 +81,14 @@ enum Commands {
         /// Whisper model to use
         #[arg(long, default_value = "base.en")]
         model: String,
+    },
+    /// Find where a clip (e.g. a phone video) starts in a longer recording of the
+    /// same performance (e.g. the board audio). JSON to stdout.
+    Offset {
+        /// The longer recording
+        reference: String,
+        /// The clip to find in it (any file with an audio track, video included)
+        clip: String,
     },
     /// Detect tempo warping and estimate constant recording BPM
     Unstretch {
@@ -227,6 +236,13 @@ fn main() -> Result<()> {
             Ok(())
         },
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
+        Commands::Offset { reference, clip } => {
+            let (r, r_sr) = analyze::decode_audio(&reference)?;
+            let (c, c_sr) = analyze::decode_audio(&clip)?;
+            let found = offset::find_offset(&r, r_sr, &c, c_sr)?;
+            println!("{}", serde_json::to_string(&found)?);
+            Ok(())
+        },
         Commands::Unstretch { file } => unstretch::run(&file),
         Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),
         Commands::Align { file, text, output, no_trim_silence } => {

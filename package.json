@@ -33,6 +33,7 @@
     "song:visuals-preview": "npx tsx src/visuals/preview-cli.ts",
     "song:media": "npx tsx src/visuals/media-cli.ts",
     "songs": "npx tsx scripts/songs.ts",
+    "gig": "npx tsx scripts/gig.ts",
     "show:teleprompter": "npx tsx scripts/teleprompter.ts",
     "dev:bundle": "node scripts/build.mjs",
     "dev:skill": "npx tsx scripts/render-skill.ts",

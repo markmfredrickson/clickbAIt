@@ -314,6 +314,21 @@ mod tests {
     }
 
     #[test]
+    fn finds_a_song_in_a_whole_set() {
+        // Most of what the phone hears never reaches the board (drums, amps, the
+        // room), so the board's share of the clip is small. Against a whole set
+        // the rest of the set must not drown that share out.
+        const SR: u32 = 8000;
+        let set = Band::new(7, 900.0);
+        let board = set.render(0.0, secs(900.0, SR), SR, 0.0);
+        let song = set.render(612.5, secs(60.0, SR), SR, 0.0);
+        let stage = Band::new(8, 60.0).render(0.0, secs(60.0, SR), SR, 0.0);
+        let phone: Vec<f32> = song.iter().zip(&stage).map(|(b, s)| 0.15 * b + s).collect();
+        let got = find_offset(&board, SR, &phone, SR).unwrap();
+        assert!((got.offset - 612.5).abs() < 0.001, "offset {}", got.offset);
+    }
+
+    #[test]
     fn matches_across_sample_rates() {
         let band = Band::new(2, 60.0);
         let board = band.render(0.0, secs(60.0, SR), SR, 0.0);

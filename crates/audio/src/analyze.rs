@@ -46,12 +46,15 @@ pub fn decode_audio(path: &str) -> Result<(Vec<f32>, u32)> {
 
     let mut format = probed.format;
 
-    let track = format.default_track().context("No audio tracks found")?;
+    // The first track with a sample rate: in a video file the default track is
+    // often the picture.
+    let track = format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.sample_rate.is_some())
+        .context("No audio tracks found")?;
     let track_id = track.id;
-    let sample_rate = track
-        .codec_params
-        .sample_rate
-        .context("No sample rate in codec params")?;
+    let sample_rate = track.codec_params.sample_rate.unwrap();
     let channels = track
         .codec_params
         .channels
@@ -119,12 +122,15 @@ pub fn decode_stereo(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32)> {
 
     let mut format = probed.format;
 
-    let track = format.default_track().context("No audio tracks found")?;
+    // The first track with a sample rate: in a video file the default track is
+    // often the picture.
+    let track = format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.sample_rate.is_some())
+        .context("No audio tracks found")?;
     let track_id = track.id;
-    let sample_rate = track
-        .codec_params
-        .sample_rate
-        .context("No sample rate in codec params")?;
+    let sample_rate = track.codec_params.sample_rate.unwrap();
     let channels = track
         .codec_params
         .channels

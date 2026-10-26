@@ -40,13 +40,36 @@ pub struct Offset {
 }
 
 pub fn find_offset(reference: &[f32], ref_sr: u32, clip: &[f32], clip_sr: u32) -> Result<Offset> {
-    // Coarse: the whole clip against the whole reference.
+    // Coarse: the whole clip against the reference in overlapping pieces twice its
+    // length. Whitening one cross-spectrum of a whole set against one song drowns
+    // the song's match in the rest of the set; in a piece the clip is half of it.
     let ref_c = resample(reference, ref_sr, COARSE_SR)?;
     let clip_c = resample(clip, clip_sr, COARSE_SR)?;
     let half = clip_c.len() as i64 / 2;
-    let corr = gcc_phat(&ref_c, &clip_c, COARSE_SR);
     let exclude = (EXCLUDE_S * COARSE_SR as f64) as i64;
-    let (lag, peak_ratio) = best_peak(&corr, -half, ref_c.len() as i64 - half, exclude);
+    let hop = clip_c.len().max(1);
+    let mut peaks: Vec<Peaks> = Vec::new();
+    let mut start = 0;
+    loop {
+        let piece = &ref_c[start..(start + 2 * hop).min(ref_c.len())];
+        let corr = gcc_phat(piece, &clip_c, COARSE_SR);
+        let lo = if start == 0 { -half } else { 0 };
+        let p = peaks_in(&corr, lo, piece.len() as i64 - half, exclude);
+        peaks.push(p.shifted(start as i64));
+        if start + 2 * hop >= ref_c.len() {
+            break;
+        }
+        start += hop;
+    }
+    let best = peaks.iter().map(|p| p.top).max_by(|a, b| a.1.total_cmp(&b.1)).unwrap();
+    let next = peaks
+        .iter()
+        .flat_map(|p| [p.top, p.next])
+        .filter(|&(l, _)| (l - best.0).abs() > exclude)
+        .map(|(_, v)| v)
+        .fold(0.0f32, f32::max);
+    let lag = best.0;
+    let peak_ratio = if next > 0.0 { (best.1 / next) as f64 } else { f64::INFINITY };
     if peak_ratio < MIN_PEAK_RATIO {
         bail!("ambiguous match: best peak at {:.3}s is only {peak_ratio:.2}x the next \
                (need {MIN_PEAK_RATIO}x)", lag as f64 / COARSE_SR as f64);
@@ -94,7 +117,8 @@ fn locate(reference: &[f32], ref_sr: u32, clip: &[f32], guess: f64, clip_secs: f
     let centre = ((guess - slice_start) * FINE_SR as f64).round() as i64;
     let reach = (SEARCH_S * FINE_SR as f64) as i64;
     let exclude = (EXCLUDE_S * FINE_SR as f64) as i64;
-    let (lag, ratio) = best_peak(&corr, centre - reach, centre + reach, exclude);
+    let p = peaks_in(&corr, centre - reach, centre + reach, exclude);
+    let (lag, ratio) = (p.top.0, p.ratio());
     let at = (lag as f64 + parabolic(&corr, lag)) / FINE_SR as f64;
     Ok(Some((slice_start + at, ratio)))
 }
@@ -132,17 +156,33 @@ fn at(corr: &[f32], lag: i64) -> f32 {
     corr[lag.rem_euclid(corr.len() as i64) as usize].abs()
 }
 
-/// The highest peak with lag in `lo..hi`, and its height over the highest peak
-/// more than `exclude` lags away from it.
-fn best_peak(corr: &[f32], lo: i64, hi: i64, exclude: i64) -> (i64, f64) {
+/// The highest correlation peak and the highest one more than `exclude` lags
+/// away from it, as (lag, height).
+#[derive(Clone, Copy)]
+struct Peaks {
+    top: (i64, f32),
+    next: (i64, f32),
+}
+
+impl Peaks {
+    fn ratio(&self) -> f64 {
+        if self.next.1 > 0.0 { (self.top.1 / self.next.1) as f64 } else { f64::INFINITY }
+    }
+
+    fn shifted(self, by: i64) -> Peaks {
+        Peaks { top: (self.top.0 + by, self.top.1), next: (self.next.0 + by, self.next.1) }
+    }
+}
+
+/// The peaks with lag in `lo..hi`.
+fn peaks_in(corr: &[f32], lo: i64, hi: i64, exclude: i64) -> Peaks {
     let (lo, hi) = (lo.max(1 - corr.len() as i64 / 2), hi.min(corr.len() as i64 / 2));
-    let best = (lo..hi).max_by(|&a, &b| at(corr, a).total_cmp(&at(corr, b))).unwrap_or(0);
+    let top = (lo..hi).max_by(|&a, &b| at(corr, a).total_cmp(&at(corr, b))).unwrap_or(0);
     let next = (lo..hi)
-        .filter(|l| (l - best).abs() > exclude)
-        .map(|l| at(corr, l))
-        .fold(0.0f32, f32::max);
-    let ratio = if next > 0.0 { (at(corr, best) / next) as f64 } else { f64::INFINITY };
-    (best, ratio)
+        .filter(|l| (l - top).abs() > exclude)
+        .max_by(|&a, &b| at(corr, a).total_cmp(&at(corr, b)))
+        .unwrap_or(top);
+    Peaks { top: (top, at(corr, top)), next: (next, if next == top { 0.0 } else { at(corr, next) }) }
 }
 
 /// Sub-sample position of a peak, from a parabola through it and its neighbours.

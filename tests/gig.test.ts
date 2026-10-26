@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readGig } from "../src/gig/gig.js";
@@ -15,6 +15,7 @@ function layout() {
   const root = mkdtempSync(join(tmpdir(), "gig-"));
   for (const song of ["songs/band/supremes/you-cant-hurry-love", "songs/band/the-white-stripes/seven-nation-army"]) {
     mkdirSync(join(root, song), { recursive: true });
+    writeFileSync(join(root, song, `${song.split("/").pop()}.song.json`), "{}");
   }
   const gig = join(root, "songs/gigs/2026-08-08");
   mkdirSync(gig, { recursive: true });
@@ -43,8 +44,8 @@ describe("readGig", () => {
     const g = readGig(gig, root);
     expect(g.board).toBe("media/board.m4a");
     expect(g.songs).toEqual([
-      { n: "01", slug: "seven-nation-army", dir: join(root, SNA), phone: "media/01.mov", audio: "phone" },
-      { n: "02", slug: "you-cant-hurry-love", dir: join(root, YCHL), phone: "media/02.mov", audio: "board" },
+      { n: "01", slug: "seven-nation-army", dir: join(root, SNA), manifest: join(root, SNA, "seven-nation-army.song.json"), phone: "media/01.mov", audio: "phone", mix: 0 },
+      { n: "02", slug: "you-cant-hurry-love", dir: join(root, YCHL), manifest: join(root, YCHL, "you-cant-hurry-love.song.json"), phone: "media/02.mov", audio: "board", mix: 0.6 },
     ]);
   });
 
@@ -75,6 +76,35 @@ describe("readGig", () => {
     expect(() => readGig(gig, root)).toThrow(/audio/);
   });
 
+  it("rejects a song folder without a manifest", () => {
+    rmSync(join(root, YCHL, "you-cant-hurry-love.song.json"));
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov" }] });
+    expect(() => readGig(gig, root)).toThrow(/manifest/);
+  });
+
+  it("mixes 60% board, 40% phone unless the gig or the song says otherwise", () => {
+    writeGig(gig, {
+      board: "media/board.m4a",
+      mix: 0.7,
+      songs: [{ song: YCHL, phone: "media/02.mov" }, { song: YCHL, phone: "media/03.mov", mix: 0.5 }],
+    });
+    expect(readGig(gig, root).songs.map((s) => s.mix)).toEqual([0.7, 0.5]);
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov" }] });
+    expect(readGig(gig, root).songs[0].mix).toBe(0.6);
+  });
+
+  it("mixes no board into a song the board missed, and says so if asked to", () => {
+    writeGig(gig, { board: "media/board.m4a", mix: 0.7, songs: [{ song: SNA, phone: "media/01.mov", audio: "phone" }] });
+    expect(readGig(gig, root).songs[0].mix).toBe(0);
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: SNA, phone: "media/01.mov", audio: "phone", mix: 0.5 }] });
+    expect(() => readGig(gig, root)).toThrow(/mix/);
+  });
+
+  it("rejects a mix outside 0 to 1", () => {
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", mix: 1.5 }] });
+    expect(() => readGig(gig, root)).toThrow(/mix/);
+  });
+
   it("rejects a song folder that doesn't exist", () => {
     writeGig(gig, { board: "media/board.m4a", songs: [{ song: "songs/band/nobody/nothing", phone: "media/02.mov" }] });
     expect(() => readGig(gig, root)).toThrow(/songs\/band\/nobody\/nothing/);
@@ -96,22 +126,74 @@ describe("gigRecipe", () => {
     return gigRecipe(readGig(gig, root), "../../..") as Recipe;
   }
 
+  const GIG = "npx tsx ../../../src/gig";
+  const MANIFEST = "../../band/supremes/you-cant-hurry-love/you-cant-hurry-love.song.json";
+
   it("syncs each board-audio song's phone video against the board", () => {
     const { scripts, wireit } = recipe();
     expect(scripts["sync:02-you-cant-hurry-love"]).toBe("wireit");
     expect(wireit["sync:02-you-cant-hurry-love"]).toEqual({
-      command:
-        'mkdir -p sync && ../../../.claude/skills/clickbait/bin/clickbait-audio offset "media/board.m4a" "media/02.mov"' +
-        " > sync/02-you-cant-hurry-love.sync.json",
+      command: `${GIG}/sync-cli.ts "media/board.m4a" "media/02.mov" sync/02-you-cant-hurry-love.sync.json`,
       files: ["media/board.m4a", "media/02.mov"],
       output: ["sync/02-you-cant-hurry-love.sync.json"],
     });
   });
 
+  it("takes a board-audio song's vocal from the board, over the span of its video", () => {
+    const { wireit } = recipe();
+    expect(wireit["vocals:02-you-cant-hurry-love"]).toEqual({
+      command: `${GIG}/vocals-cli.ts "media/02.mov" work/02-you-cant-hurry-love.vocals.wav --board "media/board.m4a" --sync sync/02-you-cant-hurry-love.sync.json`,
+      files: ["media/board.m4a", "media/02.mov"],
+      output: ["work/02-you-cant-hurry-love.vocals.wav"],
+      dependencies: ["sync:02-you-cant-hurry-love"],
+    });
+  });
+
+  it("takes a phone-audio song's vocal from the phone, with nothing to cut", () => {
+    const { wireit } = recipe();
+    expect(wireit["vocals:01-seven-nation-army"]).toEqual({
+      command: `${GIG}/vocals-cli.ts "media/01.mov" work/01-seven-nation-army.vocals.wav`,
+      files: ["media/01.mov"],
+      output: ["work/01-seven-nation-army.vocals.wav"],
+    });
+  });
+
+  it("aligns the manifest's lyric lines against the vocal, then writes the captions", () => {
+    const { wireit } = recipe();
+    expect(wireit["lyrics:02-you-cant-hurry-love"]).toEqual({
+      command: `npx tsx ../../../src/authoring/lyrics-text-cli.ts --manifest "${MANIFEST}" work/02-you-cant-hurry-love.lyrics.txt`,
+      files: [MANIFEST],
+      output: ["work/02-you-cant-hurry-love.lyrics.txt"],
+    });
+    expect(wireit["align:02-you-cant-hurry-love"]).toEqual({
+      command:
+        "npx tsx ../../../src/authoring/desilence-align-cli.ts work/02-you-cant-hurry-love.vocals.wav" +
+        " --text work/02-you-cant-hurry-love.lyrics.txt -o work/02-you-cant-hurry-love.align.json",
+      files: ["work/02-you-cant-hurry-love.vocals.wav", "work/02-you-cant-hurry-love.lyrics.txt"],
+      output: ["work/02-you-cant-hurry-love.align.json"],
+      dependencies: ["vocals:02-you-cant-hurry-love", "lyrics:02-you-cant-hurry-love"],
+    });
+    expect(wireit["captions:02-you-cant-hurry-love"]).toEqual({
+      command: `${GIG}/captions-cli.ts work/02-you-cant-hurry-love.align.json captions/02-you-cant-hurry-love --sync sync/02-you-cant-hurry-love.sync.json`,
+      files: ["work/02-you-cant-hurry-love.align.json", "sync/02-you-cant-hurry-love.sync.json"],
+      output: ["captions/02-you-cant-hurry-love.srt", "captions/02-you-cant-hurry-love.words.json"],
+      dependencies: ["align:02-you-cant-hurry-love"],
+    });
+    expect(wireit["captions:01-seven-nation-army"].command).toBe(
+      `${GIG}/captions-cli.ts work/01-seven-nation-army.align.json captions/01-seven-nation-army`,
+    );
+  });
+
+  it("runs every song's captions from one captions task", () => {
+    const { scripts, wireit } = recipe();
+    expect(scripts.captions).toBe("wireit");
+    expect(wireit.captions.dependencies).toEqual(["captions:01-seven-nation-army", "captions:02-you-cant-hurry-love"]);
+  });
+
   it("gives a phone-audio song no sync task", () => {
     const { scripts, wireit } = recipe();
-    expect(Object.keys(wireit).filter((t) => t.includes("seven-nation-army"))).toEqual([]);
-    expect(Object.keys(scripts).filter((t) => t.includes("seven-nation-army"))).toEqual([]);
+    expect(wireit["sync:01-seven-nation-army"]).toBeUndefined();
+    expect(scripts["sync:01-seven-nation-army"]).toBeUndefined();
   });
 
   it("runs every song's sync from one sync task", () => {

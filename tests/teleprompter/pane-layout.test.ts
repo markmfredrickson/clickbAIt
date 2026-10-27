@@ -164,6 +164,12 @@ describe("einkSplash", () => {
     expect(links).toEqual(["/eink?channel=lyrics", "/eink?channel=chords", "/eink?channel=kit", "/eink?channel=rhythm-guitar"]);
   });
 
+  it("keeps the page's other options, such as which way it's turned, on every link", () => {
+    const html = einkSplash(DOC, [], "rotate=left&font=40");
+    const links = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+    expect(links[0]).toBe("/eink?channel=lyrics&amp;rotate=left&amp;font=40");
+  });
+
   it("waits for a song, and looks again by itself", () => {
     const html = einkSplash(null);
     expect(html).not.toContain("href=");

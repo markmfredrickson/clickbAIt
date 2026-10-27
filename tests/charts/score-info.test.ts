@@ -84,3 +84,23 @@ describe("loadScore", () => {
     expect(note.fret).toBe(0);
   });
 });
+
+describe("loadScore with slash repeats", () => {
+  // Bar 2 repeats bar 1; bars 4–5 repeat bars 2–3 as a two-bar repeat.
+  const tex = `\\title "S" . :4 3.3 5.3 7.3 8.3 | \\simile simple r.1 | \\simile none 0.6 2.6 3.6 5.6 | \\simile firstofdouble r.1 | \\simile secondofdouble r.1`;
+  const score = loadScore(new TextEncoder().encode(tex), "slash.atex");
+  const bars = score.tracks[0].staves[0].bars;
+  const frets = (b: alphaTab.model.Bar) => b.voices[0].beats.map((x) => (x.isRest ? "r" : x.notes.map((n) => n.fret).join(""))).join(",");
+
+  it("writes out each repeated bar in full, with no repeat mark left", () => {
+    expect(bars.map(frets)).toEqual(["3,5,7,8", "3,5,7,8", "0,2,3,5", "3,5,7,8", "0,2,3,5"]);
+    expect(bars.every((b) => b.simileMark === 0)).toBe(true);
+  });
+
+  it("gives the repeated bars the signature of the bars they repeat", () => {
+    const [sig] = readScoreInfo(new TextEncoder().encode(tex), "slash.atex").signatures;
+    expect(sig[1]).toBe(sig[0]);
+    expect(sig[3]).toBe(sig[1]);
+    expect(sig[4]).toBe(sig[2]);
+  });
+});

@@ -15,6 +15,12 @@ describe("parseDisplayOptions", () => {
     });
   });
 
+  it("reads the note size, the staff lines' spacing in px", () => {
+    expect(parseDisplayOptions("?staff=12").staff).toBe(12);
+    expect(displayQuery({ staff: 12 })).toBe("?staff=12");
+    expect(parseDisplayOptions("?staff=1").staff).toBeUndefined();
+  });
+
   it("ignores values it can't use, and the layout's options", () => {
     expect(parseDisplayOptions("?offset=x&scroll=fast&theme=blue&panes=2&view=lyrics&lyrics=2")).toEqual({});
   });

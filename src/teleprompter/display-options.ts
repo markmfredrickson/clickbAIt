@@ -2,12 +2,14 @@
  * A display's options, carried in its URL so a setup is a link: open it on
  * another screen and it looks the same.
  *
- *   /prompt?panes=2&split=vertical&view=drums&view=lyrics&offset=1&scroll=manual&theme=light
+ *   /prompt?panes=2&split=vertical&view=drums&view=lyrics&offset=1&scroll=manual&theme=light&staff=12
  *
  * The panes and what they show are the layout's (pane-layout.ts); these are
  * the rest. A page ignores what it can't use, and a URL that doesn't say
  * leaves the choice to the page.
  */
+
+import { parseStaffPx } from "./flow.js";
 
 export interface DisplayOptions {
   /** Beats the reading position runs ahead of the music. */
@@ -16,6 +18,8 @@ export interface DisplayOptions {
   theme?: "dark" | "light";
   /** The player's part ("guitar"), for the notes on the card before a song. */
   role?: string;
+  /** The note size: the distance between staff lines, in CSS px (see flow.ts). */
+  staff?: number;
 }
 
 export function parseDisplayOptions(query: string): DisplayOptions {
@@ -29,6 +33,8 @@ export function parseDisplayOptions(query: string): DisplayOptions {
   if (theme === "dark" || theme === "light") options.theme = theme;
   const role = q.get("role")?.trim().toLowerCase();
   if (role) options.role = role;
+  const staff = parseStaffPx(q.get("staff"));
+  if (staff !== null) options.staff = staff;
   return options;
 }
 
@@ -39,5 +45,6 @@ export function displayQuery(options: DisplayOptions): string {
   if (options.scroll) parts.push(`scroll=${options.scroll}`);
   if (options.theme) parts.push(`theme=${options.theme}`);
   if (options.role) parts.push(`role=${encodeURIComponent(options.role)}`);
+  if (options.staff !== undefined) parts.push(`staff=${options.staff}`);
   return parts.length ? "?" + parts.join("&") : "";
 }

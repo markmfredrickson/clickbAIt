@@ -22,8 +22,8 @@ import { channelChoices, layoutQuery, paneChannel, parseLayout, withLayout, type
 import { songMap, songProgress } from "../song-map.js";
 import { channelTitle, itemsAt, type ChannelPosition, type RowChannel, type RowDocument } from "../rows.js";
 import { panePageAt, type PanePage, pagesByHeight } from "../panes.js";
-import { channelView, fitRows, placeDrawing, showPass, type ChannelView } from "./pane-view.js";
-import { drawingKey } from "../drawings.js";
+import { flowView, showPass, type ChannelView } from "./pane-view.js";
+import { DEFAULT_STAFF_PX, noteZoom } from "../flow.js";
 import { cardShowing } from "../card.js";
 import { cardView, fitCard } from "./card-view.js";
 
@@ -54,6 +54,8 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   // The page's options and layout come from its URL, so a setup is a link.
   // Changing one writes it back to the URL.
   const urlOptions = parseDisplayOptions(location.search);
+  // The note size, one for every part on the page (see flow.ts).
+  document.documentElement.style.setProperty("--notation-zoom", String(noteZoom(urlOptions.staff ?? DEFAULT_STAFF_PX)));
   const parsedLayout = parseLayout(location.search);
   let layout: PaneLayout = "error" in parsedLayout ? { panes: 1, split: "vertical", views: [null], at: 50 } : parsedLayout;
   const layoutError = "error" in parsedLayout ? parsedLayout.error : null;
@@ -62,8 +64,12 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
   interface Pane {
     /** Which of the layout's panes it is, from 0. */
     slot: number;
+    /** The channel as built, and as flowed to the pane's size (see flowView): its rows are the pane's. */
+    source: RowChannel;
     channel: RowChannel;
     view: ChannelView;
+    /** The size it was last flowed to. */
+    flowedTo: string;
     el: HTMLElement;
     rowsEl: HTMLElement;
     pages: PanePage[];
@@ -141,6 +147,7 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
       scroll: autoScroll ? undefined : "manual",
       theme: document.body.classList.contains("light") ? "light" : undefined,
       role: urlOptions.role,
+      staff: urlOptions.staff,
     });
     try { history.replaceState(null, "", location.pathname + layoutQuery(layout, display)); } catch (e) { /* file:// */ }
   }
@@ -478,12 +485,9 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
         return;
       }
       order.push(channel.id);
-      const view = channelView(channel);
       const el = document.createElement("section");
       el.className = "pane pane-" + channel.kind;
       el.style.fontSize = SIZES[channel.kind] + "rem";
-      // Notation scales with the pane's size.
-      if (isChart(channel)) el.style.setProperty("--notation-zoom", String((SIZES[channel.kind] / 1.2) * 1.1));
       // What the pane is, in its corner: parts can look alike (rhythm and lead guitar).
       const label = document.createElement("div");
       label.className = "pane-label";
@@ -492,19 +496,11 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
       el.appendChild(label);
       const rowsEl = document.createElement("div");
       rowsEl.className = "pane-rows";
-      view.rows.forEach(function (r) { rowsEl.appendChild(r.el); });
       el.appendChild(rowsEl);
       slotEl.appendChild(el);
-      const pane: Pane = { slot, channel, view, el, rowsEl, pages: [], page: -1, litRow: -1, litItem: -1 };
+      // Its rows go in when it's sized (sizePane), flowed to its box.
+      const pane: Pane = { slot, source: channel, channel, view: { rows: [], notation: [] }, flowedTo: "", el, rowsEl, pages: [], page: -1, litRow: -1, litItem: -1 };
       panes.push(pane);
-      // Notation comes drawn, in the rows (a song built before that shows its letters only).
-      const drawn = doc!.notation && doc!.notation[channel.id];
-      if (drawn) {
-        view.notation.forEach(function (t) {
-          const d = drawn[drawingKey(t.start, t.count)];
-          if (d) placeDrawing(t, d, d.svg);
-        });
-      }
       // The pane's box changes with the window and the divider; its rows with their drawings.
       if (typeof ResizeObserver !== "undefined") {
         const ro = new ResizeObserver(function () { sizePane(pane); });
@@ -547,11 +543,22 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
     return d;
   }
 
-  /** Page a pane by its own box, and put it back on its page. */
+  /** Flow a pane's rows to its box, page it, and put it back on its page. */
   function sizePane(p: Pane) {
-    fitRows(p.view);
-    const rows = p.view.rows.map(function (r) { return r.el; });
     const available = Math.max(40, p.el.clientHeight);
+    const size = p.rowsEl.clientWidth + "x" + available;
+    if (size !== p.flowedTo) {
+      p.flowedTo = size;
+      // Notation comes drawn, in the rows (a song built before that shows its letters only).
+      const flowed = flowView(p.source, (doc!.notation && doc!.notation[p.source.id]) || {}, function (rows) { p.rowsEl.replaceChildren(...rows); }, available);
+      p.channel = flowed.channel;
+      p.view = flowed.view;
+      p.litRow = -1;
+      p.litItem = -1;
+      p.litPass = undefined;
+      p.litBar = null;
+    }
+    const rows = p.view.rows.map(function (r) { return r.el; });
     p.pages = pagesByHeight(rows.map(function (el, i) { return { start: p.channel.rows[i].start, height: el.offsetHeight }; }), available);
     const turned = p.page;
     p.page = -1;
@@ -651,12 +658,11 @@ type ClientSong = LyricsDisplay & { bundle?: boolean; rows?: RowDocument };
 
     // Words and chords light at the reading position, ahead of the music; a
     // part's chart follows the bar actually playing.
-    const reading = itemsAt(doc, readingBeat);
-    const playing = itemsAt(doc, beat);
     panes.forEach(function (p) {
       if (autoScroll && running) showPage(p, panePageAt(p.pages, readingBeat), true);
-      const at = isChart(p.channel) ? playing[p.channel.id] : reading[p.channel.id];
-      light(p, at, isChart(p.channel) ? beat : readingBeat);
+      // Each pane's own rows, flowed to its size.
+      const at = isChart(p.channel) ? beat : readingBeat;
+      light(p, itemsAt({ ...doc!, channels: [p.channel] }, at)[p.channel.id], at);
     });
   }
 

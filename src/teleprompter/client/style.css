@@ -3,6 +3,8 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
+  /* The note size: staff lines 10 px apart (alphaTab draws them 9 apart); a page may set its own. */
+  --notation-zoom: 1.111;
   --bg: #111;
   --text: #ccc;
   --text-dim: #666;
@@ -299,6 +301,27 @@ body:not(.running) #card {
   margin-bottom: 1rem;
 }
 
+/* The song's form: each section boxed, its bars after its name. */
+.card-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.card-section {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--text-dim);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.card-section-bars {
+  margin-left: 0.4em;
+  color: var(--text-dim);
+}
+
 .card-note {
   font-size: 1.3rem;
   margin: 0.6rem 0;
@@ -535,14 +558,23 @@ body:not(.running) #card {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4em 1.2em;
+  gap: 0.4em 0;
   padding: 0.3em 0 0.9em;
 }
 
+/* A run's bars flow in the row like any others, so a run starts on a line
+   its first bars fit, with its count after the last. A gap before each run
+   but the first sets runs apart. */
 .figure-run {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
+  display: contents;
+}
+
+.figure-run + .figure-run > :first-child {
+  margin-left: 1.2em;
+}
+
+.figure-run > .figure-label {
+  margin-left: 0.4em;
 }
 
 /* Counts are the chart's main text, so they read larger than the
@@ -583,36 +615,30 @@ body:not(.running) #card {
   color: inherit;
 }
 
-/* A run's notation. */
-.figure-body {
-  display: flex;
-  align-items: center;
-  gap: 0.4em;
-}
-
-/* A run's bars, a box over each, lit round the bar playing (as in a score row). */
-.figure-seg {
-  position: relative;
-}
-
 /* ── Score: a part drawn bar by bar, a box over each bar to light it ── */
 .score-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.6em;
+  gap: 0.6em 0;
   padding: 0.3em 0 0.6em;
 }
 
-.score-seg {
+/* A drawn bar, in a score row or a figure run: its slice of the drawing,
+   and a box over it lit round the bar playing. */
+.bar-piece {
   position: relative;
+}
+
+/* Bars that stay together on a line: a run's or row's even share (see groupBars). */
+.bar-group {
+  display: flex;
+  align-items: center;
 }
 
 .score-bar {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  display: none;
+  inset: 0;
   border-radius: 4px;
   pointer-events: none;
 }
@@ -621,12 +647,7 @@ body:not(.running) #card {
   outline: 3px solid var(--accent);
 }
 
-/* Bars the score has nothing for. */
-.score-seg.empty {
-  display: flex;
-  gap: 0.6em;
-}
-
+/* A bar the score has nothing for. */
 .score-bar.blank {
   position: static;
   display: inline-block;
@@ -639,7 +660,7 @@ body:not(.running) #card {
 /* Notation is drawn in the page's text color on a clear background. alphaTab
    skips a container with no width, so each gets a minimum. */
 .notation {
-  /* --fit shrinks a run or piece that's wider than its row (see fitRows). */
+  /* --fit, set on the row, sizes a part's bars to its pane (see fitRows). */
   zoom: calc(var(--notation-zoom, 1) * var(--fit, 1));
   border-radius: 4px;
   min-width: 4rem;

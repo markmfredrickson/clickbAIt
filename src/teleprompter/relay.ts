@@ -584,7 +584,10 @@ export function startRelay(opts: RelayOptions) {
     if (url.split("?")[0] === "/eink" && new URLSearchParams(url.slice("/eink".length)).getAll("channel").length !== 1) {
       res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-store" });
       const rows = currentRows();
-      res.end(einkSplash(rows, rows ? [] : await setRows()));
+      // The page's other options (?rotate=left) carry on to the channel picked.
+      const keep = new URLSearchParams(url.slice("/eink".length));
+      keep.delete("channel");
+      res.end(einkSplash(rows, rows ? [] : await setRows(), keep.toString()));
       return;
     }
 

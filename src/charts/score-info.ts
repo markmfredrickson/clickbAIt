@@ -52,8 +52,44 @@ export function loadScore(bytes: Uint8Array, fileName: string): alphaTab.model.S
   } else {
     score = alphaTab.importer.ScoreLoader.loadScoreFromBytes(bytes, settings);
   }
+  score = expandSimiles(score, settings);
   fixDrumNotes(score);
   return score;
+}
+
+/**
+ * Write out slash repeats: a bar marked to repeat the one before (or, in a
+ * two-bar repeat, the pair before) becomes a copy of it, so every bar shows
+ * and plays its own notes. alphaTab has no way to copy a bar, so the score
+ * goes through its JSON form, and only when it has a repeat to expand.
+ */
+export function expandSimiles(score: alphaTab.model.Score, settings: alphaTab.Settings): alphaTab.model.Score {
+  const marked = score.tracks.some((t) => t.staves.some((st) => st.bars.some((b) => b.simileMark !== alphaTab.model.SimileMark.None)));
+  if (!marked) return score;
+  const json = JSON.parse(alphaTab.model.JsonConverter.scoreToJson(score));
+  for (const track of json.tracks ?? []) {
+    for (const staff of track.staves ?? []) {
+      const bars: { similemark?: number; voices?: unknown[] }[] = staff.bars ?? [];
+      bars.forEach((bar, i) => {
+        // A simple repeat copies the bar before; either half of a double, the bar two back.
+        const back = bar.similemark === alphaTab.model.SimileMark.Simple ? 1 : bar.similemark ? 2 : 0;
+        if (!back || i < back) return;
+        bar.voices = withoutIds(structuredClone(bars[i - back].voices ?? []));
+        bar.similemark = alphaTab.model.SimileMark.None;
+      });
+    }
+  }
+  return alphaTab.model.JsonConverter.jsonToScore(JSON.stringify(json), settings);
+}
+
+/** A copy's beats and notes take fresh ids when read back, rather than the originals'. */
+function withoutIds<T>(value: T): T {
+  if (Array.isArray(value)) value.forEach(withoutIds);
+  else if (value && typeof value === "object") {
+    delete (value as Record<string, unknown>).id;
+    Object.values(value).forEach(withoutIds);
+  }
+  return value;
 }
 
 /**

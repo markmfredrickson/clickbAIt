@@ -145,12 +145,14 @@ export function setChannelChoices(docs: RowDocument[]): { name: string; label: s
  * The e-ink page that comes before a channel is picked: a link per channel of
  * the song playing now. An e-ink page shows one channel. With no song playing,
  * it offers the set's channels (`set`), so a screen can be set up before the
- * show; with no songs at all, it reloads itself until there are some.
+ * show; with no songs at all, it reloads itself until there are some. Each
+ * link keeps the page's other options (`keep`, a query string: ?rotate=left).
  */
-export function einkSplash(doc: RowDocument | null, set: RowDocument[] = []): string {
+export function einkSplash(doc: RowDocument | null, set: RowDocument[] = [], keep = ""): string {
+  const more = keep ? escapeHtml("&" + keep) : "";
   const links = (choices: { name: string; label: string }[]) =>
     `  <ul>
-${choices.map((c) => `    <li><a href="/eink?channel=${encodeURIComponent(c.name)}">${escapeHtml(c.label)}</a></li>`).join("\n")}
+${choices.map((c) => `    <li><a href="/eink?channel=${encodeURIComponent(c.name)}${more}">${escapeHtml(c.label)}</a></li>`).join("\n")}
   </ul>`;
   const setChoices = doc ? [] : setChannelChoices(set);
   const waiting = !doc && setChoices.length === 0;

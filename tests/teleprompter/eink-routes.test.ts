@@ -38,10 +38,12 @@ let current: EinkCurrent | null;
 let renders: number;
 let rendered: { channels: string[]; rows: unknown }[];
 let cards: unknown[];
+let sizes: unknown[];
 
 /** Stands in for headless Chrome: one page per pane, one mark, a placeholder PNG. */
-const fakeRender: EinkRenderer = async (doc, _size, outDir, opts) => {
+const fakeRender: EinkRenderer = async (doc, size, outDir, opts) => {
   renders++;
+  sizes.push(size);
   rendered.push({ channels: doc.channels.map((c) => c.id), rows: opts.rows });
   const panes = doc.channels.map((c, i) => {
     writeFileSync(join(outDir, `${i}-0.png`), "png");
@@ -58,6 +60,7 @@ beforeEach(async () => {
   current = { slug: "test-song", song: SONG, version: "1", rows: ROWS };
   renders = 0;
   rendered = [];
+  sizes = [];
   cards = [];
   const handle = createEinkRoutes({ current: () => current, render: fakeRender, cacheDir });
   server = createServer(async (req, res) => {
@@ -114,6 +117,14 @@ describe("GET /eink/deck", () => {
   it("answers 404 for a legacy song payload instead of crashing", async () => {
     current = { slug: "old", song: { title: "Old", bpm: 100, sections: [] }, version: "1", rows: null };
     expect((await deck()).status).toBe(404);
+  });
+
+  it("passes the note size asked for, and renders each size of its own", async () => {
+    await deck("&staff=12");
+    expect(sizes[0]).toMatchObject({ staffPx: 12 });
+    await deck("&staff=14");
+    expect(renders).toBe(2);
+    expect((await fetch(`${base}/eink/deck?w=993&h=1216&dpr=2&staff=500`)).status).toBe(400);
   });
 
   it("rejects a size outside a sane range", async () => {

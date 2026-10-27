@@ -1,8 +1,8 @@
 /**
- * The card a display shows before a song: the song's notes for this screen
- * (setup reminders, banter) and a reminder of what each part plays: its
- * opening run or row. It shows while
- * the song sits at its start, and goes once playback moves into the lead-in
+ * The card a display shows before a song: the song's form (its sections and
+ * their bars), the song's notes for this screen (setup reminders, banter)
+ * and a reminder of what each part plays: its opening run or row. It shows
+ * while the song sits at its start, and goes once playback moves into the lead-in
  * (the spoken title and count-in before the downbeat), so the count-in plays
  * with the panes up and the downbeat can be seen coming.
  *
@@ -18,7 +18,7 @@
  * This module runs in the browser too; the build reads the file with it.
  */
 
-import type { RowChannel } from "./rows.js";
+import type { RowChannel, RowSection } from "./rows.js";
 
 export interface Note {
   /** Who it's for: "all", "banter", or an instrument, lowercase. */
@@ -80,4 +80,9 @@ const AT_START = 0.5;
  */
 export function cardShowing(beat: number | null, startBeat: number): boolean {
   return beat === null || beat < startBeat + AT_START;
+}
+
+/** The song's form for the card: each section's name and bars, in order. A section with no bars is left out. */
+export function songForm(sections: readonly RowSection[]): { name: string; bars: number }[] {
+  return sections.filter((s) => s.bars > 0).map((s) => ({ name: s.name, bars: s.bars }));
 }

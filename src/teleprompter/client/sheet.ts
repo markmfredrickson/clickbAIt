@@ -6,9 +6,8 @@
  */
 
 import type { RowDocument } from "../rows.js";
-import { drawingKey } from "../drawings.js";
 import { cardView, fitCard, type CardSong } from "./card-view.js";
-import { channelView, fitRows, placeDrawing } from "./pane-view.js";
+import { channelView, fitRows, groupBars, placeNotation } from "./pane-view.js";
 
 declare global {
   interface Window {
@@ -44,15 +43,12 @@ view.rows.forEach((r, i) => {
   pane.appendChild(r.el);
 });
 root.appendChild(pane);
-const drawn = doc.notation?.[id] ?? {};
-for (const t of view.notation) {
-  const d = drawn[drawingKey(t.start, t.count)];
-  if (d) placeDrawing(t, d, d.svg);
-}
+placeNotation(view, doc.notation?.[id] ?? {});
 
 function fit() {
   fitCard(card);
   fitRows(view);
+  groupBars(view);
 }
 fit();
 window.addEventListener("resize", fit);

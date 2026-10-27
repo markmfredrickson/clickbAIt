@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { boardSpan, correctOffset, toVideoTime } from "../src/gig/timeline.js";
-import { captionsSrt, type CaptionLine } from "../src/gig/srt.js";
+import { captionsSrt, strandedWords, type CaptionLine } from "../src/gig/srt.js";
 
 describe("the video timeline", () => {
   it("cuts the board from where the video starts, for as long as the video runs on the board's clock", () => {
@@ -81,5 +81,20 @@ describe("captionsSrt", () => {
     const c = cues(captionsSrt([line("one", 1), { text: "lost", words: [] }, line("two", 4)]));
     expect(c.map((x) => x.text)).toEqual(["one", "two"]);
     expect(c.map((x) => x.n)).toEqual(["1", "2"]);
+  });
+});
+
+describe("strandedWords", () => {
+  it("flags a word more than 4 seconds from the word before it in its line", () => {
+    const early = { text: "a b c", words: [{ start: 1, end: 1.2 }, { start: 30, end: 30.4 }, { start: 30.5, end: 30.9 }] };
+    const late = { text: "d e", words: [{ start: 40, end: 40.4 }, { start: 52, end: 52.4 }] };
+    expect(strandedWords([early, late])).toEqual([
+      { line: 1, word: 2, gap: 28.8, from: 1.2, to: 30 },
+      { line: 2, word: 2, gap: 11.6, from: 40.4, to: 52 },
+    ]);
+  });
+
+  it("flags nothing in lines whose words are close together", () => {
+    expect(strandedWords([line("one two three", 5), line("four", 40)])).toEqual([]);
   });
 });

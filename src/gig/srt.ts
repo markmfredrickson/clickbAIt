@@ -44,3 +44,28 @@ function stamp(seconds: number): string {
   const pad = (n: number, w: number) => String(n).padStart(w, "0");
   return `${pad(Math.floor(ms / 3600000), 2)}:${pad(Math.floor(ms / 60000) % 60, 2)}:${pad(Math.floor(ms / 1000) % 60, 2)},${pad(ms % 1000, 3)}`;
 }
+
+/** A word sung far from the one before it in its line: almost always a misalignment. */
+export interface Stranded {
+  /** Line and word, counting from 1. */
+  line: number;
+  word: number;
+  /** Seconds of silence before the word, from the previous word's end to its start. */
+  gap: number;
+  from: number;
+  to: number;
+}
+
+const STRANDED_S = 4;
+
+/** Every word more than STRANDED_S from the word before it in the same line. */
+export function strandedWords(lines: CaptionLine[]): Stranded[] {
+  const round = (s: number) => Math.round(s * 1000) / 1000;
+  return lines.flatMap((l, i) =>
+    l.words.flatMap((w, k) => {
+      const prev = l.words[k - 1];
+      if (!prev || w.start - prev.end <= STRANDED_S) return [];
+      return [{ line: i + 1, word: k + 1, gap: round(w.start - prev.end), from: prev.end, to: w.start }];
+    }),
+  );
+}

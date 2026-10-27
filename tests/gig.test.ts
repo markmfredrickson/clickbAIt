@@ -176,7 +176,7 @@ describe("gigRecipe", () => {
     expect(wireit["captions:02-you-cant-hurry-love"]).toEqual({
       command: `${GIG}/captions-cli.ts work/02-you-cant-hurry-love.align.json captions/02-you-cant-hurry-love --sync sync/02-you-cant-hurry-love.sync.json`,
       files: ["work/02-you-cant-hurry-love.align.json", "sync/02-you-cant-hurry-love.sync.json"],
-      output: ["captions/02-you-cant-hurry-love.srt", "captions/02-you-cant-hurry-love.words.json"],
+      output: ["captions/02-you-cant-hurry-love.srt", "captions/02-you-cant-hurry-love.words.json", "captions/02-you-cant-hurry-love.flags.json"],
       dependencies: ["align:02-you-cant-hurry-love"],
     });
     expect(wireit["captions:01-seven-nation-army"].command).toBe(

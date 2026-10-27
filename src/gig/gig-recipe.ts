@@ -3,8 +3,9 @@
  * song for each step, so a changed video re-runs only its own song.
  *
  *   sync      where each phone video starts in the board recording
- *             (`sync/<nn>-<slug>.sync.json`). Songs that take their audio from
- *             the phone have nothing to sync.
+ *             (`sync/<nn>-<slug>.sync.json`), searched for after the previous
+ *             song's video ends, since gig.json lists them in the order played.
+ *             Songs that take their audio from the phone have nothing to sync.
  *   vocals    the singer, split out of the board recording over the span of the
  *             video, or out of the phone's own sound (`work/<nn>-<slug>.vocals.flac`).
  *   lyrics    the manifest's lyric lines, in order, as text for the aligner.
@@ -34,6 +35,8 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
     wireit[name] = task;
   };
   const syncs: string[] = [];
+  /** The last board-audio song so far: each is searched for after it. */
+  let previous: { sync: string; phone: string; task: string } | undefined;
   const captions: string[] = [];
   const renders: string[] = [];
   const edges: string[] = [];
@@ -49,11 +52,13 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
 
     if (fromBoard) {
       add(`sync:${key}`, {
-        command: `${tsx("gig/sync-cli.ts")} "${gig.board}" "${s.phone}" ${sync}`,
-        files: [gig.board!, s.phone],
+        command: `${tsx("gig/sync-cli.ts")} "${gig.board}" "${s.phone}" ${sync}` + (previous ? ` --after ${previous.sync} "${previous.phone}"` : ""),
+        files: previous ? [gig.board!, s.phone, previous.sync, previous.phone] : [gig.board!, s.phone],
         output: [sync],
+        ...(previous ? { dependencies: [previous.task] } : {}),
       });
       syncs.push(`sync:${key}`);
+      previous = { sync, phone: s.phone, task: `sync:${key}` };
     }
     add(`vocals:${key}`, {
       command: `${tsx("gig/vocals-cli.ts")} "${s.phone}" ${vocals}` + (fromBoard ? ` --board "${gig.board}" --sync ${sync}` : ""),

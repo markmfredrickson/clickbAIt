@@ -39,6 +39,15 @@ pub struct Offset {
     pub drift_ppm: Option<f64>,
 }
 
+/// `find_offset` over the reference from `from` seconds on (after the previous
+/// song in a set, say), with the offset still counted from the reference's start.
+pub fn find_offset_from(reference: &[f32], ref_sr: u32, clip: &[f32], clip_sr: u32, from: f64) -> Result<Offset> {
+    let skip = ((from.max(0.0) * ref_sr as f64).round() as usize).min(reference.len());
+    let mut found = find_offset(&reference[skip..], ref_sr, clip, clip_sr)?;
+    found.offset += skip as f64 / ref_sr as f64;
+    Ok(found)
+}
+
 pub fn find_offset(reference: &[f32], ref_sr: u32, clip: &[f32], clip_sr: u32) -> Result<Offset> {
     // Coarse: the whole clip against the reference in overlapping pieces twice its
     // length. Whitening one cross-spectrum of a whole set against one song drowns
@@ -356,6 +365,19 @@ mod tests {
         let phone = band.render(12.0, secs(5.0, SR), SR, 0.0);
         let err = find_offset(&board, SR, &phone, SR).unwrap_err();
         assert!(err.to_string().contains("ambiguous"), "{err}");
+    }
+
+    #[test]
+    fn finds_a_repeated_section_after_a_given_time_counting_from_the_reference_start() {
+        // As above: the clip's music is at 12 s and again at 32 s. Searching
+        // from 25 s (after the previous song, say) leaves only the second.
+        let band = Band::new(5, 60.0);
+        let mut board = band.render(0.0, secs(60.0, SR), SR, 0.0);
+        let repeat = band.render(10.0, secs(10.0, SR), SR, 0.0);
+        board[secs(30.0, SR)..secs(40.0, SR)].copy_from_slice(&repeat);
+        let phone = band.render(12.0, secs(5.0, SR), SR, 0.0);
+        let got = find_offset_from(&board, SR, &phone, SR, 25.0).unwrap();
+        assert!((got.offset - 32.0).abs() < 0.001, "offset {}", got.offset);
     }
 
     #[test]

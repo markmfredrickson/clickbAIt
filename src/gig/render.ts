@@ -13,6 +13,7 @@
  * the span start lands on the video's first frame.
  */
 
+import type { Cut } from "./gig.js";
 import { boardSpan, type Sync } from "./timeline.js";
 
 /** YouTube's loudness. */
@@ -82,14 +83,20 @@ export interface ReviewInput {
   mix: string;
   srt: string;
   gainDb: number;
+  /** Where to cut the video; the SRT is expected to be cut already. */
+  cut?: Cut;
   out: string;
 }
 
 /** ffmpeg arguments for the second pass: picture, finished sound and subtitles in one file. */
 export function reviewArgs(r: ReviewInput): string[] {
+  const seek = [
+    ...(r.cut?.in !== undefined ? ["-ss", String(r.cut.in)] : []),
+    ...(r.cut?.out !== undefined ? ["-to", String(r.cut.out)] : []),
+  ];
   return [
     "-y", "-v", "error",
-    "-i", r.phone, "-i", r.mix, "-i", r.srt,
+    ...seek, "-i", r.phone, ...seek, "-i", r.mix, "-i", r.srt,
     "-map", "0:v:0", "-map", "1:a:0", "-map", "2:s:0",
     "-vf", "scale=-2:720",
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",

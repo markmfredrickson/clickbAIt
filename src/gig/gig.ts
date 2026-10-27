@@ -20,6 +20,9 @@
  * `mix` is the board's share of a video's sound, the rest being the phone's
  * room sound: 0.6 unless the gig or the song sets it. A song the board missed
  * has no board to mix in, so it is 0 there and setting it is an error.
+ *
+ * `in` and `out` cut a song's video to the part worth keeping, in the
+ * video's seconds; without them the whole video is used.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -28,6 +31,7 @@ import { z } from "zod";
 
 const DEFAULT_MIX = 0.6;
 const Mix = z.number().min(0).max(1);
+const Seconds = z.number().min(0);
 
 const GigSchema = z
   .object({
@@ -40,11 +44,19 @@ const GigSchema = z
           phone: z.string(),
           audio: z.enum(["board", "phone"]).default("board"),
           mix: Mix.optional(),
+          in: Seconds.optional(),
+          out: Seconds.optional(),
         })
-        .strict(),
+        .strict()
+        .refine((s) => s.in === undefined || s.out === undefined || s.in < s.out, { message: "out must come after in", path: ["out"] }),
     ),
   })
   .strict();
+
+export interface Cut {
+  in?: number;
+  out?: number;
+}
 
 export interface GigSong {
   /** Position in gig.json, two digits from 01: names every file made for the song. */
@@ -60,6 +72,8 @@ export interface GigSong {
   audio: "board" | "phone";
   /** The board's share of the video's sound, 0 to 1. */
   mix: number;
+  /** Where the video is cut, in its own seconds; either end may be left open. */
+  cut: Cut;
 }
 
 export interface Gig {
@@ -104,6 +118,7 @@ export function readGig(dir: string, root: string): Gig {
         phone: normalize(s.phone),
         audio: s.audio,
         mix: s.audio === "phone" ? 0 : (s.mix ?? mix ?? DEFAULT_MIX),
+        cut: { ...(s.in !== undefined ? { in: s.in } : {}), ...(s.out !== undefined ? { out: s.out } : {}) },
       };
     }),
   };

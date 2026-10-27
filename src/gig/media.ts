@@ -1,6 +1,6 @@
 /** What the gig CLIs ask of media files: ffprobe, and the audio binary. */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 export const BIN = resolve(import.meta.dirname, "../../.claude/skills/clickbait/bin/clickbait-audio");
@@ -20,4 +20,13 @@ export function mediaSeconds(file: string): number {
   const seconds = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file], { encoding: "utf8" }).trim());
   if (!(seconds > 0)) throw new Error(`can't read the length of ${file}`);
   return seconds;
+}
+
+/** Integrated loudness (LUFS) of a file's first audio stream, or of `seconds` of it from `start`. */
+export function loudness(file: string, span?: { start: number; seconds: number }): number {
+  const cut = span ? ["-ss", String(span.start), "-t", String(span.seconds)] : [];
+  const r = spawnSync("ffmpeg", ["-hide_banner", "-nostats", ...cut, "-i", file, "-map", "0:a:0", "-af", "ebur128", "-f", "null", "-"], { encoding: "utf8" });
+  const found = [...r.stderr.matchAll(/^\s*I:\s+(-?[\d.]+) LUFS/gm)].pop();
+  if (r.status !== 0 || !found) throw new Error(`can't measure the loudness of ${file}`);
+  return Number(found[1]);
 }

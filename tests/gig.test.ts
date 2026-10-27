@@ -202,6 +202,35 @@ describe("gigRecipe", () => {
     expect(wireit.sync.dependencies).toEqual(["sync:02-you-cant-hurry-love"]);
   });
 
+  it("renders a board-audio song's review from its video, the board, its sync and its captions", () => {
+    const { scripts, wireit } = recipe();
+    expect(scripts["render:02-you-cant-hurry-love"]).toBe("wireit");
+    expect(wireit["render:02-you-cant-hurry-love"]).toEqual({
+      command:
+        `${GIG}/render-cli.ts "media/02.mov" captions/02-you-cant-hurry-love.srt renders/02-you-cant-hurry-love-16x9-review.mp4` +
+        ` --board "media/board.m4a" --sync sync/02-you-cant-hurry-love.sync.json --mix 0.6`,
+      files: ["media/02.mov", "captions/02-you-cant-hurry-love.srt", "media/board.m4a", "sync/02-you-cant-hurry-love.sync.json"],
+      output: ["renders/02-you-cant-hurry-love-16x9-review.mp4"],
+      dependencies: ["captions:02-you-cant-hurry-love"],
+    });
+  });
+
+  it("renders a phone-audio song's review without the board or a sync", () => {
+    const { wireit } = recipe();
+    expect(wireit["render:01-seven-nation-army"]).toEqual({
+      command: `${GIG}/render-cli.ts "media/01.mov" captions/01-seven-nation-army.srt renders/01-seven-nation-army-16x9-review.mp4`,
+      files: ["media/01.mov", "captions/01-seven-nation-army.srt"],
+      output: ["renders/01-seven-nation-army-16x9-review.mp4"],
+      dependencies: ["captions:01-seven-nation-army"],
+    });
+  });
+
+  it("runs every song's render from one render task", () => {
+    const { scripts, wireit } = recipe();
+    expect(scripts.render).toBe("wireit");
+    expect(wireit.render.dependencies).toEqual(["render:01-seven-nation-army", "render:02-you-cant-hurry-love"]);
+  });
+
   it("names files by position in gig.json and the song folder, the same on every read", () => {
     const a = recipe();
     const b = gigRecipe(readGig(gig, root), "../../..") as Recipe;

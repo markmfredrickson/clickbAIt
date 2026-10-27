@@ -10,7 +10,8 @@
  *   lyrics    the manifest's lyric lines, in order, as text for the aligner.
  *   align     desilence-align of those lines against the vocal.
  *   captions  the aligned words on the video's timeline (`captions/<nn>-<slug>.words.json`)
- *             and an SRT to upload beside the video (`captions/<nn>-<slug>.srt`).
+ *             and an SRT to upload beside the video (`captions/<nn>-<slug>.srt`),
+ *             with any words stranded far from their line flagged (`.flags.json`).
  */
 
 import { relative } from "node:path";
@@ -67,7 +68,7 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
     add(`captions:${key}`, {
       command: `${tsx("gig/captions-cli.ts")} ${align} captions/${key}` + (fromBoard ? ` --sync ${sync}` : ""),
       files: fromBoard ? [align, sync] : [align],
-      output: [`captions/${key}.srt`, `captions/${key}.words.json`],
+      output: [`captions/${key}.srt`, `captions/${key}.words.json`, `captions/${key}.flags.json`],
       dependencies: [`align:${key}`],
     });
     captions.push(`captions:${key}`);

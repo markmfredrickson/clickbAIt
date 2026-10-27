@@ -4,14 +4,15 @@
  *   npx tsx src/gig/captions-cli.ts <align.json> <out prefix> [--sync <sync.json>]
  *
  * Writes <prefix>.words.json (every word and line in video seconds, for the
- * vertical clips' word-by-word captions) and <prefix>.srt (line captions to
- * upload beside a video). --sync when the vocal was cut from the board; without
+ * vertical clips' word-by-word captions), <prefix>.srt (line captions to
+ * upload beside a video) and <prefix>.flags.json (words stranded far from the
+ * rest of their line, to check by ear; the captions keep them as aligned). --sync when the vocal was cut from the board; without
  * it the alignment is already on the video's own sound.
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { captionsSrt } from "./srt.js";
+import { captionsSrt, strandedWords } from "./srt.js";
 import { toVideoTime, type Sync } from "./timeline.js";
 
 interface Aligned {
@@ -36,3 +37,6 @@ const lines = aligned.lines.map((l) => ({ text: l.text, words: words.slice(l.wor
 mkdirSync(dirname(prefix), { recursive: true });
 writeFileSync(`${prefix}.words.json`, JSON.stringify({ lines }, null, 1) + "\n");
 writeFileSync(`${prefix}.srt`, captionsSrt(lines));
+const stranded = strandedWords(lines);
+writeFileSync(`${prefix}.flags.json`, JSON.stringify({ stranded }, null, 1) + "\n");
+if (stranded.length) console.error(`${stranded.length} stranded word${stranded.length > 1 ? "s" : ""}: see ${prefix}.flags.json`);

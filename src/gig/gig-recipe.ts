@@ -22,7 +22,7 @@ type Task = { command: string; files?: string[]; output?: string[]; dependencies
 /** `rel` is the path from the gig folder to the repo root. */
 export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
   const tsx = (file: string) => `npx tsx ${rel}/src/${file}`;
-  const scripts: Record<string, string> = { sync: "wireit", captions: "wireit" };
+  const scripts: Record<string, string> = { sync: "wireit", captions: "wireit", render: "wireit" };
   const wireit: Record<string, Task> = {};
   const add = (name: string, task: Task) => {
     scripts[name] = "wireit";
@@ -30,6 +30,7 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
   };
   const syncs: string[] = [];
   const captions: string[] = [];
+  const renders: string[] = [];
 
   for (const s of gig.songs) {
     const key = `${s.n}-${s.slug}`;
@@ -72,9 +73,20 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
       dependencies: [`align:${key}`],
     });
     captions.push(`captions:${key}`);
+    const srt = `captions/${key}.srt`;
+    add(`render:${key}`, {
+      command:
+        `${tsx("gig/render-cli.ts")} "${s.phone}" ${srt} renders/${key}-16x9-review.mp4` +
+        (fromBoard ? ` --board "${gig.board}" --sync ${sync} --mix ${s.mix}` : ""),
+      files: fromBoard ? [s.phone, srt, gig.board!, sync] : [s.phone, srt],
+      output: [`renders/${key}-16x9-review.mp4`],
+      dependencies: [`captions:${key}`],
+    });
+    renders.push(`render:${key}`);
   }
   wireit.sync = { command: `node -e ""`, dependencies: syncs };
   wireit.captions = { command: `node -e ""`, dependencies: captions };
+  wireit.render = { command: `node -e ""`, dependencies: renders };
 
   return { name: "clickbait-gig", private: true, scripts, wireit };
 }

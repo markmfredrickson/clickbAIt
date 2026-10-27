@@ -11,7 +11,8 @@
  * `lyricsTextFromManifest`), for a multitrack song with no lookup lyrics.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { lyricsTextFromLookup, lyricsTextFromManifest } from "./scaffold.js";
 
 const args = process.argv.slice(2);
@@ -26,6 +27,7 @@ if (!inPath) {
 const input = readFileSync(inPath, "utf8");
 const text = fromManifest ? lyricsTextFromManifest(JSON.parse(input)) : lyricsTextFromLookup(input);
 if (outPath) {
+  mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, text + "\n");
   console.error(`Wrote ${text.split("\n").length} lyric lines to ${outPath}`);
 } else {

@@ -6,7 +6,7 @@
  *             (`sync/<nn>-<slug>.sync.json`). Songs that take their audio from
  *             the phone have nothing to sync.
  *   vocals    the singer, split out of the board recording over the span of the
- *             video, or out of the phone's own sound (`work/<nn>-<slug>.vocals.wav`).
+ *             video, or out of the phone's own sound (`work/<nn>-<slug>.vocals.flac`).
  *   lyrics    the manifest's lyric lines, in order, as text for the aligner.
  *   align     desilence-align of those lines against the vocal.
  *   captions  the aligned words on the video's timeline (`captions/<nn>-<slug>.words.json`)
@@ -33,7 +33,7 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
   for (const s of gig.songs) {
     const key = `${s.n}-${s.slug}`;
     const sync = `sync/${key}.sync.json`;
-    const vocals = `work/${key}.vocals.wav`;
+    const vocals = `work/${key}.vocals.flac`;
     const lyrics = `work/${key}.lyrics.txt`;
     const align = `work/${key}.align.json`;
     const manifest = relative(gig.dir, s.manifest);

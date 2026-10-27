@@ -1,4 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { encoderDelay } from "../src/gig/media.js";
 import { boardEnd, boardSpan, correctOffset, toVideoTime } from "../src/gig/timeline.js";
 import { captionsSrt, strandedWords, type CaptionLine } from "../src/gig/srt.js";
 
@@ -101,5 +106,16 @@ describe("strandedWords", () => {
 
   it("flags nothing in lines whose words are close together", () => {
     expect(strandedWords([line("one two three", 5), line("four", 40)])).toEqual([]);
+  });
+});
+
+describe("encoderDelay", () => {
+  it("reads a file's encoder delay in seconds, as padding over sample rate", () => {
+    // ffmpeg's AAC encoder primes 1024 samples; at 48 kHz that's 21.3 ms.
+    const dir = mkdtempSync(join(tmpdir(), "delay-"));
+    const file = join(dir, "tone.m4a");
+    execFileSync("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1:sample_rate=48000", "-c:a", "aac", file]);
+    expect(encoderDelay(file)).toBeCloseTo(1024 / 48000, 6);
+    rmSync(dir, { recursive: true, force: true });
   });
 });

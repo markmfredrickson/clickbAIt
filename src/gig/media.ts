@@ -5,13 +5,17 @@ import { resolve } from "node:path";
 
 export const BIN = resolve(import.meta.dirname, "../../.claude/skills/clickbait/bin/clickbait-audio");
 
-function probe(file: string, entries: string): string {
-  return execFileSync("ffprobe", ["-v", "error", "-select_streams", "a:0", "-show_entries", entries, "-of", "default=nw=1:nk=1", file], { encoding: "utf8" }).trim();
+/** The first audio stream's fields by name (ffprobe prints them in its own order, not the order asked). */
+function probe(file: string, entries: string): Record<string, string> {
+  const out = execFileSync("ffprobe", ["-v", "error", "-select_streams", "a:0", "-show_entries", entries, "-of", "default=nw=1", file], { encoding: "utf8" });
+  return Object.fromEntries(out.trim().split("\n").map((line) => line.split("=") as [string, string]));
 }
 
 /** Seconds of encoder delay at the start of a file's audio (0 for WAV and the like). */
 export function encoderDelay(file: string): number {
-  const [padding, rate] = probe(file, "stream=initial_padding,sample_rate").split("\n").map(Number);
+  const fields = probe(file, "stream=initial_padding,sample_rate");
+  const padding = Number(fields.initial_padding);
+  const rate = Number(fields.sample_rate);
   return padding > 0 && rate > 0 ? padding / rate : 0;
 }
 

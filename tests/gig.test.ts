@@ -255,18 +255,24 @@ describe("gigRecipe", () => {
     expect(recipe({ out: 190 }).wireit["render:02-you-cant-hurry-love"].command).toMatch(/--mix 0\.6 --out 190$/);
   });
 
-  it("transcribes what was said around each song, from the vocal it was aligned on", () => {
+  it("transcribes what was said around each song, and measures the band without the singer from the same sound", () => {
     const { scripts, wireit } = recipe();
     expect(wireit["edges:02-you-cant-hurry-love"]).toEqual({
       command:
-        `${GIG}/edges-cli.ts work/02-you-cant-hurry-love.vocals.flac work/02-you-cant-hurry-love.align.json edges/02-you-cant-hurry-love.json` +
-        " --sync sync/02-you-cant-hurry-love.sync.json",
-      files: ["work/02-you-cant-hurry-love.vocals.flac", "work/02-you-cant-hurry-love.align.json", "sync/02-you-cant-hurry-love.sync.json"],
+        `${GIG}/edges-cli.ts "media/02.mov" work/02-you-cant-hurry-love.vocals.flac work/02-you-cant-hurry-love.align.json edges/02-you-cant-hurry-love.json` +
+        ' --board "media/board.m4a" --sync sync/02-you-cant-hurry-love.sync.json',
+      files: [
+        "media/02.mov",
+        "work/02-you-cant-hurry-love.vocals.flac",
+        "work/02-you-cant-hurry-love.align.json",
+        "media/board.m4a",
+        "sync/02-you-cant-hurry-love.sync.json",
+      ],
       output: ["edges/02-you-cant-hurry-love.json"],
       dependencies: ["align:02-you-cant-hurry-love"],
     });
     expect(wireit["edges:01-seven-nation-army"].command).toBe(
-      `${GIG}/edges-cli.ts work/01-seven-nation-army.vocals.flac work/01-seven-nation-army.align.json edges/01-seven-nation-army.json`,
+      `${GIG}/edges-cli.ts "media/01.mov" work/01-seven-nation-army.vocals.flac work/01-seven-nation-army.align.json edges/01-seven-nation-army.json`,
     );
     expect(scripts.edges).toBe("wireit");
     expect(wireit.edges.dependencies).toEqual(["edges:01-seven-nation-army", "edges:02-you-cant-hurry-love"]);

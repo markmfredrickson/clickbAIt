@@ -142,9 +142,9 @@ describe("gigRecipe", () => {
   it("takes a board-audio song's vocal from the board, over the span of its video", () => {
     const { wireit } = recipe();
     expect(wireit["vocals:02-you-cant-hurry-love"]).toEqual({
-      command: `${GIG}/vocals-cli.ts "media/02.mov" work/02-you-cant-hurry-love.vocals.wav --board "media/board.m4a" --sync sync/02-you-cant-hurry-love.sync.json`,
+      command: `${GIG}/vocals-cli.ts "media/02.mov" work/02-you-cant-hurry-love.vocals.flac --board "media/board.m4a" --sync sync/02-you-cant-hurry-love.sync.json`,
       files: ["media/board.m4a", "media/02.mov"],
-      output: ["work/02-you-cant-hurry-love.vocals.wav"],
+      output: ["work/02-you-cant-hurry-love.vocals.flac"],
       dependencies: ["sync:02-you-cant-hurry-love"],
     });
   });
@@ -152,9 +152,9 @@ describe("gigRecipe", () => {
   it("takes a phone-audio song's vocal from the phone, with nothing to cut", () => {
     const { wireit } = recipe();
     expect(wireit["vocals:01-seven-nation-army"]).toEqual({
-      command: `${GIG}/vocals-cli.ts "media/01.mov" work/01-seven-nation-army.vocals.wav`,
+      command: `${GIG}/vocals-cli.ts "media/01.mov" work/01-seven-nation-army.vocals.flac`,
       files: ["media/01.mov"],
-      output: ["work/01-seven-nation-army.vocals.wav"],
+      output: ["work/01-seven-nation-army.vocals.flac"],
     });
   });
 
@@ -167,9 +167,9 @@ describe("gigRecipe", () => {
     });
     expect(wireit["align:02-you-cant-hurry-love"]).toEqual({
       command:
-        "npx tsx ../../../src/authoring/desilence-align-cli.ts work/02-you-cant-hurry-love.vocals.wav" +
+        "npx tsx ../../../src/authoring/desilence-align-cli.ts work/02-you-cant-hurry-love.vocals.flac" +
         " --text work/02-you-cant-hurry-love.lyrics.txt -o work/02-you-cant-hurry-love.align.json",
-      files: ["work/02-you-cant-hurry-love.vocals.wav", "work/02-you-cant-hurry-love.lyrics.txt"],
+      files: ["work/02-you-cant-hurry-love.vocals.flac", "work/02-you-cant-hurry-love.lyrics.txt"],
       output: ["work/02-you-cant-hurry-love.align.json"],
       dependencies: ["vocals:02-you-cant-hurry-love", "lyrics:02-you-cant-hurry-love"],
     });

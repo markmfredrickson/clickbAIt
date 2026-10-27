@@ -19,6 +19,11 @@ export function boardSpan(sync: Sync, videoSeconds: number): { start: number; se
   return { start, seconds: sync.offset + videoSeconds * rate(sync) - start };
 }
 
+/** Where a video stops on the board: its offset plus its length on the board's clock. */
+export function boardEnd(sync: Sync, videoSeconds: number): number {
+  return sync.offset + videoSeconds * rate(sync);
+}
+
 /**
  * A time in audio cut from the board by `boardSpan` (or, with no sync, in the
  * phone's own sound) as a time in the video.

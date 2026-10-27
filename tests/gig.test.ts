@@ -158,6 +158,27 @@ describe("gigRecipe", () => {
     });
   });
 
+  it("searches for each board-audio song after the one before it, skipping songs the board missed", () => {
+    writeGig(gig, {
+      board: "media/board.m4a",
+      songs: [
+        { song: YCHL, phone: "media/01.mov" },
+        { song: SNA, phone: "media/02.mov", audio: "phone" },
+        { song: YCHL, phone: "media/03.mov" },
+      ],
+    });
+    const { wireit } = gigRecipe(readGig(gig, root), "../../..") as Recipe;
+    expect(wireit["sync:03-you-cant-hurry-love"]).toEqual({
+      command:
+        `${GIG}/sync-cli.ts "media/board.m4a" "media/03.mov" sync/03-you-cant-hurry-love.sync.json` +
+        ` --after sync/01-you-cant-hurry-love.sync.json "media/01.mov"`,
+      files: ["media/board.m4a", "media/03.mov", "sync/01-you-cant-hurry-love.sync.json", "media/01.mov"],
+      output: ["sync/03-you-cant-hurry-love.sync.json"],
+      dependencies: ["sync:01-you-cant-hurry-love"],
+    });
+    expect(wireit["sync:01-you-cant-hurry-love"].command).not.toContain("--after");
+  });
+
   it("takes a board-audio song's vocal from the board, over the span of its video", () => {
     const { wireit } = recipe();
     expect(wireit["vocals:02-you-cant-hurry-love"]).toEqual({

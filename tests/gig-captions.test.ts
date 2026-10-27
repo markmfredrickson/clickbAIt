@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boardSpan, correctOffset, toVideoTime } from "../src/gig/timeline.js";
+import { boardEnd, boardSpan, correctOffset, toVideoTime } from "../src/gig/timeline.js";
 import { captionsSrt, strandedWords, type CaptionLine } from "../src/gig/srt.js";
 
 describe("the video timeline", () => {
@@ -7,6 +7,11 @@ describe("the video timeline", () => {
     const span = boardSpan({ offset: 100, drift_ppm: 50 }, 200);
     expect(span.start).toBe(100);
     expect(span.seconds).toBeCloseTo(200 * (1 + 50e-6), 9);
+  });
+
+  it("puts the end of a video where it stops on the board, on the board's clock", () => {
+    expect(boardEnd({ offset: 100, drift_ppm: 50 }, 200)).toBeCloseTo(100 + 200 * (1 + 50e-6), 9);
+    expect(boardEnd({ offset: -3, drift_ppm: null }, 200)).toBe(197);
   });
 
   it("cuts from the board's start when the video started first", () => {

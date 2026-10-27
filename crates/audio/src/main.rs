@@ -89,6 +89,9 @@ enum Commands {
         reference: String,
         /// The clip to find in it (any file with an audio track, video included)
         clip: String,
+        /// Ignore the reference before this many seconds (e.g. the previous song's end)
+        #[arg(long, default_value_t = 0.0)]
+        from: f64,
     },
     /// Detect tempo warping and estimate constant recording BPM
     Unstretch {
@@ -236,10 +239,10 @@ fn main() -> Result<()> {
             Ok(())
         },
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
-        Commands::Offset { reference, clip } => {
+        Commands::Offset { reference, clip, from } => {
             let (r, r_sr) = analyze::decode_audio(&reference)?;
             let (c, c_sr) = analyze::decode_audio(&clip)?;
-            let found = offset::find_offset(&r, r_sr, &c, c_sr)?;
+            let found = offset::find_offset_from(&r, r_sr, &c, c_sr, from)?;
             println!("{}", serde_json::to_string(&found)?);
             Ok(())
         },

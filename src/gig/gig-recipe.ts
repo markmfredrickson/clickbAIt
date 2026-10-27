@@ -13,7 +13,8 @@
  *             and an SRT to upload beside the video (`captions/<nn>-<slug>.srt`),
  *             with any words stranded far from their line flagged (`.flags.json`).
  *   edges     what was said before the first sung word and after the last
- *             (`edges/<nn>-<slug>.json`), for choosing where to cut the video.
+ *             (`edges/<nn>-<slug>.json`), for choosing where to cut the video. Also
+ *             where the band starts and stops playing.
  *   render    a 720p review of the song, cut to its `in` and `out`
  *             (`renders/<nn>-<slug>-16x9-review.mp4`).
  */
@@ -79,8 +80,10 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
     });
     captions.push(`captions:${key}`);
     add(`edges:${key}`, {
-      command: `${tsx("gig/edges-cli.ts")} ${vocals} ${align} edges/${key}.json` + (fromBoard ? ` --sync ${sync}` : ""),
-      files: fromBoard ? [vocals, align, sync] : [vocals, align],
+      command:
+        `${tsx("gig/edges-cli.ts")} "${s.phone}" ${vocals} ${align} edges/${key}.json` +
+        (fromBoard ? ` --board "${gig.board}" --sync ${sync}` : ""),
+      files: fromBoard ? [s.phone, vocals, align, gig.board!, sync] : [s.phone, vocals, align],
       output: [`edges/${key}.json`],
       dependencies: [`align:${key}`],
     });

@@ -79,3 +79,72 @@ export function cutLines(lines: CaptionLine[], cut: Cut): CaptionLine[] {
     .filter((l) => l.words.length === 0 || (l.words[l.words.length - 1].end > from && l.words[0].start < to))
     .map((l) => (from === 0 ? l : { ...l, words: l.words.map((w) => ({ start: shift(w.start), end: shift(w.end) })) }));
 }
+
+const NUMBERS = [
+  "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+  "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty",
+];
+
+/**
+ * Whisper's words as text the aligner can time: it reads letters, so tokens
+ * with none are dropped, except counts up to twenty, which are spelled out (a
+ * count-in is worth keeping). Null when nothing is left.
+ */
+export function spokenText(words: { text: string }[]): string | null {
+  const kept = words.flatMap((w) => {
+    if (/\p{L}/u.test(w.text)) return [w.text];
+    const n = w.text.replace(/[^\d]/g, "");
+    return n !== "" && Number(n) <= 20 ? [NUMBERS[Number(n)]] : [];
+  });
+  return kept.length ? kept.join(" ") : null;
+}
+
+/** Seconds per level. */
+export const STEP_S = 0.5;
+
+/** RMS in dB for each `step` seconds of mono samples (a partial last step is left out). */
+export function levels(samples: Float32Array, sampleRate: number, step = STEP_S): number[] {
+  const n = Math.round(sampleRate * step);
+  const out: number[] = [];
+  for (let i = 0; i + n <= samples.length; i += n) {
+    let sum = 0;
+    for (let k = i; k < i + n; k++) sum += samples[k] * samples[k];
+    out.push(10 * Math.log10(sum / n + 1e-12));
+  }
+  return out;
+}
+
+/** How far under the sung part's median level the band can drop and still count as playing. */
+const MUSIC_DB = 20;
+/** Gaps this short are bridged, and runs this short dropped. */
+const MUSIC_MIN_S = 1;
+
+/**
+ * Where the band (the sound without the singer) is playing, from its levels:
+ * within MUSIC_DB of its median level while singing (`sung`), with short gaps
+ * filled and then short runs dropped.
+ */
+export function musicRuns(levels: number[], step: number, sung: Window): Window[] {
+  const during = levels.slice(Math.round(sung.start / step), Math.round(sung.end / step)).sort((a, b) => a - b);
+  const median = during[Math.floor(during.length / 2)];
+  const runs: Window[] = [];
+  levels.forEach((l, i) => {
+    if (l < median - MUSIC_DB) return;
+    const last = runs[runs.length - 1];
+    const start = i * step;
+    if (last && start - last.end < MUSIC_MIN_S) last.end = start + step;
+    else runs.push({ start, end: start + step });
+  });
+  return runs.filter((r) => r.end - r.start >= MUSIC_MIN_S);
+}
+
+/**
+ * The band's playing around the song: every run that overlaps the sung words,
+ * so an intro or outro counts and a stray word misaligned into the quiet
+ * doesn't. The words themselves if the band never plays under them.
+ */
+export function musicSpan(runs: Window[], firstWord: number, lastWord: number): Window {
+  const under = runs.filter((r) => r.end > firstWord && r.start < lastWord);
+  if (under.length === 0) return { start: firstWord, end: lastWord };
+  return { start: under[0].start, end: under[under.length - 1].end };
+}

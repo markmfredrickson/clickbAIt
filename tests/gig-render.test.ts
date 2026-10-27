@@ -112,4 +112,28 @@ describe("reviewArgs", () => {
     expect(opt(args, "-disposition:s:0")).toBe("0");
     expect(args[args.length - 1]).toBe("r.mp4");
   });
+
+  it("renders the whole video when there is no cut", () => {
+    expect(args).not.toContain("-ss");
+    expect(args).not.toContain("-to");
+  });
+
+  it("cuts the picture and the mix to the same stretch, and leaves the already-cut captions alone", () => {
+    const cut = reviewArgs({ phone: "p.mov", mix: "mix.flac", srt: "s.srt", gainDb: 0, cut: { in: 15, out: 170 }, out: "r.mp4" });
+    /** The five arguments before an input file. */
+    const before = (file: string) => cut.slice(cut.indexOf(file) - 5, cut.indexOf(file));
+    expect(before("p.mov")).toEqual(["-ss", "15", "-to", "170", "-i"]);
+    expect(before("mix.flac")).toEqual(["-ss", "15", "-to", "170", "-i"]);
+    expect(before("s.srt").slice(-1)).toEqual(["-i"]);
+    expect(cut.filter((a) => a === "-ss")).toHaveLength(2);
+  });
+
+  it("cuts from the start or to the end when only one side is given", () => {
+    const from = reviewArgs({ phone: "p.mov", mix: "mix.flac", srt: "s.srt", gainDb: 0, cut: { in: 15 }, out: "r.mp4" });
+    expect(from.filter((a) => a === "-ss")).toHaveLength(2);
+    expect(from).not.toContain("-to");
+    const to = reviewArgs({ phone: "p.mov", mix: "mix.flac", srt: "s.srt", gainDb: 0, cut: { out: 170 }, out: "r.mp4" });
+    expect(to).not.toContain("-ss");
+    expect(to.filter((a) => a === "-to")).toHaveLength(2);
+  });
 });

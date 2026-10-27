@@ -12,6 +12,10 @@
  *   captions  the aligned words on the video's timeline (`captions/<nn>-<slug>.words.json`)
  *             and an SRT to upload beside the video (`captions/<nn>-<slug>.srt`),
  *             with any words stranded far from their line flagged (`.flags.json`).
+ *   edges     what was said before the first sung word and after the last
+ *             (`edges/<nn>-<slug>.json`), for choosing where to cut the video.
+ *   render    a 720p review of the song, cut to its `in` and `out`
+ *             (`renders/<nn>-<slug>-16x9-review.mp4`).
  */
 
 import { relative } from "node:path";
@@ -22,7 +26,7 @@ type Task = { command: string; files?: string[]; output?: string[]; dependencies
 /** `rel` is the path from the gig folder to the repo root. */
 export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
   const tsx = (file: string) => `npx tsx ${rel}/src/${file}`;
-  const scripts: Record<string, string> = { sync: "wireit", captions: "wireit", render: "wireit" };
+  const scripts: Record<string, string> = { sync: "wireit", captions: "wireit", render: "wireit", edges: "wireit" };
   const wireit: Record<string, Task> = {};
   const add = (name: string, task: Task) => {
     scripts[name] = "wireit";
@@ -31,6 +35,7 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
   const syncs: string[] = [];
   const captions: string[] = [];
   const renders: string[] = [];
+  const edges: string[] = [];
 
   for (const s of gig.songs) {
     const key = `${s.n}-${s.slug}`;
@@ -73,12 +78,21 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
       dependencies: [`align:${key}`],
     });
     captions.push(`captions:${key}`);
-    const srt = `captions/${key}.srt`;
+    add(`edges:${key}`, {
+      command: `${tsx("gig/edges-cli.ts")} ${vocals} ${align} edges/${key}.json` + (fromBoard ? ` --sync ${sync}` : ""),
+      files: fromBoard ? [vocals, align, sync] : [vocals, align],
+      output: [`edges/${key}.json`],
+      dependencies: [`align:${key}`],
+    });
+    edges.push(`edges:${key}`);
+    const words = `captions/${key}.words.json`;
     add(`render:${key}`, {
       command:
-        `${tsx("gig/render-cli.ts")} "${s.phone}" ${srt} renders/${key}-16x9-review.mp4` +
-        (fromBoard ? ` --board "${gig.board}" --sync ${sync} --mix ${s.mix}` : ""),
-      files: fromBoard ? [s.phone, srt, gig.board!, sync] : [s.phone, srt],
+        `${tsx("gig/render-cli.ts")} "${s.phone}" ${words} renders/${key}-16x9-review.mp4` +
+        (fromBoard ? ` --board "${gig.board}" --sync ${sync} --mix ${s.mix}` : "") +
+        (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") +
+        (s.cut.out !== undefined ? ` --out ${s.cut.out}` : ""),
+      files: fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words],
       output: [`renders/${key}-16x9-review.mp4`],
       dependencies: [`captions:${key}`],
     });
@@ -87,6 +101,7 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
   wireit.sync = { command: `node -e ""`, dependencies: syncs };
   wireit.captions = { command: `node -e ""`, dependencies: captions };
   wireit.render = { command: `node -e ""`, dependencies: renders };
+  wireit.edges = { command: `node -e ""`, dependencies: edges };
 
   return { name: "clickbait-gig", private: true, scripts, wireit };
 }

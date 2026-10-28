@@ -115,6 +115,12 @@ I compared the live aligned words with the show-track words for every song. The 
 - **Open question for Mark:** do these match what happened on the night? In particular, were 05, 07 and 13 played without the click? Also, does "off" ever mean a different arrangement (a repeated section) rather than a bail? That would show up as a steady gap at a new offset, which the strips above don't separate yet.
 - **Analysis scripts:** `pair.mjs`, `fit.mjs`, `local.mjs` and `strip.mjs` are session scripts in the session scratchpad. The useful parts belong in `timeline:<key>`.
 - **Mark, 2026-10-27:** the band did kill the click on several songs, which confirms the strips. What this means for the plan:
-  - **Captions:** show-track timing covers only the on-click stretches, which are mostly openings. The rest of each song needs the live alignment to be good, so the desilence remap fix is no longer parked: it comes first.
-  - **Cut start:** use beat 0 when a song starts on the click (01, 02, 03, 04, 09, 11, 12, and maybe 08). Otherwise use where the band starts.
-  - **Cut end:** use where the band stops for any song that bailed. That is most songs.
+- **Mark, later the same evening:** the click was killed on only 4 or 5 songs, and the rest ended in time. **This corrects the read above.**
+  - **The "off" stretches have structure.** They are steady gaps at new values, not scatter:
+    - **Pink Pony Club:** the verses hold to within 20–40 ms. Each chorus slides the gap by about 1.1 s (20.6 → 19.4 → 18.3 s), which is about 2 beats at 107 bpm, and the gap then holds again.
+    - **Jumpin' Jack Flash:** steady at 14.66 s, then steady at 13.33 s.
+    - **Lonely Boy:** steady at 3.57 s, then steps of about 6 s, which is about 4 bars at 167 bpm. That fits a repeated or extended section.
+  - **Tempo:** the show tracks are a constant tempo (Pink Pony Club's RPP has one tempo point), so tempo changes don't explain the slides. Possible causes: live arrangement changes (repeats, cut beats), or beat-keyed lyric times that are wrong in some sections. This is not resolved.
+  - **Model change:** treat the gap as piecewise steady instead of one offset plus a bail. Use show-track timing inside each steady stretch, and live alignment only where the gap keeps drifting, which is where the click was really killed. Find the steady stretches line by line or section by section.
+  - **Cut start:** beat 0 of the first steady stretch.
+  - **Cut end:** the last steady stretch's song end when the song finishes on the click; otherwise where the band stops.

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { startRelay } from "../../src/teleprompter/relay.js";
 import { clientDir } from "../../src/teleprompter/build-client.js";
-import { PRESETS, presetHref } from "../../src/teleprompter/display-options.js";
+import { LAYOUTS } from "../../src/teleprompter/pane-layout.js";
 
 let relay: ReturnType<typeof startRelay>;
 let base: string;
@@ -24,29 +24,50 @@ afterAll(() => {
 });
 
 const page = async (path: string) => {
-  const res = await fetch(base + path);
-  return { status: res.status, text: await res.text() };
+  const res = await fetch(base + path, { redirect: "manual" });
+  return { status: res.status, text: await res.text(), location: res.headers.get("location") };
 };
 
 describe("join and picker pages", () => {
-  it("offers every preset on the picker", async () => {
+  it("offers exactly the layouts on the picker", async () => {
     const { status, text } = await page("/pick");
     expect(status).toBe(200);
-    for (const p of PRESETS) expect(text).toContain(`href="${presetHref(p)}"`);
+    expect(text.match(/class="pick"/g)).toHaveLength(LAYOUTS.length);
+    for (const l of LAYOUTS) expect(text).toContain(`href="${l.href}"`);
   });
 
-  it("shows one QR code, to the picker, and no control link on the join page", async () => {
+  it("shows one QR code, to the picker, the e-ink address as text, and no control link", async () => {
     const { text } = await page("/");
     expect(text.match(/<svg/g)).toHaveLength(1);
     expect(text).toContain("/pick");
+    expect(text).toMatch(/http:\/\/[^<"]+\/eink</);
     expect(text).not.toContain('href="/control"');
   });
 
   it("serves the prompter at /prompt, and still at /lyrics", async () => {
-    const prompt = await page("/prompt?channels=chords");
+    const prompt = await page("/prompt?panes=2");
     expect(prompt.status).toBe(200);
     expect(prompt.text).toContain('id="drawer"');
     expect((await page("/lyrics")).text).toBe(prompt.text);
+  });
+
+  it("sends an old split link to the prompter page", async () => {
+    const { status, location } = await page("/split?view=drums&view=lyrics&at=60");
+    expect(status).toBe(302);
+    expect(location).toBe("/prompt?panes=2&split=vertical&view=drums&view=lyrics&at=60");
+  });
+});
+
+describe("e-ink pages", () => {
+  it("shows the splash until a page names one channel", async () => {
+    const eink = await page("/eink?channel=lyrics");
+    expect(eink.status).toBe(200);
+    for (const path of ["/eink", "/eink?channels=chords,lyrics", "/eink?channel=a&channel=b"]) {
+      const splash = await page(path);
+      expect(splash.status).toBe(200);
+      expect(splash.text).not.toBe(eink.text);
+      expect(splash.text).toContain('http-equiv="refresh"');
+    }
   });
 });
 

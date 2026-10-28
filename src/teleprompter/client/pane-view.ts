@@ -9,13 +9,16 @@
  *   score    a line of drawn bars, a box over each to light while it plays
  *
  * Every row and item element is returned in order, so a display can light
- * what's playing (see itemsAt in rows.ts). Notation is drawn into the
- * returned targets later, live or from a bundle's drawings (placeDrawing).
+ * what's playing (see itemsAt in rows.ts). Each drawn bar is a piece of its
+ * own, so a row wraps between any two bars; its notation is its slice of the
+ * build's drawing, put in later (placeNotation). flowView then sizes a part
+ * and cuts its rows by line (see flow.ts).
  */
 
 import type { ChordRow, FigureItem, FigureRow, LyricRow, RowChannel, ScoreRow } from "../rows.js";
 import { barGrid } from "../bar-grid.js";
-import { barSegments, scoreSegments } from "../drawings.js";
+import { barSegments, drawingKey, scoreSegments, type Drawing } from "../drawings.js";
+import { barFit, joinSectionRows, lineGroup, splitRows, type ItemLines } from "../flow.js";
 
 export interface RowView {
   el: HTMLElement;
@@ -27,13 +30,13 @@ export interface RowView {
   runBars?: (HTMLElement | null)[][];
 }
 
-/** Where to draw a range of score bars, and the boxes to place over its bars. */
+/** Where to draw one score bar: its piece's staff, from the drawing of the range of bars it's drawn with. */
 export interface NotationTarget {
   el: HTMLElement;
+  scoreBar: number;
+  /** The range it's drawn with: the bars running on with it in its row or run. */
   start: number;
   count: number;
-  /** Score rows: one box per bar, placed once the drawing says where its bars are. */
-  boxes: HTMLElement[];
 }
 
 export interface ChannelView {
@@ -61,19 +64,49 @@ export function channelView(channel: RowChannel): ChannelView {
 }
 
 /**
- * Put a drawing in its target (its SVG, when it comes from a bundle) and
- * place the target's bar boxes over the bars, as fractions of its width so
- * they follow any zoom.
+ * Put each target's bar in it: its slice of the drawing of its range, or,
+ * once rows are cut by line (flowView) into ranges never drawn, of any
+ * drawing that has the bar.
  */
-export function placeDrawing(target: NotationTarget, drawing: { width: number; bars: { x: number; w: number }[] }, svg?: string): void {
-  if (svg !== undefined) target.el.innerHTML = svg;
-  target.boxes.forEach((box, i) => {
-    const bar = drawing.bars[i];
-    if (!bar || !drawing.width) return;
-    box.style.left = `${(bar.x / drawing.width) * 100}%`;
-    box.style.width = `${(bar.w / drawing.width) * 100}%`;
-    box.style.display = "block";
-  });
+export function placeNotation(view: ChannelView, drawings: Record<string, Drawing>): void {
+  const anyWith = new Map<number, { drawing: Drawing; index: number }>();
+  for (const [key, drawing] of Object.entries(drawings)) {
+    const start = Number(key.split("+")[0]);
+    drawing.bars.forEach((_, i) => {
+      if (!anyWith.has(start + i)) anyWith.set(start + i, { drawing, index: i });
+    });
+  }
+  const parsed = new Map<Drawing, SVGSVGElement | null>();
+  for (const t of view.notation) {
+    const own = drawings[drawingKey(t.start, t.count)];
+    const found = own ? { drawing: own, index: t.scoreBar - t.start } : anyWith.get(t.scoreBar);
+    if (!found) continue;
+    if (!parsed.has(found.drawing)) parsed.set(found.drawing, parseSvg(found.drawing.svg));
+    const svg = parsed.get(found.drawing);
+    const bar = found.drawing.bars[found.index];
+    if (!svg || !bar) continue;
+    // The bar alone: the drawing cropped to it.
+    const slice = svg.cloneNode(true) as SVGSVGElement;
+    slice.setAttribute("viewBox", `${bar.x} 0 ${bar.w} ${found.drawing.height}`);
+    slice.setAttribute("width", `${bar.w}px`);
+    slice.setAttribute("height", `${found.drawing.height}px`);
+    t.el.replaceChildren(slice);
+  }
+}
+
+function parseSvg(svg: string): SVGSVGElement | null {
+  const holder = document.createElement("div");
+  holder.innerHTML = svg;
+  return holder.querySelector("svg");
+}
+
+/** A drawn bar: its staff, and a box over it to light while it plays. */
+function barPiece(scoreBar: number, seg: { start: number; count: number }, notation: NotationTarget[]): { piece: HTMLElement; box: HTMLElement } {
+  const piece = el("div", "bar-piece");
+  const staff = piece.appendChild(el("div", "notation"));
+  const box = piece.appendChild(el("span", "score-bar"));
+  notation.push({ el: staff, scoreBar, start: seg.start, count: seg.count });
+  return { piece, box };
 }
 
 function lyricRow(row: LyricRow): RowView {
@@ -147,18 +180,14 @@ function figureRow(row: FigureRow, notation: NotationTarget[]): RowView {
       runEl.appendChild(el("span", "figure-label", "–"));
     } else {
       // The run's bars, a box over each to light while it plays, and its count after: "[bars] ×8".
-      const body = el("div", "figure-body");
       for (const seg of barSegments(run.scoreBars)) {
         if (seg.start === null) continue;
-        const segEl = el("div", "figure-seg");
-        const staff = el("div", "notation");
-        segEl.appendChild(staff);
-        const boxes: HTMLElement[] = [];
-        for (let i = 0; i < seg.count; i++) boxes.push((bars[seg.first + i] = segEl.appendChild(el("span", "score-bar"))));
-        body.appendChild(segEl);
-        notation.push({ el: staff, start: seg.start, count: seg.count, boxes });
+        for (let i = 0; i < seg.count; i++) {
+          const { piece, box } = barPiece(seg.start + i, { start: seg.start, count: seg.count }, notation);
+          bars[seg.first + i] = box;
+          runEl.appendChild(piece);
+        }
       }
-      runEl.appendChild(body);
     }
     runBars.push(bars);
     runEl.appendChild(el("span", "figure-label figure-count"));
@@ -173,18 +202,16 @@ function scoreRow(row: ScoreRow, notation: NotationTarget[]): RowView {
   const line = el("div", "row score-row");
   const items: HTMLElement[] = [];
   for (const seg of scoreSegments(row.items)) {
-    const segEl = el("div", "score-seg" + (seg.start === null ? " empty" : ""));
-    if (seg.start === null) {
-      // Bars the score has nothing for: a rest-like gap, still lit in turn.
-      for (let i = 0; i < seg.count; i++) items[seg.first + i] = segEl.appendChild(el("span", "score-bar blank", "–"));
-    } else {
-      const staff = el("div", "notation");
-      segEl.appendChild(staff);
-      const boxes: HTMLElement[] = [];
-      for (let i = 0; i < seg.count; i++) boxes.push((items[seg.first + i] = segEl.appendChild(el("span", "score-bar"))));
-      notation.push({ el: staff, start: seg.start, count: seg.count, boxes });
+    for (let i = 0; i < seg.count; i++) {
+      if (seg.start === null) {
+        // A bar the score has nothing for: a rest-like gap, still lit in turn.
+        items[seg.first + i] = line.appendChild(el("span", "score-bar blank", "–"));
+      } else {
+        const { piece, box } = barPiece(seg.start + i, { start: seg.start, count: seg.count }, notation);
+        items[seg.first + i] = box;
+        line.appendChild(piece);
+      }
     }
-    line.appendChild(segEl);
   }
   return { el: line, items };
 }
@@ -201,33 +228,134 @@ export function showPass(runEl: HTMLElement, run: FigureItem, pass: number): voi
 }
 
 /**
- * Scale down notation too wide for its row, all of a part's at once: the
- * smallest zoom any figure run or piece of a score row needs to fit its row
- * (the `--fit` variable its notation multiplies by) applies to every one, so
- * the music stays one size through the song, leaving room at some row ends.
+ * Draw each bar at the display's note size (`--notation-zoom`, see flow.ts),
+ * or smaller only where the bar alone is wider than its row (barFit), its
+ * `--fit`. Rows wrap between bars to take the rest. `cap` holds every bar
+ * smaller still: the last resort for a run too tall for its pane.
  */
-export function fitRows(view: ChannelView): void {
-  fitTogether(view.rows.map((r) => r.el));
+export function fitRows(view: ChannelView, cap = 1): void {
+  fitTogether(view.rows.map((r) => r.el), cap);
 }
 
 /** fitRows for row elements outside a view (the card's figures). */
-export function fitTogether(rowEls: readonly HTMLElement[]): void {
-  const parts: HTMLElement[] = [];
-  let fit = 1;
+export function fitTogether(rowEls: readonly HTMLElement[], cap = 1): void {
   for (const rowEl of rowEls) {
-    const room = rowEl.clientWidth;
-    if (!room) continue;
-    rowEl.querySelectorAll<HTMLElement>(".figure-run, .score-seg").forEach((part) => {
-      if (!part.querySelector(".notation")) return;
-      parts.push(part);
-      part.style.setProperty("--fit", "1");
-      const width = part.scrollWidth;
-      if (width <= room) return;
-      // Only the notation shrinks; the letters and count around it keep their size.
-      let staves = 0;
-      part.querySelectorAll(".notation").forEach((n) => (staves += n.getBoundingClientRect().width));
-      if (staves > 0) fit = Math.min(fit, (room - (width - staves) - 2) / staves);
-    });
+    const pieces = [...rowEl.querySelectorAll<HTMLElement>(".bar-piece")];
+    for (const piece of pieces) piece.style.setProperty("--fit", "1");
+    const room = rowEl.clientWidth - 2;
+    if (room <= 0) continue;
+    for (const piece of pieces) {
+      const width = piece.querySelector(".notation")!.getBoundingClientRect().width;
+      // A run's count stays beside its last bar, and doesn't shrink with it.
+      const after = piece.nextElementSibling;
+      const extra = after?.classList.contains("figure-count") ? after.getBoundingClientRect().width + gapOf(piece.parentElement!) : 0;
+      piece.style.setProperty("--fit", String(Math.min(cap, barFit(width, room, extra))));
+    }
   }
-  for (const part of parts) part.style.setProperty("--fit", String(Math.max(0.3, fit)));
+}
+
+/**
+ * Break each run's bars, and each score row's, into equal groups that hold
+ * together on a line (see lineGroup): a four-bar figure 2 + 2 rather than
+ * 3 + 1. Run after the notation is sized; groups from an earlier run are undone first.
+ */
+export function groupBars(view: ChannelView): void {
+  for (const { el: rowEl } of view.rows) {
+    rowEl.querySelectorAll(".bar-group").forEach((g) => g.replaceWith(...g.children));
+    const room = rowEl.clientWidth - 2;
+    if (room <= 0) continue;
+    const runs = rowEl.classList.contains("score-row") ? [rowEl] : [...rowEl.querySelectorAll<HTMLElement>(".figure-run")];
+    for (const run of runs) {
+      const bars = [...run.children].filter((c) => c.classList.contains("bar-piece") || c.classList.contains("blank")) as HTMLElement[];
+      if (bars.length < 2) continue;
+      const label = run.querySelector<HTMLElement>(":scope > .figure-count");
+      const extra = label && label.getClientRects().length ? label.getBoundingClientRect().width + parseFloat(getComputedStyle(label).marginLeft || "0") : 0;
+      const g = lineGroup(bars.map((b) => b.getBoundingClientRect().width), room, extra);
+      if (g === null) continue;
+      for (let i = 0; i < bars.length; i += g) {
+        const group = el("div", "bar-group");
+        run.insertBefore(group, bars[i]);
+        for (const b of bars.slice(i, i + g)) group.appendChild(b);
+      }
+    }
+  }
+}
+
+function gapOf(flex: HTMLElement): number {
+  return parseFloat(getComputedStyle(flex).columnGap) || 0;
+}
+
+/**
+ * Which lines of its row each item of a chart row sits on, by where its
+ * pieces landed: a piece starting left of where the one before it ended has
+ * wrapped onto the next line.
+ */
+function itemLines(channel: RowChannel, view: ChannelView): ItemLines[][] {
+  if (channel.kind !== "figures" && channel.kind !== "score") return [];
+  return view.rows.map((rowView, r) => {
+    let line = 0;
+    let right = -Infinity;
+    const lineOf = (e: Element) => {
+      const box = e.getBoundingClientRect();
+      if (box.left < right - 1) line++;
+      right = box.right;
+      return line;
+    };
+    if (channel.rows[r].type === "figures") {
+      return rowView.items.map((runEl) => {
+        // A count that isn't shown (a run played once) takes no place on a line.
+        const parts = [...runEl.querySelectorAll(".bar-piece, .figure-label")].filter((e) => e.getClientRects().length > 0);
+        if (!parts.length) {
+          const l = lineOf(runEl);
+          return { first: l, last: l };
+        }
+        const first = lineOf(parts[0]);
+        for (let i = 1; i < parts.length; i++) lineOf(parts[i]);
+        return { first, last: line };
+      });
+    }
+    // A bar's box sits in its piece; a blank bar is its own.
+    return rowView.items.map((item) => {
+      const l = lineOf(item.classList.contains("blank") ? item : item.parentElement!);
+      return { first: l, last: l };
+    });
+  });
+}
+
+/**
+ * A chart channel drawn, sized and cut into rows by line, for rows of the
+ * width `mount` puts them at (see flow.ts): `mount` takes the rows'
+ * elements, replacing any it was given before. Other channels are drawn as
+ * they are. No row is left taller than `maxRowHeight`, unless the notation
+ * would go below its floor; that is the only thing that shrinks every bar.
+ */
+export function flowView(
+  channel: RowChannel,
+  drawings: Record<string, Drawing>,
+  mount: (rows: HTMLElement[]) => void,
+  maxRowHeight = Infinity,
+): { channel: RowChannel; view: ChannelView } {
+  const draw = (c: RowChannel, cap: number) => {
+    const view = channelView(c);
+    placeNotation(view, drawings);
+    mount(view.rows.map((r) => r.el));
+    fitRows(view, cap);
+    groupBars(view);
+    return view;
+  };
+  if (channel.kind !== "figures" && channel.kind !== "score") return { channel, view: draw(channel, 1) };
+  // A section's bars flow as one row; only a new section starts a new line.
+  channel = { ...channel, rows: joinSectionRows(channel.rows as (FigureRow | ScoreRow)[]) } as RowChannel;
+  let view = draw(channel, 1);
+  let cap = 1;
+  for (let attempt = 0; ; attempt++) {
+    const rows = splitRows(channel.rows as (FigureRow | ScoreRow)[], itemLines(channel, view));
+    const flowed = { ...channel, rows } as RowChannel;
+    const flowedView = rows.length === channel.rows.length ? view : draw(flowed, cap);
+    const tallest = Math.max(0, ...flowedView.rows.map((r) => r.el.offsetHeight));
+    if (tallest <= maxRowHeight || attempt === 2 || cap <= 0.3) return { channel: flowed, view: flowedView };
+    // A run too tall for the pane, the one thing that overrides the note size: smaller, flowed again.
+    cap = Math.max(0.3, (cap * maxRowHeight) / tallest);
+    view = draw(channel, cap);
+  }
 }

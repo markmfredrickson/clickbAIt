@@ -3,6 +3,8 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
+  /* The note size: staff lines 10 px apart (alphaTab draws them 9 apart); a page may set its own. */
+  --notation-zoom: 1.111;
   --bg: #111;
   --text: #ccc;
   --text-dim: #666;
@@ -27,18 +29,23 @@ html {
   height: 100%;
 }
 
+/* The page is exactly one screen: the header, the panes in what's left, and
+   the status bar. The page never scrolls; a pane scrolls inside its box. */
 body {
-  min-height: 100%;
+  height: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
-  overflow-x: hidden;
 }
 
 /* ── Header ── */
 #header {
-  position: sticky;
-  top: 0;
+  flex: none;
+  position: relative;
   z-index: 10;
   background: var(--header-bg);
   padding: 0.5rem 1rem;
@@ -279,6 +286,9 @@ body {
    below, free to scroll. Running, it covers the panes until the pre-roll. */
 body:not(.running) #card {
   position: static;
+  /* Above the panes, never squeezed, and never more than a share of the screen. */
+  flex: none;
+  max-height: 40dvh;
 }
 
 .card-title {
@@ -289,6 +299,27 @@ body:not(.running) #card {
 .card-facts {
   color: var(--text-dim);
   margin-bottom: 1rem;
+}
+
+/* The song's form: each section boxed, its bars after its name. */
+.card-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+}
+
+.card-section {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--text-dim);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.card-section-bars {
+  margin-left: 0.4em;
+  color: var(--text-dim);
 }
 
 .card-note {
@@ -316,26 +347,101 @@ body:not(.running) #card {
   --notation-zoom: 1.1;
 }
 
-/* ── Panes: one per channel, stacked in the viewer's order ── */
-/* A pane shows a set number of its rows and turns them all at once (the
-   client sets its height and scroll). Manual scroll lets the reader scroll it. */
+/* ── Panes: one, or two split by a divider ── */
+/* A pane pages its rows by its own box and turns them all at once (the
+   client sets its scroll). Manual scroll lets the reader scroll it. The
+   min sizes let a pane shrink to its share instead of growing to its rows. */
 #panes {
-  padding: 0.5rem 1rem 3rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
 }
+
+#panes.split-horizontal {
+  flex-direction: column;
+}
+
+.slot {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 1rem 0;
+}
+
+#panes.two .slot:first-child {
+  flex: 0 0 auto;
+}
+
+.divider {
+  flex: none;
+  background: var(--text-dim);
+  opacity: 0.5;
+  touch-action: none;
+}
+
+#panes.split-vertical .divider { width: 6px; cursor: col-resize; }
+#panes.split-horizontal .divider { height: 6px; cursor: row-resize; }
+#panes.dragging { user-select: none; }
 
 .pane {
+  flex: 1 1 auto;
+  min-height: 0;
   position: relative;
   overflow: hidden;
+  overscroll-behavior: contain;
   /* Room for the outline round a row's first item, which overflow would clip. */
-  padding: 0 6px;
+  padding: 0 6px 0.2em;
   scrollbar-width: none;
-  border-bottom: 1px solid var(--text-dim);
-  padding-bottom: 0.2em;
-  margin-bottom: 0.6rem;
 }
 
-.pane:last-child {
-  border-bottom: none;
+/* A pane with nothing picked: the song's channels, one button each. */
+.chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.5rem 0;
+  max-width: 420px;
+  overflow-y: auto;
+}
+
+.chooser p {
+  color: var(--text-dim);
+}
+
+.chooser button {
+  padding: 0.8rem 1rem;
+  font-size: 1.1rem;
+  text-align: left;
+  color: var(--text);
+  background: var(--section-bg);
+  border: 1px solid var(--text-dim);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.chooser button:hover { border-color: var(--accent); }
+
+.layout-btn {
+  flex: none;
+  width: 2.2rem;
+  height: 2.2rem;
+  font-size: 1.2rem;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.layout-btn svg {
+  width: 1.2rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  vertical-align: middle;
 }
 
 /* The pane's name, pinned to its top-right corner as it turns, taking no room. */
@@ -452,14 +558,23 @@ body:not(.running) #card {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4em 1.2em;
+  gap: 0.4em 0;
   padding: 0.3em 0 0.9em;
 }
 
+/* A run's bars flow in the row like any others, so a run starts on a line
+   its first bars fit, with its count after the last. A gap before each run
+   but the first sets runs apart. */
 .figure-run {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
+  display: contents;
+}
+
+.figure-run + .figure-run > :first-child {
+  margin-left: 1.2em;
+}
+
+.figure-run > .figure-label {
+  margin-left: 0.4em;
 }
 
 /* Counts are the chart's main text, so they read larger than the
@@ -500,36 +615,30 @@ body:not(.running) #card {
   color: inherit;
 }
 
-/* A run's notation. */
-.figure-body {
-  display: flex;
-  align-items: center;
-  gap: 0.4em;
-}
-
-/* A run's bars, a box over each, lit round the bar playing (as in a score row). */
-.figure-seg {
-  position: relative;
-}
-
 /* ── Score: a part drawn bar by bar, a box over each bar to light it ── */
 .score-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.6em;
+  gap: 0.6em 0;
   padding: 0.3em 0 0.6em;
 }
 
-.score-seg {
+/* A drawn bar, in a score row or a figure run: its slice of the drawing,
+   and a box over it lit round the bar playing. */
+.bar-piece {
   position: relative;
+}
+
+/* Bars that stay together on a line: a run's or row's even share (see groupBars). */
+.bar-group {
+  display: flex;
+  align-items: center;
 }
 
 .score-bar {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  display: none;
+  inset: 0;
   border-radius: 4px;
   pointer-events: none;
 }
@@ -538,12 +647,7 @@ body:not(.running) #card {
   outline: 3px solid var(--accent);
 }
 
-/* Bars the score has nothing for. */
-.score-seg.empty {
-  display: flex;
-  gap: 0.6em;
-}
-
+/* A bar the score has nothing for. */
 .score-bar.blank {
   position: static;
   display: inline-block;
@@ -556,7 +660,7 @@ body:not(.running) #card {
 /* Notation is drawn in the page's text color on a clear background. alphaTab
    skips a container with no width, so each gets a minimum. */
 .notation {
-  /* --fit shrinks a run or piece that's wider than its row (see fitRows). */
+  /* --fit, set on the row, sizes a part's bars to its pane (see fitRows). */
   zoom: calc(var(--notation-zoom, 1) * var(--fit, 1));
   border-radius: 4px;
   min-width: 4rem;
@@ -587,10 +691,7 @@ body:not(.running) #card {
 
 /* ── Status bar ── */
 #status-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  flex: none;
   display: flex;
   justify-content: space-between;
   padding: 0.3rem 1rem;
@@ -615,8 +716,10 @@ body:not(.running) #card {
 @media print {
   #header, #status-bar, #drawer, #drawer-scrim { display: none; }
   .row, .chord { color: #000 !important; opacity: 1 !important; }
+  body { height: auto; display: block; overflow: visible; }
   .pane { height: auto !important; overflow: visible !important; }
-  #panes { padding: 0; }
+  #panes { display: block; }
+  .divider, .chooser { display: none; }
   body { background: #fff; color: #000; }
 }
 

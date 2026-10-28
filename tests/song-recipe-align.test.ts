@@ -15,8 +15,8 @@ describe("songRecipe: align", () => {
   it("aligns a split song's vocal stem with desilence-align, keeping its segment map", () => {
     const { wireit } = songRecipe(base) as Recipe;
     expect(wireit.align).toEqual({
-      command: `${DESILENCE} "stems/source_vocals.wav" --text "song.lyrics.txt" -o "stems/source_vocals.align.json" --debug "stems/source_vocals.desilence.json"`,
-      files: ["stems/source_vocals.wav", "song.lyrics.txt"],
+      command: `${DESILENCE} "stems/source_vocals.flac" --text "song.lyrics.txt" -o "stems/source_vocals.align.json" --debug "stems/source_vocals.desilence.json"`,
+      files: ["stems/source_vocals.flac", "song.lyrics.txt"],
       output: ["stems/source_vocals.align.json", "stems/source_vocals.desilence.json"],
       dependencies: ["split", "lyrics-txt"],
     });
@@ -123,16 +123,29 @@ describe("alignSource", () => {
   });
 });
 
+describe("songRecipe: stems", () => {
+  it("splits into FLAC stems, which the features task reads", () => {
+    const { wireit } = songRecipe(base) as Recipe;
+    expect(wireit.split.output).toEqual([
+      "stems/source_drums.flac",
+      "stems/source_bass.flac",
+      "stems/source_other.flac",
+      "stems/source_vocals.flac",
+    ]);
+    expect(wireit.features.files).toContain("stems/*.flac");
+  });
+});
+
 describe("songRecipe: beats", () => {
   it("detects on the drum stem and the full mix, then merges them over the drum stem's silences", () => {
     const { wireit } = songRecipe(base) as Recipe;
     const bin = "../../../.claude/skills/clickbait/bin/clickbait-audio";
     expect(wireit.beats).toEqual({
       command:
-        `${bin} beats stems/source_drums.wav --min-bpm 100 --max-bpm 120 > source.m4a.drums.beats.json` +
+        `${bin} beats stems/source_drums.flac --min-bpm 100 --max-bpm 120 > source.m4a.drums.beats.json` +
         ` && ${bin} beats source.m4a --activation spectral-flux --min-bpm 100 --max-bpm 120 > source.m4a.fullmix.beats.json` +
-        ` && npx tsx ../../../src/authoring/unify-beats-cli.ts source.m4a.fullmix.beats.json source.m4a.drums.beats.json stems/source_drums.wav source.m4a.beats.json`,
-      files: ["stems/source_drums.wav", "source.m4a"],
+        ` && npx tsx ../../../src/authoring/unify-beats-cli.ts source.m4a.fullmix.beats.json source.m4a.drums.beats.json stems/source_drums.flac source.m4a.beats.json`,
+      files: ["stems/source_drums.flac", "source.m4a"],
       output: ["source.m4a.drums.beats.json", "source.m4a.fullmix.beats.json", "source.m4a.beats.json"],
       dependencies: ["split"],
     });

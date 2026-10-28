@@ -73,7 +73,12 @@ impl ForwardListener for ProgressListener {
     }
 }
 
-/// Write stereo f32 samples to a WAV file (44100 Hz, 16-bit).
+/// A sample in -1..1 as 16-bit, clamped.
+fn to_i16(x: f32) -> i16 {
+    (x.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+}
+
+/// Write stereo f32 samples to a WAV file (16-bit).
 pub fn write_stereo_wav(path: &Path, left: &[f32], right: &[f32], sample_rate: u32) -> Result<()> {
     let spec = hound::WavSpec {
         channels: 2,
@@ -86,14 +91,78 @@ pub fn write_stereo_wav(path: &Path, left: &[f32], right: &[f32], sample_rate: u
         .with_context(|| format!("Failed to create WAV file: {}", path.display()))?;
 
     for (&l, &r) in left.iter().zip(right.iter()) {
-        let l16 = (l.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-        let r16 = (r.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
-        writer.write_sample(l16)?;
-        writer.write_sample(r16)?;
+        writer.write_sample(to_i16(l))?;
+        writer.write_sample(to_i16(r))?;
     }
 
     writer.finalize()?;
     Ok(())
+}
+
+/// Write stereo f32 samples to a FLAC file (16-bit), quantized as `write_stereo_wav` does.
+pub fn write_stereo_flac(path: &Path, left: &[f32], right: &[f32], sample_rate: u32) -> Result<()> {
+    let interleaved: Vec<i32> = left
+        .iter()
+        .zip(right.iter())
+        .flat_map(|(&l, &r)| [to_i16(l) as i32, to_i16(r) as i32])
+        .collect();
+    write_flac(path, &interleaved, 2, sample_rate)
+}
+
+/// Re-encode a 16-bit WAV as FLAC, sample for sample.
+pub fn wav_to_flac(wav: &Path, flac: &Path) -> Result<()> {
+    let mut reader = hound::WavReader::open(wav)
+        .with_context(|| format!("Failed to open WAV file: {}", wav.display()))?;
+    let spec = reader.spec();
+    if spec.bits_per_sample != 16 || spec.sample_format != hound::SampleFormat::Int {
+        anyhow::bail!("{}: only 16-bit WAV is supported", wav.display());
+    }
+    let samples = reader
+        .samples::<i16>()
+        .map(|s| s.map(i32::from))
+        .collect::<std::result::Result<Vec<i32>, _>>()?;
+    write_flac(flac, &samples, spec.channels as usize, spec.sample_rate)
+}
+
+/// Decode any file the binary reads (FLAC, WAV, MP3, M4A) to a 32-bit float
+/// stereo WAV, for tools that read WAV only.
+pub fn to_float_wav(input: &Path, output: &Path) -> Result<()> {
+    let (left, right, sample_rate) = decode_stereo(&input.to_string_lossy())?;
+    let spec = hound::WavSpec { channels: 2, sample_rate, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
+    let mut writer = hound::WavWriter::create(output, spec)
+        .with_context(|| format!("Failed to create WAV file: {}", output.display()))?;
+    for (&l, &r) in left.iter().zip(right.iter()) {
+        writer.write_sample(l)?;
+        writer.write_sample(r)?;
+    }
+    writer.finalize()?;
+    Ok(())
+}
+
+/// Encode interleaved 16-bit samples as FLAC.
+fn write_flac(path: &Path, interleaved: &[i32], channels: usize, sample_rate: u32) -> Result<()> {
+    use flacenc::component::BitRepr;
+    use flacenc::error::Verify;
+
+    let config = flacenc::config::Encoder::default()
+        .into_verified()
+        .map_err(|(_, e)| anyhow::anyhow!("FLAC encoder config: {e:?}"))?;
+    let source = flacenc::source::MemSource::from_samples(interleaved, channels, 16, sample_rate as usize);
+    let stream = flacenc::encode_with_fixed_block_size(&config, source, config.block_size)
+        .map_err(|e| anyhow::anyhow!("FLAC encode failed: {e:?}"))?;
+    let mut sink = flacenc::bitsink::ByteSink::new();
+    stream
+        .write(&mut sink)
+        .map_err(|e| anyhow::anyhow!("FLAC write failed: {e:?}"))?;
+    // STREAMINFO's minimum block size must leave out the short last block, but
+    // flacenc counts it. A minimum below the maximum reads as variable block
+    // size, and symphonia then fails to open the file. Every block but the last
+    // is `config.block_size`, so the minimum is the maximum.
+    let mut bytes = sink.as_slice().to_vec();
+    let max_block = [bytes[10], bytes[11]];
+    bytes[8..10].copy_from_slice(&max_block);
+    std::fs::write(path, bytes)
+        .with_context(|| format!("Failed to write FLAC file: {}", path.display()))
 }
 
 /// Download model weights if not cached, return bytes.
@@ -177,10 +246,10 @@ pub fn run(file: &str, output_dir: &str, model_name: &str) -> Result<()> {
     let mut result = SplitResult { stems: Vec::new() };
 
     for stem in &stems {
-        let filename = format!("{}_{}.wav", input_stem, stem.id.as_str());
+        let filename = format!("{}_{}.flac", input_stem, stem.id.as_str());
         let stem_path = out_path.join(&filename);
         eprintln!("Writing {}...", filename);
-        write_stereo_wav(&stem_path, &stem.left, &stem.right, sample_rate)?;
+        write_stereo_flac(&stem_path, &stem.left, &stem.right, sample_rate)?;
         result.stems.push(StemOutput {
             name: stem.id.as_str().to_string(),
             path: stem_path.to_string_lossy().to_string(),
@@ -250,6 +319,40 @@ mod tests {
     }
 
     #[test]
+    fn test_write_stereo_flac_decodes_to_the_same_16_bit_samples() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.flac");
+        let n = 5000;
+        let left: Vec<f32> = (0..n).map(|i| ((i as f32) * 0.01).sin() * 0.7).collect();
+        let right: Vec<f32> = (0..n).map(|i| ((i as f32) * 0.003).cos() * 0.4).collect();
+
+        write_stereo_flac(&path, &left, &right, 44100).unwrap();
+
+        let (l, r, sr) = decode_stereo(path.to_str().unwrap()).unwrap();
+        assert_eq!(sr, 44100);
+        assert_eq!(l.len(), n);
+        let back = |x: f32| (x * 32768.0).round() as i16;
+        for i in 0..n {
+            assert_eq!(back(l[i]), to_i16(left[i]), "left sample {i}");
+            assert_eq!(back(r[i]), to_i16(right[i]), "right sample {i}");
+        }
+    }
+
+    #[test]
+    fn test_wav_to_flac_is_lossless() {
+        let dir = tempfile::tempdir().unwrap();
+        let wav = dir.path().join("stem.wav");
+        let flac = dir.path().join("stem.flac");
+        let left: Vec<f32> = (0..3000).map(|i| ((i as f32) * 0.02).sin() * 0.9).collect();
+        let right: Vec<f32> = (0..3000).map(|i| ((i as f32) * 0.05).sin() * -0.3).collect();
+        write_stereo_wav(&wav, &left, &right, 48000).unwrap();
+
+        wav_to_flac(&wav, &flac).unwrap();
+
+        assert_eq!(decode_stereo(wav.to_str().unwrap()).unwrap(), decode_stereo(flac.to_str().unwrap()).unwrap());
+    }
+
+    #[test]
     fn test_decode_stereo_wav() {
         // Create a test WAV file
         let dir = tempfile::tempdir().unwrap();
@@ -299,7 +402,7 @@ mod tests {
         let expected_stems = ["vocals", "drums", "bass", "other", "guitar", "piano"];
         for stem_name in &expected_stems {
             let stem_file = dir.path().join(format!(
-                "Blink_182_All_the_Small_Things(Lead_Vocal_Custom_Backing_Track-3)_{}.wav",
+                "Blink_182_All_the_Small_Things(Lead_Vocal_Custom_Backing_Track-3)_{}.flac",
                 stem_name
             ));
             assert!(

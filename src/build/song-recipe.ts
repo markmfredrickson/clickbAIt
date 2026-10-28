@@ -180,7 +180,7 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   const manifest = `${slug}.song.json`;
   const beatsJson = `${recFile}.beats.json`;
   const beatmapJson = `${recFile}.beatmap.json`;
-  const alignStem = opts.alignStem ?? "stems/source_vocals.wav";
+  const alignStem = opts.alignStem ?? "stems/source_vocals.flac";
   const alignFile = opts.alignFile ?? "stems/source_vocals.align.json";
 
   const scripts: Record<string, string> = {
@@ -207,10 +207,10 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
     command: `${bin} split source.m4a --output-dir stems --model ${model}`,
     files: ["source.m4a"],
     output: [
-      "stems/source_drums.wav",
-      "stems/source_bass.wav",
-      "stems/source_other.wav",
-      "stems/source_vocals.wav",
+      "stems/source_drums.flac",
+      "stems/source_bass.flac",
+      "stems/source_other.flac",
+      "stems/source_vocals.flac",
     ],
   };
 
@@ -238,10 +238,10 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   const window = `--min-bpm ${minBpm} --max-bpm ${maxBpm}`;
   const beats = {
     command:
-      `${bin} beats stems/source_drums.wav ${window} > ${drumBeats}` +
+      `${bin} beats stems/source_drums.flac ${window} > ${drumBeats}` +
       ` && ${bin} beats ${recFile} --activation spectral-flux ${window} > ${fullBeats}` +
-      ` && npx tsx ${rel}/src/authoring/unify-beats-cli.ts ${fullBeats} ${drumBeats} stems/source_drums.wav ${beatsJson}`,
-    files: ["stems/source_drums.wav", recFile],
+      ` && npx tsx ${rel}/src/authoring/unify-beats-cli.ts ${fullBeats} ${drumBeats} stems/source_drums.flac ${beatsJson}`,
+    files: ["stems/source_drums.flac", recFile],
     output: [drumBeats, fullBeats, beatsJson],
     dependencies: ["split"],
   };
@@ -320,7 +320,7 @@ export function songRecipe(opts: SongRecipeOpts): Record<string, unknown> {
   // the beatmap like build does rather than standing alone like beats.
   const features = {
     command: `npx tsx ${rel}/src/visuals/features-cli.ts ${manifest}`,
-    files: [manifest, beatmapJson, "stems/*.wav"],
+    files: [manifest, beatmapJson, "stems/*.flac"],
     output: ["*.beat-features.json", "stems/*.features.json"],
     dependencies: ["smooth"],
   };

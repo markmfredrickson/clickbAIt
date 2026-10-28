@@ -18,7 +18,7 @@ import { ALPHATAB_DIR, ALPHATAB_FILES, FONT } from "./alphatab-files.js";
 import { notationCss } from "../charts/notation-svg.js";
 import { createEinkRoutes } from "./eink/routes.js";
 import { renderPanes } from "./eink/render.js";
-import { PRESETS, presetHref } from "./display-options.js";
+import { LAYOUTS, einkSplash, promptFromSplit } from "./pane-layout.js";
 import type { ChartsFile } from "../charts/build.js";
 import type { RowDocument } from "./rows.js";
 import { rowsFromDisplay } from "./build-rows.js";
@@ -517,6 +517,22 @@ export function startRelay(opts: RelayOptions) {
     }
   }
 
+  /** Every served song's rows, set-list order first, for the e-ink landing page
+   *  before a song plays. Songs without a rows file are left out. */
+  async function setRows(): Promise<RowDocument[]> {
+    const found = new Map<string, RowDocument>();
+    for (const dir of songsDirs) {
+      let files: string[] = [];
+      try { files = await readdir(dir); } catch { continue; }
+      for (const slug of songSlugsFromFiles(files)) {
+        if (found.has(slug)) continue;
+        try { found.set(slug, JSON.parse(await readFile(join(dir, `${slug}.rows.json`), "utf8")) as RowDocument); } catch { /* no rows file */ }
+      }
+    }
+    const order = [...setlist.filter((s) => found.has(s)), ...[...found.keys()].filter((s) => !setlist.includes(s))];
+    return order.map((s) => found.get(s)!);
+  }
+
   // E-ink pages for the current song, rendered at each device's size.
   const eink = createEinkRoutes({
     current: () =>
@@ -532,14 +548,15 @@ export function startRelay(opts: RelayOptions) {
     cacheDir: opts.einkCacheDir ?? join(tmpdir(), "clickbait-eink"),
   });
 
-  // Pre-generate QR codes as SVG — one to follow along, one to take control.
   // The join page's one QR code opens the picker, where each person chooses
-  // their display. Control (the bail bar) is for whoever runs the show, so it
-  // isn't offered there; it stays at /control.
+  // their screen's layout. An e-ink reader has no camera, so its address is
+  // shown as text to type in. Control (the bail bar) is for whoever runs the
+  // show, so it isn't offered there; it stays at /control.
   let qrSvgCache: string | null = null;
   const pickUrl = `${baseUrl}/pick`;
-  const pickerButtons = PRESETS.map(
-    (p) => `<a class="pick" href="${presetHref(p)}"><span class="pick-name">${escapeHtml(p.name)}</span><span class="pick-note">${escapeHtml(p.note)}</span></a>`,
+  const einkUrl = `${baseUrl}/eink`;
+  const pickerButtons = LAYOUTS.map(
+    (l) => `<a class="pick" href="${l.href}"><span class="pick-name">${escapeHtml(l.name)}</span><span class="pick-note">${escapeHtml(l.note)}</span></a>`,
   ).join("\n      ");
   const pickerStyle = `
     .picks { display: flex; flex-direction: column; gap: 0.75rem; width: min(92vw, 420px); margin-top: 1.5rem; }
@@ -555,6 +572,24 @@ export function startRelay(opts: RelayOptions) {
     const url = req.url ?? "/";
 
     if (url.startsWith("/eink/") && (await eink(req, res))) return;
+
+    // An old split link opens the same views on the prompter page.
+    if (url.split("?")[0] === "/split") {
+      res.writeHead(302, { Location: promptFromSplit(url.slice("/split".length)) });
+      res.end();
+      return;
+    }
+
+    // An e-ink page shows one channel; until it names one, it offers them.
+    if (url.split("?")[0] === "/eink" && new URLSearchParams(url.slice("/eink".length)).getAll("channel").length !== 1) {
+      res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-store" });
+      const rows = currentRows();
+      // The page's other options (?rotate=left) carry on to the channel picked.
+      const keep = new URLSearchParams(url.slice("/eink".length));
+      keep.delete("channel");
+      res.end(einkSplash(rows, rows ? [] : await setRows(), keep.toString()));
+      return;
+    }
 
     if (url.split("?")[0] === "/rows.json") {
       const rows = currentRows();
@@ -616,7 +651,7 @@ export function startRelay(opts: RelayOptions) {
   </style>
 </head>
 <body>
-  <h1>What should this screen show?</h1>
+  <h1>How should this screen be laid out?</h1>
   <div class="picks">
       ${pickerButtons}
   </div>
@@ -654,6 +689,7 @@ export function startRelay(opts: RelayOptions) {
     .qr svg { width: 100%; height: auto; }
     .url { margin-top: 1rem; font-size: 0.95rem; font-family: monospace;
            color: #ffcc00; word-break: break-all; }
+    .eink-url { font-size: 1.6rem; font-family: monospace; color: #ffcc00; word-break: break-all; }
     .song-title { font-size: 1.5rem; margin-bottom: 0.5rem; color: #ffcc00;
                    transition: text-shadow 0.5s ease; }
     .song-title.glow { text-shadow: 0 0 20px #ffcc00, 0 0 40px #ffcc00; }${pickerStyle}
@@ -667,6 +703,10 @@ export function startRelay(opts: RelayOptions) {
       <p class="subtitle">Scan to pick your display</p>
       <div class="qr">${qrSvgCache}</div>
       <p class="url">${pickUrl}</p>
+    </div>
+    <div class="code">
+      <p class="subtitle">On an e-ink reader, open</p>
+      <p class="eink-url">${einkUrl}</p>
     </div>
   </div>
   <div class="picks">
@@ -728,7 +768,6 @@ export function startRelay(opts: RelayOptions) {
       "/prompt": "index.html",
       "/lyrics": "index.html",
       "/control": "control.html",
-      "/split": "split.html",
       "/eink": "eink.html",
     };
     const filePath = pages[path] ?? path.slice(1);

@@ -2,11 +2,11 @@
  * E-ink client (Kindle browser): shows the relay's pre-rendered panes for the
  * current song and follows the beat.
  *
- * The page asks the relay for the song at its own size, as panes stacked in
- * the order of `channels=` (drums above lyrics, say). Each pane is its own
- * set of page images and turns on its own, as its bottom row starts (see
- * panes.ts); a box inverts what's playing in it, and under a figure run a
- * bar fills one step per time through. A strip at the top names the song and
+ * The page asks the relay for the song at its own size, showing the one
+ * channel its URL names (`channel=drums`; without one, the relay serves a
+ * page to pick it from instead). The pane is a set of page images and turns, as its bottom row starts (see
+ * panes.ts); a box inverts what's playing in it (in a figure run, the bar
+ * playing), and under a figure run a bar fills one step per time through. A strip at the top names the song and
  * section. Before the song, a card covers the panes (the song's notes and
  * opening figures, see card.ts) while the song is at its start.
  * Tapping a pane turns it by hand (left third back, the rest forward) and
@@ -16,24 +16,45 @@
  * reminder after a song (or near the timer's end) and treats a tap on the
  * reminder or the top strip as a touch that doesn't turn a page.
  *
- * Query options: ?channels=drums,lyrics, ?<channel>.rows=<n> (rows a pane
- * shows; the last pane fills the screen unless told), ?lookahead=<beats>
- * (turn and light early; default 1), ?marker=bar|0, ?font=<px>,
- * ?sleep=<minutes> (the Kindle's sleep timer; default 10).
+ * Query options: ?channel=drums, ?<channel>.rows=<n> (rows the pane shows;
+ * it fills the screen unless told), ?lookahead=<beats>
+ * (turn and light early; default 1), ?barlead=<beats> (how early a part's
+ * bar lights; default 0.5), ?marker=bar|0, ?font=<px>,
+ * ?sleep=<minutes> (the Kindle's sleep timer; default 10), ?rotate=left|right
+ * (the Kindle held sideways, turned that way; the TURN button in the top
+ * strip steps through them), ?staff=<px> (the note size: staff lines that far
+ * apart; the − and + buttons step it). PICK goes back to the page that offers
+ * the channels, keeping the other options.
  */
 
-import { markAt, passOf, type EinkDeck, type EinkPane } from "../eink/layout.js";
+import { boxAt, markAt, parseRotation, passOf, rotationTransform, screenToPage, type EinkDeck, type EinkPane } from "../eink/layout.js";
 import { panePageAt } from "../panes.js";
 import { cardShowing } from "../card.js";
 import { needsTapReminder } from "../eink/awake.js";
+import { DEFAULT_STAFF_PX, parseStaffPx } from "../flow.js";
 
 const params = new URLSearchParams(location.search);
-const W = window.innerWidth;
-const H = window.innerHeight;
+// Held sideways, the page is laid out on its side and turned to the screen.
+const rotation = parseRotation(params.get("rotate"));
+const screenW = window.innerWidth;
+const screenH = window.innerHeight;
+const W = rotation ? screenH : screenW;
+const H = rotation ? screenW : screenH;
+if (rotation) {
+  Object.assign(document.body.style, {
+    position: "absolute",
+    width: `${W}px`,
+    height: `${H}px`,
+    transformOrigin: "0 0",
+    transform: rotationTransform(rotation, screenW, screenH),
+  });
+}
 const DPR = window.devicePixelRatio || 1;
 /** The strip at the top: the song and section. */
 const HEAD = Math.round(H * 0.045);
 const lookahead = params.has("lookahead") ? Number(params.get("lookahead")) : 1;
+/** How early a part's bar lights, in beats, so the screen's redraw lands on the downbeat. */
+const barLead = params.has("barlead") ? Number(params.get("barlead")) : 0.5;
 
 const stage = document.getElementById("stage")!;
 const head = document.getElementById("head")!;
@@ -47,6 +68,33 @@ const markerMode = params.get("marker");
 head.style.height = `${HEAD}px`;
 head.style.fontSize = `${Math.round(HEAD * 0.6)}px`;
 head.style.lineHeight = `${HEAD}px`;
+// The song's name stops short of the buttons.
+head.style.paddingRight = `${HEAD * 7 + 40}px`;
+for (const b of document.querySelectorAll<HTMLElement>("#tools div")) {
+  Object.assign(b.style, { height: `${HEAD - 3}px`, lineHeight: `${HEAD - 3}px`, fontSize: `${Math.round(HEAD * 0.5)}px` });
+}
+
+/** The note size (see flow.ts): staff lines this many px apart. */
+const staff = parseStaffPx(params.get("staff")) ?? DEFAULT_STAFF_PX;
+
+/** Reload with an option changed (null drops it); the relay renders the pages for it. */
+function reloadWith(name: string, value: string | null): void {
+  const q = new URLSearchParams(location.search);
+  if (value === null) q.delete(name);
+  else q.set(name, value);
+  location.replace(`${location.pathname}?${q.toString()}`);
+}
+
+/** Notes a step smaller or bigger. */
+function resize(step: number): void {
+  const next = staff + step;
+  if (parseStaffPx(String(next)) !== null) reloadWith("staff", String(next));
+}
+
+/** The next way to hold the Kindle (upright, turned left, turned right): the page reloads laid out for it. */
+function rotateNext(): void {
+  reloadWith("rotate", rotation === null ? "left" : rotation === "left" ? "right" : null);
+}
 
 /** A pane on screen: its images, its marker, and the page it shows. */
 interface Shown {
@@ -90,8 +138,8 @@ function showPage(s: Shown, p: number): void {
 /** Invert what's playing on the pane's page, and fill a figure run's pass bar. */
 function light(s: Shown): void {
   const marks = s.pane.pages[s.page]?.marks ?? [];
-  // A part's chart follows the bar actually playing; words and chords light a little early.
-  const at = s.pane.kind === "figures" || s.pane.kind === "score" ? beat : beat + lookahead;
+  // A part's bar lights just ahead of the music, to allow for the redraw; words and chords a beat ahead.
+  const at = s.pane.kind === "figures" || s.pane.kind === "score" ? beat + barLead : beat + lookahead;
   const i = manual || markerMode === "0" ? -1 : markAt(marks, at);
   const m = marks[i];
   if (!m) {
@@ -99,13 +147,15 @@ function light(s: Shown): void {
     s.passBar.style.display = "none";
     return;
   }
+  // In a figure run, the bar playing; otherwise the whole mark.
+  const b = boxAt(m, at);
   if (markerMode === "bar") {
-    Object.assign(s.marker.style, { left: "0", top: `${m.y}px`, width: "14px", height: `${m.h}px` });
+    Object.assign(s.marker.style, { left: "0", top: `${b.y}px`, width: "14px", height: `${b.h}px` });
   } else {
-    Object.assign(s.marker.style, { left: `${m.x - 4}px`, top: `${m.y - 4}px`, width: `${m.w + 8}px`, height: `${m.h + 8}px` });
+    Object.assign(s.marker.style, { left: `${b.x - 4}px`, top: `${b.y - 4}px`, width: `${b.w + 8}px`, height: `${b.h + 8}px` });
   }
   s.marker.style.display = "block";
-  const pass = passOf(m, beat);
+  const pass = passOf(m, at);
   if (pass && pass.of > 1) {
     Object.assign(s.passBar.style, { left: `${m.x}px`, top: `${m.y + m.h + 6}px`, width: `${(m.w * pass.pass) / pass.of}px` });
     s.passBar.style.display = "block";
@@ -144,14 +194,20 @@ function follow(): void {
 async function loadDeck(): Promise<void> {
   const gen = ++generation;
   say("Loading pages…");
-  const passOn = ["font", "channels"].filter((k) => params.has(k)).map((k) => `&${k}=${encodeURIComponent(params.get(k)!)}`);
+  const passOn = params.has("font") ? [`&font=${encodeURIComponent(params.get("font")!)}`] : [];
+  passOn.push(`&staff=${staff}`);
+  if (params.has("channel")) passOn.push(`&channels=${encodeURIComponent(params.get("channel")!)}`);
   for (const [k, v] of params) if (k.endsWith(".rows")) passOn.push(`&${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
   const q = `/eink/deck?w=${W}&h=${H - HEAD}&dpr=${DPR}` + passOn.join("");
   let next: EinkDeck;
   let song: { title?: string; display?: { sections?: { name: string; startBeat: number }[] } } = {};
   try {
     const [res, songRes] = await Promise.all([fetch(q), fetch("/song.json")]);
-    if (res.status === 404) return say("Waiting for a song…");
+    // The song may lack this page's channel, which the relay names.
+    if (res.status === 404) {
+      const missing = await res.json().then((b: { error?: string }) => (b.error?.startsWith("This song has no") ? b.error : null), () => null);
+      return say(missing ? missing + " Open /eink to pick another." : "Waiting for a song…");
+    }
     if (!res.ok) return say(`Couldn't load pages (${res.status}).`);
     next = await res.json();
     if (songRes.ok) song = await songRes.json();
@@ -286,8 +342,10 @@ setInterval(() => checkAwake(false), 15_000);
 // top strip only keeps the screen awake), horizontal swipes (swipe left =
 // forward), and the LIVE button.
 let down: { x: number; y: number } | null = null;
+/** Where a touch is on the page, which is turned when the Kindle is held sideways. */
+const onPage = (e: PointerEvent) => screenToPage(rotation, e.clientX, e.clientY, screenW, screenH);
 document.addEventListener("pointerdown", (e) => {
-  down = { x: e.clientX, y: e.clientY };
+  down = onPage(e);
   lastTouch = Date.now();
 });
 document.addEventListener("pointercancel", () => {
@@ -295,16 +353,21 @@ document.addEventListener("pointercancel", () => {
 });
 document.addEventListener("pointerup", (e) => {
   if (!down) return;
-  const dx = e.clientX - down.x;
-  const dy = e.clientY - down.y;
+  const up = onPage(e);
+  const dx = up.x - down.x;
+  const dy = up.y - down.y;
   const y = down.y;
   down = null;
   if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) turn(y, dx < 0 ? 1 : -1);
   else if (Math.abs(dx) < 20 && Math.abs(dy) < 20) {
     const id = (e.target as HTMLElement).id;
-    if (id === "awake" || awake.style.display === "block" || e.clientY < HEAD) awake.style.display = "none";
+    if (id === "pick") reloadWith("channel", null);
+    else if (id === "rotate") rotateNext();
+    else if (id === "smaller") resize(-1);
+    else if (id === "bigger") resize(1);
+    else if (id === "awake" || awake.style.display === "block" || up.y < HEAD) awake.style.display = "none";
     else if (id === "live") goLive();
-    else turn(y, e.clientX < W / 3 ? -1 : 1);
+    else turn(y, up.x < W / 3 ? -1 : 1);
   }
 });
 

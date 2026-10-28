@@ -8,7 +8,7 @@ When the user provides a full mix (MP3, WAV, etc.) and wants stems:
 .claude/skills/clickbait/bin/clickbait-audio split "<audio-file>" --output-dir "songs/<group>/<artist-slug>/<song-slug>/stems" --model 4stem
 ```
 
-**Always split into the song's project directory** (`songs/<group>/<artist-slug>/<song-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the manifest.
+**Always split into the song's project directory** (`songs/<group>/<artist-slug>/<song-slug>/stems/`), not `/tmp` or any other location. The stems will be used as audio tracks in REAPER, so they need to live alongside the manifest. `split` writes FLAC, which REAPER reads directly. Older WAV stems convert with `npx tsx scripts/flac-stems.ts <folder>`.
 
 Models: `4stem` (default — vocals, drums, bass, other), `6stem` (vocals, drums, bass, guitar, piano, other — use when piano/guitar separation is needed), `finetune` (best quality 4-stem, slower). The model auto-downloads on first use (~84-333 MB, cached).
 
@@ -22,7 +22,7 @@ The main skill's Step 2 (analyze) covers this; the short version:
 
 2. **Vocals stem -> forced alignment** (when Genius lyrics are available — the normal case):
    ```bash
-   .claude/skills/clickbait/bin/clickbait-audio align "<dir>/<song>_vocals.wav" --text "<lyrics.txt>"
+   .claude/skills/clickbait/bin/clickbait-audio align "<dir>/<song>_vocals.flac" --text "<lyrics.txt>"
    ```
    Writes `<song>_vocals.align.json` with word + character timings. Uses wav2vec2 CTC — cannot hallucinate, handles long instrumental passages cleanly. Falls back to Whisper `transcribe` only if no lyrics can be fetched.
 
@@ -70,7 +70,7 @@ What to do about it:
   at **double the BPM window** so the tracker follows the eighth grid (dense
   evidence — it can't slip), then fold down and pick the side:
   ```bash
-  clickbait-audio beats stems/source_drums.wav --min-bpm 190 --max-bpm 225 --start <drum entry> > detected.beats.json
+  clickbait-audio beats stems/source_drums.flac --min-bpm 190 --max-bpm 225 --start <drum entry> > detected.beats.json
   npx tsx src/authoring/fold-beats-cli.ts detected.beats.json --phase 1 > folded.beats.json
   ```
   `--phase 0|1` chooses which alternate eighths are the beats. If the click
@@ -130,7 +130,7 @@ Once confirmed:
     "kind": "audio-group",
     "curveRef": "recording",
     "dir": "stems/",
-    "files": { "vocals": "source_vocals.wav", "drums": "source_drums.wav", "bass": "source_bass.wav", "other": "source_other.wav" },
+    "files": { "vocals": "source_vocals.flac", "drums": "source_drums.flac", "bass": "source_bass.flac", "other": "source_other.flac" },
     "soffs": 0.164
   }
   ```

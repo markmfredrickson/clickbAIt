@@ -37,6 +37,12 @@
      (or the top strip) keeps the screen awake without turning the page. */
   #awake { position: absolute; left: 0; top: 0; width: 100%; box-sizing: border-box; padding: 20px 24px;
            background: #000; color: #fff; font: bold 36px/1.25 Arial, sans-serif; text-align: center; display: none; }
+  /* Buttons in the top strip: PICK, back to the channel picker; smaller and bigger notes;
+     and TURN, which turns the page a quarter for holding the Kindle sideways (upright,
+     left, right). */
+  #tools { position: absolute; right: 30px; top: 0; z-index: 2; display: flex; }
+  #tools div { padding: 0 14px; background: #fff; color: #000; border-left: 3px solid #000;
+               font-family: Arial, sans-serif; font-weight: bold; box-sizing: border-box; }
   /* Empty circle = not connected to the relay. */
   #dot { position: absolute; right: 6px; top: 6px; width: 14px; height: 14px; border: 3px solid #000;
          border-radius: 50%; display: none; }
@@ -47,6 +53,7 @@
 <div id="stage"></div>
 <div id="msg">Connecting…</div>
 <div id="dot"></div>
+<div id="tools"><div id="pick">PICK</div><div id="smaller">&minus;</div><div id="bigger">+</div><div id="rotate">TURN</div></div>
 <div id="live">LIVE</div>
 <div id="awake">Tap here to keep the screen awake</div>
 <script src="eink.js"></script>

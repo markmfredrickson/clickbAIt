@@ -7,8 +7,7 @@
 
 import type { FigureRow, RowChannel, RowDocument, ScoreRow } from "../rows.js";
 import type { Mark } from "../eink/layout.js";
-import { channelView, fitRows, placeDrawing, type ChannelView } from "./pane-view.js";
-import { drawingKey } from "../drawings.js";
+import { flowView, type ChannelView } from "./pane-view.js";
 import { cardView, fitCard, type CardSong } from "./card-view.js";
 
 interface Drawn {
@@ -21,28 +20,22 @@ let drawn: Drawn[] = [];
 const work = () => document.getElementById("work")!;
 const stage = () => document.getElementById("stage")!;
 
-/** Draw each channel's rows, with the notation the rows carry. */
-async function setup(doc: RowDocument): Promise<void> {
+/**
+ * Draw each channel's rows, with the notation the rows carry, flowed to the
+ * screen's width with no row taller than `maxRowHeight` (see flowView).
+ * Returns each channel's rows as flowed, which the panes page by.
+ */
+async function setup(doc: RowDocument, maxRowHeight: number): Promise<{ start: number }[][]> {
   work().innerHTML = "";
-  drawn = doc.channels.map((channel) => {
-    const view = channelView(channel);
-    const pane = document.createElement("div");
-    pane.className = `pane pane-${channel.kind}`;
-    for (const r of view.rows) pane.appendChild(r.el);
-    work().appendChild(pane);
-    return { channel, view };
-  });
-  for (const d of drawn) {
-    const drawings = doc.notation?.[d.channel.id] ?? {};
-    for (const t of d.view.notation) {
-      const drawing = drawings[drawingKey(t.start, t.count)];
-      if (drawing) placeDrawing(t, drawing, drawing.svg);
-    }
-  }
   // The music font must be in before anything is measured.
   await document.fonts.ready;
-  // Notation wider than the screen is scaled down to fit.
-  for (const d of drawn) fitRows(d.view);
+  drawn = doc.channels.map((source) => {
+    const pane = document.createElement("div");
+    pane.className = `pane pane-${source.kind}`;
+    work().appendChild(pane);
+    return flowView(source, doc.notation?.[source.id] ?? {}, (rows) => pane.replaceChildren(...rows), maxRowHeight);
+  });
+  return drawn.map((d) => d.channel.rows.map((r) => ({ start: r.start })));
 }
 
 /** The height of the tallest of these pages of pane `i`. */
@@ -51,6 +44,11 @@ function measure(i: number, pages: readonly { first: number; last: number }[]): 
   let height = 0;
   for (const p of pages) height = Math.max(height, rows[p.last].offsetTop + rows[p.last].offsetHeight - rows[p.first].offsetTop);
   return height;
+}
+
+/** Each row's height in pane `i`, for pages that hold as many rows as fit. */
+function rowHeights(i: number): number[] {
+  return drawn[i].view.rows.map((r) => r.el.offsetHeight);
 }
 
 /**
@@ -66,8 +64,13 @@ function show(i: number, page: { first: number; last: number }, height: number, 
   const origin = s.getBoundingClientRect();
   const marks: Mark[] = [];
   const box = (el: Element) => {
-    const r = el.getBoundingClientRect();
-    return { x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height };
+    // A run has no box of its own (its bars flow in the row): it spans what's in it.
+    const shown = el.classList.contains("figure-run") ? [...el.children].filter((c) => c.getClientRects().length) : [el];
+    const rs = shown.map((e) => e.getBoundingClientRect());
+    if (!rs.length) return { x: 0, y: 0, w: 0, h: 0 };
+    const left = Math.min(...rs.map((r) => r.left)), top = Math.min(...rs.map((r) => r.top));
+    const right = Math.max(...rs.map((r) => r.right)), bottom = Math.max(...rs.map((r) => r.bottom));
+    return { x: left - origin.left, y: top - origin.top, w: right - left, h: bottom - top };
   };
   const placed: HTMLElement[] = [];
   for (let r = page.first; r <= page.last; r++) {
@@ -88,7 +91,12 @@ function show(i: number, page: { first: number; last: number }, height: number, 
       if (chartRow.type === "figures") {
         const runs = el.querySelectorAll(".figure-run");
         chartRow.items.forEach((run, j) => {
-          if (runs[j]) marks.push({ ...box(runs[j]), start: run.start, end: run.end, count: run.count, passBeats: run.phraseBeats });
+          if (!runs[j]) return;
+          // A box over each bar of the run, so the bar playing lights; a bar with no score lights the run.
+          const pieces = [...runs[j].querySelectorAll(".bar-piece")];
+          let next = 0;
+          const bars = run.scoreBars.map((b) => (b !== null && pieces[next] ? box(pieces[next++]) : box(runs[j])));
+          marks.push({ ...box(runs[j]), start: run.start, end: run.end, count: run.count, passBeats: run.phraseBeats, bars, barBeats: run.barBeats });
         });
       } else {
         const bars = el.querySelectorAll(".score-bar");
@@ -112,4 +120,5 @@ function card(doc: RowDocument, song: CardSong, shown: string[], role: string | 
   fitCard(c);
 }
 
-(window as unknown as { einkPage: unknown }).einkPage = { setup, measure, show, card };
+(window as unknown as { einkPage: unknown }).einkPage = { setup, measure, rowHeights, show, card };
+

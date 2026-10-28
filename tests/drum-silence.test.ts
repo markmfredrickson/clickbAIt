@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { silentSpans } from "../src/core/drum-silence.js";
+import { resolve } from "node:path";
+import { readMonoAudio, silentSpans } from "../src/core/drum-silence.js";
 
 const RATE = 8000;
 
@@ -54,5 +55,18 @@ describe("silentSpans", () => {
     const quiet = stem(10, [[0, 4], [7, 10]], 0.5, 0.1);
     const mixed = loud.map((v, i) => v + quiet[i]);
     expect(silentSpans(mixed, RATE)).toEqual([]);
+  });
+});
+
+describe("readMonoAudio", () => {
+  it("reads a FLAC stem as the same samples as the WAV it came from", () => {
+    const dir = resolve(import.meta.dirname, "fixtures/stems");
+    const wav = readMonoAudio(resolve(dir, "pad.wav"));
+    const flac = readMonoAudio(resolve(dir, "pad.flac"));
+    expect(flac.sampleRate).toBe(wav.sampleRate);
+    expect(flac.samples.length).toBe(wav.samples.length);
+    let worst = 0;
+    for (let i = 0; i < wav.samples.length; i++) worst = Math.max(worst, Math.abs(flac.samples[i] - wav.samples[i]));
+    expect(worst).toBeLessThan(1e-6);
   });
 });

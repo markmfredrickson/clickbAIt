@@ -1,7 +1,7 @@
 /**
  * The relay's e-ink endpoints.
  *
- *   GET /eink/deck?w=&h=&dpr=[&font=][&channels=drums,lyrics][&<channel>.rows=N]
+ *   GET /eink/deck?w=&h=&dpr=[&font=][&staff=][&channels=drums,lyrics][&<channel>.rows=N]
  *                                      the current song's panes at that size
  *   GET /eink/pages/<key>/<file>.png   a rendered page
  *
@@ -16,6 +16,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import type { RowDocument } from "../rows.js";
 import { resolveChannels, selectChannels } from "../rows.js";
+import { parseStaffPx } from "../flow.js";
 import type { EinkDeck } from "./layout.js";
 import type { RenderOptions, RenderSize, Rendered } from "./render.js";
 
@@ -47,7 +48,7 @@ export interface EinkRoutesOptions {
 }
 
 // Bump when the page design changes, so cached decks are re-rendered.
-const RENDER_VERSION = 17;
+const RENDER_VERSION = 19;
 
 const MAX_ROWS = 50;
 
@@ -66,10 +67,12 @@ function parseSize(q: URLSearchParams): RenderSize | null {
   const height = Math.round(Number(q.get("h")));
   const dpr = Number(q.get("dpr") ?? 1);
   const font = q.get("font") ? Math.round(Number(q.get("font"))) : undefined;
+  const staff = q.has("staff") ? parseStaffPx(q.get("staff")) : undefined;
+  if (staff === null) return null;
   const ok = (n: number, lo: number, hi: number) => Number.isFinite(n) && n >= lo && n <= hi;
   if (!ok(width, 200, 4000) || !ok(height, 200, 4000) || !ok(dpr, 0.5, 4)) return null;
   if (font !== undefined && !ok(font, 8, 200)) return null;
-  return { width, height, dpr, ...(font !== undefined ? { fontPx: font } : {}) };
+  return { width, height, dpr, ...(font !== undefined ? { fontPx: font } : {}), ...(staff !== undefined ? { staffPx: staff } : {}) };
 }
 
 /**
@@ -154,8 +157,13 @@ export function createEinkRoutes(opts: EinkRoutesOptions): (req: IncomingMessage
         json(res, 400, { error: "bad size" });
         return true;
       }
+      const view = parseView(url.searchParams, cur.rows);
+      if (!view.channels.length) {
+        json(res, 404, { error: `This song has no ${url.searchParams.get("channels")} part.` });
+        return true;
+      }
       try {
-        json(res, 200, await deckFor(cur, cur.rows, size, parseView(url.searchParams, cur.rows)));
+        json(res, 200, await deckFor(cur, cur.rows, size, view));
       } catch (err) {
         console.error(`  ✗ e-ink render failed: ${err instanceof Error ? err.message : err}`);
         json(res, 500, { error: "render failed" });

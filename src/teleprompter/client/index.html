@@ -15,6 +15,9 @@
     <div id="header-bar">
       <h1 id="now"><span id="song-title"></span><span id="now-section"></span></h1>
       <div id="bar-beat" title="Bar (of the section's bars) : beat">–</div>
+      <!-- Two panes: turn the split, and trade the panes' places. -->
+      <button id="flip-btn" class="layout-btn" hidden></button>
+      <button id="swap-btn" class="layout-btn" hidden></button>
       <button id="drawer-btn" title="Display settings" aria-label="Display settings" aria-controls="drawer" aria-expanded="false">⚙</button>
     </div>
     <!-- Practice bundles only: play, the mix, a section loop and the speed. -->
@@ -50,7 +53,7 @@
       <span>Display</span>
       <button id="drawer-close" aria-label="Close">✕</button>
     </div>
-    <!-- Channel checkboxes, then settings for each channel that's on; built by the client. -->
+    <!-- What each pane shows; built by the client. -->
     <div id="drawer-channels"></div>
     <section class="drawer-section">
       <h2>Reading</h2>
@@ -73,6 +76,7 @@
 
   <!-- Before a song: its notes for this screen and the parts' opening figures. -->
   <div id="card" hidden></div>
+  <!-- One pane, or two split by a divider, laid out by the URL. -->
   <main id="panes"></main>
 
   <footer id="status-bar">

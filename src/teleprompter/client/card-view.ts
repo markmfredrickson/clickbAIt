@@ -1,16 +1,15 @@
 /**
  * The card before a song, as page elements, for the web prompter and the
- * e-ink renderer alike: the song, its key and tempo, this screen's notes
- * (see card.ts), and for each part on screen a reminder of what it plays:
- * its opening (a chart-style part's first run, a score-style part's first
- * row), drawn with the notation the rows carry.
+ * e-ink renderer alike: the song, its key and tempo, its form (each section
+ * and its bars), this screen's notes (see card.ts), and for each part on
+ * screen a reminder of what it plays: its opening (a chart-style part's first
+ * run, a score-style part's first row), drawn with the notation the rows carry.
  */
 
 import type { FigureRow, RowChannel, RowDocument, ScoreRow } from "../rows.js";
 import { channelTitle } from "../rows.js";
-import { notesFor } from "../card.js";
-import { drawingKey } from "../drawings.js";
-import { channelView, fitTogether, placeDrawing } from "./pane-view.js";
+import { notesFor, songForm } from "../card.js";
+import { channelView, fitTogether, placeNotation } from "./pane-view.js";
 
 export interface CardSong {
   title: string;
@@ -33,6 +32,15 @@ export function cardView(doc: RowDocument, song: CardSong, shown: readonly strin
   const facts = [song.artist, song.key ? `Key: ${song.key}` : undefined, song.bpm ? `${Math.round(song.bpm)} BPM` : undefined].filter(Boolean);
   if (facts.length) card.appendChild(el("div", "card-facts", facts.join(" · ")));
 
+  const form = songForm(doc.sections);
+  if (form.length) {
+    const list = card.appendChild(el("div", "card-form"));
+    for (const s of form) {
+      const item = list.appendChild(el("span", "card-section", s.name));
+      item.appendChild(el("span", "card-section-bars", String(s.bars)));
+    }
+  }
+
   const channels = shown.flatMap((id) => doc.channels.filter((c) => c.id === id));
   for (const note of notesFor(doc.card?.notes ?? [], channels, role)) {
     const n = el("div", "card-note" + (note.for === "banter" ? " banter" : ""));
@@ -47,11 +55,7 @@ export function cardView(doc: RowDocument, song: CardSong, shown: readonly strin
     const part = el("div", `card-figure pane-${channel.kind}`);
     part.appendChild(el("div", "card-figure-for", channelTitle(channel)));
     const view = channelView(figure);
-    const drawn = doc.notation?.[channel.id] ?? {};
-    for (const t of view.notation) {
-      const d = drawn[drawingKey(t.start, t.count)];
-      if (d) placeDrawing(t, d, d.svg);
-    }
+    placeNotation(view, doc.notation?.[channel.id] ?? {});
     part.appendChild(view.rows[0].el);
     card.appendChild(part);
   }

@@ -65,18 +65,17 @@ The config sends: TIME, BEAT, TEMPO, PLAY, STOP, PAUSE, REPEAT, LAST_MARKER, LAS
 
 ## Browser client
 
-- **`/`** — join page: one QR code to the picker, and the picker's choices for the laptop
-- **`/pick`** — the picker: each person chooses what their screen shows (Lyrics, Chords, Chords + lyrics and Drums + lyrics as split screens, the e-ink choices, Custom)
-- **`/prompt`** — the teleprompter (`/lyrics` still works). It shows one view (lyrics, chords, or one part). Its options live in the URL, so a setup is a link: `/prompt?view=drums&drums=1.4&offset=1&scroll=manual&theme=light`. Changing a setting in the drawer rewrites the URL.
-- **`/split`** — two to four views tiled in frames, for a tablet that can't arrange windows: `/split?view=drums&view=lyrics&at=60` (`at` is where each divider sits, in percent of the screen). Stacked in portrait, side by side in landscape; dragging a divider rewrites `at`. Every other option passes through to each frame.
-- **`/eink`** — panes as page images for an e-ink browser (Kindle), rendered by the relay in headless Chrome: `/eink?channels=drums,lyrics&drums.rows=2`. The last pane fills the screen unless given rows.
+- **`/`** — join page: one QR code to the picker, the e-ink address as text (a Kindle has no camera), and the picker's choices for the laptop
+- **`/pick`** — the picker: each person chooses their screen's layout (one pane, two side by side, two stacked); each empty pane then offers the song's channels
+- **`/prompt`** — the teleprompter (`/lyrics` still works). It shows one pane, or two split by a divider, under one header. Its layout and options live in the URL, so a setup is a link: `/prompt?panes=2&split=vertical&view=drums&view=lyrics&at=60&offset=1&scroll=manual&theme=light`. A vertical split has a vertical divider (panes side by side); horizontal stacks them. `view` fills the panes in order; `at` is where the divider sits, in percent. The header's buttons flip the split and swap the panes, dragging the divider rewrites `at`, and the drawer has a section per pane. Old `/split` links redirect here.
+- **`/eink`** — one channel as page images for an e-ink browser (Kindle), rendered by the relay in headless Chrome: `/eink?channel=drums&drums.rows=2`. The pane fills the screen unless given rows. Without one `channel`, `/eink` is a page of links, one per channel of the song playing.
 - **`/control`** — the bail bar, for whoever runs the show; not offered on the picker
 - **`/songs`** — JSON list of available song slugs
 
 Features:
 - Header shows only what matters during playback: song, section, and `(bar : beat) of <bars in the section>`. The footer shows the song bar (`m45:2`), as REAPER counts measures.
-- The page shows one channel (lyrics, chords, or a part charted from a score file); the ⚙ drawer picks which, and sets its size and rows. For more than one at once, use `/split`, or a Chrome window per view.
-- A page fills the window: it holds as many rows as fit, unless the drawer (or `<channel>.rows`) sets a number, and turns all of them at once as its bottom row starts, so that row moves to the top, still lit. Lyric rows are sung lines, chord rows are `barsPerRow` bars (manifest; 4 by default), a chart-style part's rows are a section written as snippets (`A×8 B`), and a score-style part's rows are `barsPerRow` drawn bars. Section names appear only in the header.
+- Each pane shows one channel (lyrics, chords, or a part charted from a score file). A pane whose channel the song lacks says so and offers the others; it never shows another channel by itself.
+- The page is exactly one screen and never scrolls. A pane holds as many rows as fit its box and turns all of them at once as its bottom row starts, so that row moves to the top, still lit. Lyric rows are sung lines, chord rows are `barsPerRow` bars (manifest; 4 by default), a chart-style part's rows are a section written as snippets (`A×8 B`), and a score-style part's rows are `barsPerRow` drawn bars. Section names appear only in the header.
 - What the panes show comes from the build's `<slug>.rows.json` (served at `/rows.json`); a song built before rows files gets its rows laid out from its lyrics display.
 - Manual scroll lets the reader scroll freely, and so does a stopped track; playing again goes back to the page being played
 - Before a song, a card covers the panes while it's at its start (it goes once playback moves into the count-in): the song, key and tempo, its notes for this screen (manifest `notes`; `?role=guitar` asks for a part's notes), and a reminder of what each shown part plays (a chart's figures by letter, a score's opening row)

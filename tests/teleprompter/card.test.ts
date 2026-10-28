@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseNotes, notesFor, cardShowing } from "../../src/teleprompter/card.js";
-import type { RowChannel } from "../../src/teleprompter/rows.js";
+import { parseNotes, notesFor, cardShowing, songForm } from "../../src/teleprompter/card.js";
+import type { RowChannel, RowSection } from "../../src/teleprompter/rows.js";
 
 describe("parseNotes", () => {
   it("reads each heading's text, up to the next heading", () => {
@@ -63,5 +63,30 @@ describe("cardShowing", () => {
     expect(cardShowing(-7.4, -8)).toBe(false);
     expect(cardShowing(0, -8)).toBe(false);
     expect(cardShowing(100, -8)).toBe(false);
+  });
+});
+
+describe("songForm", () => {
+  const section = (name: string, bars: number, start: number): RowSection => ({ name, bars, beatsPerBar: 4, start, end: start + bars * 4 });
+
+  it("lists each section's name and bars, in song order", () => {
+    const sections = [section("Intro", 18, 0), section("Verse 1", 16, 72), section("Pre-Chorus", 8, 136)];
+    expect(songForm(sections)).toEqual([
+      { name: "Intro", bars: 18 },
+      { name: "Verse 1", bars: 16 },
+      { name: "Pre-Chorus", bars: 8 },
+    ]);
+  });
+
+  it("keeps a section that comes back as its own entry", () => {
+    const sections = [section("Pre-Chorus", 8, 0), section("Chorus 1", 16, 32), section("Pre-Chorus", 8, 96)];
+    expect(songForm(sections).map((s) => s.name)).toEqual(["Pre-Chorus", "Chorus 1", "Pre-Chorus"]);
+  });
+
+  it("leaves out a section with no bars", () => {
+    expect(songForm([section("Intro", 4, 0), section("Ending", 0, 16), section("Ring Out", 6, 16)])).toEqual([
+      { name: "Intro", bars: 4 },
+      { name: "Ring Out", bars: 6 },
+    ]);
   });
 });

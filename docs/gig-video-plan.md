@@ -124,3 +124,15 @@ I compared the live aligned words with the show-track words for every song. The 
   - **Model change:** treat the gap as piecewise steady instead of one offset plus a bail. Use show-track timing inside each steady stretch, and live alignment only where the gap keeps drifting, which is where the click was really killed. Find the steady stretches line by line or section by section.
   - **Cut start:** beat 0 of the first steady stretch.
   - **Cut end:** the last steady stretch's song end when the song finishes on the click; otherwise where the band stops.
+
+## Plan, revised 2026-10-27 late: a live beat map
+
+Mark's direction: run beat detection on what was played to get a live time map, then connect the ideal (show-track, beat-keyed) timing to it. This replaces both the single offset and the piecewise offset.
+
+1. **Live beats.** Run demucs `split` on the board recording over each song's span, then run `beats` on the drum stem, with the tempo window close to the manifest's bpm (±2.5% worked best before). Where the drum stem is silent, merge in full-mix beats with the existing `unify-beats` step. The output is `work/<key>.live-beats.json`, live beat times in video seconds. Song 01 has phone audio only, so it splits the phone's own sound.
+2. **Connect show-track beats to live beats.** The paired words (show-track beat against live time) are the anchors. Each anchor snaps to its nearest live beat, which gives pairs of show beat and live beat index. Between anchors, beats advance one for one. Where consecutive anchors disagree on the difference, the band repeated or skipped something, and the map jumps there. The output is a piecewise map from show beat to live beat, saved as `work/<key>.beatmap-live.json`.
+3. **Captions.** Each word's show beat goes through that map, interpolating between live beats. Songs where the click was killed still work, because the live beats follow the band.
+4. **Cuts.** `in` is the live time of show beat 0 (or of a pickup word's beat), minus 0.3 s. `out` is the live time of the last section's end plus the ring-out, then the "thank you" rule.
+5. **Checks to report per song:** how many anchors land within a quarter beat of a live beat, and where the map jumps (each jump is a likely repeat or skip, worth a listen).
+
+Test plan: still to agree with Mark.

@@ -720,6 +720,7 @@ function buildWaveItems(items: AudioItem[]): string {
 function sourceType(file: string): string {
   const ext = file.toLowerCase().split(".").pop();
   if (ext === "mp3") return "MP3";
+  if (ext === "flac") return "FLAC";
   return "WAVE";
 }
 

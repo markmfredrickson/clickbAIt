@@ -313,6 +313,17 @@ describe("buildRpp", () => {
     expect(rpp).toContain(`FILE ${padPath} 1`);
   });
 
+  it("generates SOURCE FLAC track for a FLAC stem", () => {
+    const padPath = resolve(fixturesDir, "stems", "pad.flac");
+    const s = song("Test", 120,
+      span("Intro", bars(2)),
+      audio("Pad", padPath),
+    );
+    const { rpp } = buildRpp(s, defaultOpts);
+    expect(rpp).toContain("<SOURCE FLAC");
+    expect(rpp).toContain(`FILE ${padPath} 1`);
+  });
+
   it("groups multiple audio nodes by track name", () => {
     const guitarsPath = resolve(fixturesDir, "stems", "guitars.wav");
     const bassPath = resolve(fixturesDir, "stems", "bass.wav");

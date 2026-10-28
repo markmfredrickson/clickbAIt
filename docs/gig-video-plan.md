@@ -114,3 +114,7 @@ I compared the live aligned words with the show-track words for every song. The 
 - **Word lists differ** for 02 (342 live, 338 show) and 10 (212 live, 249 show), so the pairing must match text in order (longest common subsequence) rather than by index.
 - **Open question for Mark:** do these match what happened on the night? In particular, were 05, 07 and 13 played without the click? Also, does "off" ever mean a different arrangement (a repeated section) rather than a bail? That would show up as a steady gap at a new offset, which the strips above don't separate yet.
 - **Analysis scripts:** `pair.mjs`, `fit.mjs`, `local.mjs` and `strip.mjs` are session scripts in the session scratchpad. The useful parts belong in `timeline:<key>`.
+- **Mark, 2026-10-27:** the band did kill the click on several songs, which confirms the strips. What this means for the plan:
+  - **Captions:** show-track timing covers only the on-click stretches, which are mostly openings. The rest of each song needs the live alignment to be good, so the desilence remap fix is no longer parked: it comes first.
+  - **Cut start:** use beat 0 when a song starts on the click (01, 02, 03, 04, 09, 11, 12, and maybe 08). Otherwise use where the band starts.
+  - **Cut end:** use where the band stops for any song that bailed. That is most songs.

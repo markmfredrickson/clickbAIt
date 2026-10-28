@@ -86,3 +86,31 @@ Each song's `lyrics-display.json` (a build output in the song folder) gives ever
 - **Worktree link:** the gig's package.json reaches song manifests through the worktree. So `~/Code/clickbAIt-gig-sync/songs/deermouse` must be a symlink to `~/Code/clickbAIt/songs/deermouse`; renders fail without it. Unlink it before removing the worktree.
 - **Review page:** run `npx http-server@14.1.1 -p 8642 -s -c-1 .` in `renders/` and open `http://localhost:8642/review.html`. The Chrome extension can't open file:// pages.
 - **Lyrics:** keep lyric text out of chat. Handle it file to file.
+
+## Findings, 2026-10-27 evening
+
+I compared the live aligned words with the show-track words for every song. The manifests have not changed since the gig, so the show track is the one played. In each 10-word window I took the median gap (live minus show track). In the strips below, `#` means that window sits within 150 ms of the song's most common gap, and `.` means it doesn't. The time is the start of the last window.
+
+```
+01-seven-nation-army        ############..... (266s)
+02-you-cant-hurry-love      ##########.#######.............. (172s)
+03-lonely-boy               ###########......... (205s)
+04-somebody-that-i-used-to  ###################.####...#.#.. (210s)
+05-mary-janes-last-dance    ......................##.. (241s)
+06-where-is-my-mind         .#.##.##.#####... (183s)
+07-my-favorite-mistake      .............#....... (216s)
+08-wicked-game              #.#...#####...#... (233s)
+09-jumpin-jack-flash        ########.......... (220s)
+10-dont-dream-its-over      ##.................. (177s)
+11-timber                   ##..################.......##########.... (229s)
+12-pink-pony-club           ###########............................ (223s)
+13-like-a-stone             ............#...... (362s)
+```
+
+- **On the click, then off:** 01, 02, 03, 09 and 12 hold one gap to within about 20 ms, then lose it partway through. This looks like the bail.
+- **Mostly on the click:** 04 and 11.
+- **Never on this click:** 05, 07 and 13. My Favorite Mistake's gap shrinks steadily from 21 s to 3 s, so the band ran faster than the show track and kept speeding up. Like a Stone jumps by tens of seconds, and its live take (410 s) is far longer than its show track. 10 holds only at the start.
+- **Patchy:** 06 and 08. This could be alignment noise or a loose feel; it needs a listen.
+- **Word lists differ** for 02 (342 live, 338 show) and 10 (212 live, 249 show), so the pairing must match text in order (longest common subsequence) rather than by index.
+- **Open question for Mark:** do these match what happened on the night? In particular, were 05, 07 and 13 played without the click? Also, does "off" ever mean a different arrangement (a repeated section) rather than a bail? That would show up as a steady gap at a new offset, which the strips above don't separate yet.
+- **Analysis scripts:** `pair.mjs`, `fit.mjs`, `local.mjs` and `strip.mjs` are session scripts in the session scratchpad. The useful parts belong in `timeline:<key>`.

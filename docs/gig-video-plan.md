@@ -136,3 +136,11 @@ Mark's direction: run beat detection on what was played to get a live time map, 
 5. **Checks to report per song:** how many anchors land within a quarter beat of a live beat, and where the map jumps (each jump is a likely repeat or skip, worth a listen).
 
 Test plan: still to agree with Mark.
+
+## Future gigs: record timing at the show (idea, 2026-10-28)
+
+Mark wants timecode, or something like it, recorded at future shows so alignment is immediate. The options, cheapest first:
+
+1. **Log transport from the relay.** The relay already follows REAPER over OSC. It could log song, play, stop and the REAPER position against wall-clock time. That tells us which song played when, and exactly when the click was killed.
+2. **Record the board into REAPER.** The X32 card already sends live inputs 1–9 to the REAPER machine. If REAPER records them during the show, the live audio sits on the show track's own timeline: the beats on click are known exactly, with no beat detection. This replaces the separate board recording and its sync step.
+3. **Phone video.** Phones don't take timecode in easily. The video's creation time plus the relay log gives a rough place, and the existing audio sync refines it. An audible or visual slate at each song's start (a chirp in the PA, or a code on the projector) would make it immediate.

@@ -7,7 +7,7 @@
  *
  * Given a song, it reads the folder's one `*.fullmix.beats.json` and one
  * `*.drums.beats.json` (an error if there are none or several of either), and
- * the drum stem `stems/source_drums.wav`. The drum stem's silences, where the
+ * the drum stem `stems/source_drums.flac`. The drum stem's silences, where the
  * full-mix beats are used, are always printed.
  *
  * Reads two `beats` sidecars (`{ bpm?, beats: [{time, strength}] }`), merges
@@ -45,7 +45,7 @@ let fullPath: string, drumPath: string, wavPath: string, outPath: string | undef
 if (isSong(args[0])) {
   // Beats are unified before the song has a manifest, so a bare folder will do.
   const dir = statSync(args[0]).isDirectory() ? resolve(args[0]) : dirname(resolve(args[0]));
-  [fullPath, drumPath, wavPath, outPath] = [onlyOne(dir, ".fullmix.beats.json"), onlyOne(dir, ".drums.beats.json"), join(dir, "stems/source_drums.wav"), args[1]];
+  [fullPath, drumPath, wavPath, outPath] = [onlyOne(dir, ".fullmix.beats.json"), onlyOne(dir, ".drums.beats.json"), join(dir, "stems/source_drums.flac"), args[1]];
 } else if (args[0] && args[1] && args[2]) {
   [fullPath, drumPath, wavPath, outPath] = args;
 } else {

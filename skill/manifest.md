@@ -27,7 +27,7 @@ truth; the generated JSON Schema at the bottom of this doc mirrors it.
       "kind": "audio-group",
       "curveRef": "recording",
       "dir": "stems/",
-      "files": { "vocals": "source_vocals.wav", "drums": "source_drums.wav", "bass": "source_bass.wav", "other": "source_other.wav" }
+      "files": { "vocals": "source_vocals.flac", "drums": "source_drums.flac", "bass": "source_bass.flac", "other": "source_other.flac" }
     }
   },
   "songCurve": "constantBpm",

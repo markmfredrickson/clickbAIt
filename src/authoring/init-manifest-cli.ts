@@ -61,7 +61,7 @@ const rel = (p: string) =>
   outPath ? relative(dirname(resolve(outPath)), resolve(p)) : p;
 
 // Discover 4-stem/6-stem role files in the stems dir (role from the filename suffix).
-const ROLE = /_(vocals|drums|bass|other|guitar|piano)\.wav$/i;
+const ROLE = /_(vocals|drums|bass|other|guitar|piano)\.(flac|wav)$/i;
 const stemsDir = flag("stems-dir");
 let stems: ScaffoldInputs["stems"];
 if (stemsDir) {

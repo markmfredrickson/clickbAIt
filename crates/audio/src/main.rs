@@ -90,12 +90,19 @@ enum Commands {
     Split {
         /// Path to audio file
         file: String,
-        /// Output directory for stem WAV files
+        /// Output directory for stem FLAC files
         #[arg(short, long, default_value = ".")]
         output_dir: String,
         /// Model variant: 4stem, 6stem, finetune
         #[arg(short, long, default_value = "6stem")]
         model: String,
+    },
+    /// Re-encode a 16-bit WAV (such as an old stem) as FLAC, sample for sample.
+    Flac {
+        /// Path to the WAV file
+        wav: String,
+        /// Path to write the FLAC file
+        flac: String,
     },
     /// Download required models (Whisper, Piper, Demucs) to ~/.cache/clickbait/
     Setup,
@@ -229,6 +236,7 @@ fn main() -> Result<()> {
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
         Commands::Unstretch { file } => unstretch::run(&file),
         Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),
+        Commands::Flac { wav, flac } => split::wav_to_flac(std::path::Path::new(&wav), std::path::Path::new(&flac)),
         Commands::Align { file, text, output, no_trim_silence } => {
             align::run(&file, &text, output.as_deref(), !no_trim_silence)
         }

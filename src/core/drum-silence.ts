@@ -10,7 +10,12 @@
  * a single dropped bar is caught, and a one-beat rest is not.
  */
 
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+
+const BIN = resolve(import.meta.dirname, "../../.claude/skills/clickbait/bin/clickbait-audio");
 
 export interface SilenceOptions {
   /** dB below the stem's 90th-percentile frame that counts as silent. Default -35. */
@@ -54,6 +59,19 @@ export function silentSpans(samples: Float32Array, sampleRate: number, opts: Sil
   return spans;
 }
 
+/** Read any stem as mono samples. A non-WAV stem (FLAC) is decoded by `clickbait-audio wav` first. */
+export function readMonoAudio(path: string): { samples: Float32Array; sampleRate: number } {
+  if (path.toLowerCase().endsWith(".wav")) return readMonoWav(path);
+  const dir = mkdtempSync(join(tmpdir(), "clickbait-wav-"));
+  try {
+    const wav = join(dir, "decoded.wav");
+    execFileSync(BIN, ["wav", path, wav]);
+    return readMonoWav(wav);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** Read a PCM (16-bit) or float (32-bit) WAV as mono samples. */
 export function readMonoWav(path: string): { samples: Float32Array; sampleRate: number } {
   const b = readFileSync(path);
@@ -63,6 +81,8 @@ export function readMonoWav(path: string): { samples: Float32Array; sampleRate: 
     const id = b.toString("ascii", off, off + 4), size = b.readUInt32LE(off + 4);
     if (id === "fmt ") {
       format = b.readUInt16LE(off + 8);
+      // WAVE_FORMAT_EXTENSIBLE keeps the real format code at the start of its sub-format GUID.
+      if (format === 0xfffe && size >= 40) format = b.readUInt16LE(off + 8 + 24);
       channels = b.readUInt16LE(off + 10);
       sampleRate = b.readUInt32LE(off + 12);
       bits = b.readUInt16LE(off + 22);

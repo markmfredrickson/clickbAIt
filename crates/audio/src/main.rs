@@ -104,6 +104,13 @@ enum Commands {
         /// Path to write the FLAC file
         flac: String,
     },
+    /// Decode any audio file the binary reads to a 32-bit float stereo WAV.
+    Wav {
+        /// Path to the audio file
+        input: String,
+        /// Path to write the WAV file
+        output: String,
+    },
     /// Download required models (Whisper, Piper, Demucs) to ~/.cache/clickbait/
     Setup,
     /// Force-align a known transcript to audio using wav2vec2 CTC.
@@ -236,6 +243,7 @@ fn main() -> Result<()> {
         Commands::Transcribe { file, model } => transcribe::run(&file, &model),
         Commands::Unstretch { file } => unstretch::run(&file),
         Commands::Split { file, output_dir, model } => split::run(&file, &output_dir, &model),
+        Commands::Wav { input, output } => split::to_float_wav(std::path::Path::new(&input), std::path::Path::new(&output)),
         Commands::Flac { wav, flac } => split::wav_to_flac(std::path::Path::new(&wav), std::path::Path::new(&flac)),
         Commands::Align { file, text, output, no_trim_silence } => {
             align::run(&file, &text, output.as_deref(), !no_trim_silence)

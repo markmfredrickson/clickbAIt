@@ -124,6 +124,21 @@ pub fn wav_to_flac(wav: &Path, flac: &Path) -> Result<()> {
     write_flac(flac, &samples, spec.channels as usize, spec.sample_rate)
 }
 
+/// Decode any file the binary reads (FLAC, WAV, MP3, M4A) to a 32-bit float
+/// stereo WAV, for tools that read WAV only.
+pub fn to_float_wav(input: &Path, output: &Path) -> Result<()> {
+    let (left, right, sample_rate) = decode_stereo(&input.to_string_lossy())?;
+    let spec = hound::WavSpec { channels: 2, sample_rate, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
+    let mut writer = hound::WavWriter::create(output, spec)
+        .with_context(|| format!("Failed to create WAV file: {}", output.display()))?;
+    for (&l, &r) in left.iter().zip(right.iter()) {
+        writer.write_sample(l)?;
+        writer.write_sample(r)?;
+    }
+    writer.finalize()?;
+    Ok(())
+}
+
 /// Encode interleaved 16-bit samples as FLAC.
 fn write_flac(path: &Path, interleaved: &[i32], channels: usize, sample_rate: u32) -> Result<()> {
     use flacenc::component::BitRepr;

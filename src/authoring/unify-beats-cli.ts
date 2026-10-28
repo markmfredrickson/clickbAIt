@@ -18,7 +18,7 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { unifyBeats, type DetectedBeat } from "../core/unify-beats.js";
-import { readMonoWav, silentSpans } from "../core/drum-silence.js";
+import { readMonoAudio, silentSpans } from "../core/drum-silence.js";
 
 interface BeatsFile {
   bpm?: number;
@@ -56,7 +56,7 @@ if (isSong(args[0])) {
 const full = JSON.parse(readFileSync(fullPath, "utf8")) as BeatsFile;
 const drum = JSON.parse(readFileSync(drumPath, "utf8")) as BeatsFile;
 
-const { samples, sampleRate } = readMonoWav(wavPath);
+const { samples, sampleRate } = readMonoAudio(wavPath);
 const silences = silentSpans(samples, sampleRate);
 const clock = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 console.error(

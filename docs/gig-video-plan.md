@@ -144,3 +144,28 @@ Mark wants timecode, or something like it, recorded at future shows so alignment
 1. **Log transport from the relay.** The relay already follows REAPER over OSC. It could log song, play, stop and the REAPER position against wall-clock time. That tells us which song played when, and exactly when the click was killed.
 2. **Record the board into REAPER.** The X32 card already sends live inputs 1–9 to the REAPER machine. If REAPER records them during the show, the live audio sits on the show track's own timeline: the beats on click are known exactly, with no beat detection. This replaces the separate board recording and its sync step.
 3. **Phone video.** Phones don't take timecode in easily. The video's creation time plus the relay log gives a rough place, and the existing audio sync refines it. An audible or visual slate at each song's start (a chirp in the PA, or a code on the projector) would make it immediate.
+
+## Beat map progress, 2026-10-28 (late)
+
+- **Built:** `src/gig/beatmap.ts`, with tests (`tests/gig-beatmap.test.ts`). It pairs words by text, converts between times and live beat counts, splits the song into pieces of steady shift, and places show beats and words in live time.
+- **Pink Pony Club experiment** (split, live beats and pieces made by session scripts in the scratchpad):
+  - **Tempo:** the band played at exactly the show tempo, 107.1 bpm. The drum stem alone gives a clean grid of 438 beats.
+  - **Merge bug:** `unify-beats` added 29 beats in the drumless gap (2:57–3:13) on top of the drum tracker's own beats there, giving 467. Use the drum beats directly, or fix the merge.
+  - **Pieces on the drum beats** (show beat 0 is 24.96 s live):
+
+    | Shift (beats) | Show beats | Live time |
+    | --- | --- | --- |
+    | 43.94 | 3.5–110 | 26.9–86.7 s |
+    | 43.00 | 112–129 (first chorus) | 87–97 s |
+    | 41.85 | 132–253 | 98–165 s |
+    | 40.02 | 272–356 | 175–222 s |
+
+  - **Lost beats:** the band lost about 4 beats over the song, about 1 beat in the first chorus and 2 around the bridge. Either the band cut them, or the show track's word beats are off there. This needs a listen.
+  - **First 25 s:** show beat 0 lands at 25 s, but the music starts at frame 0. The opening may be free time (memory: Pink Pony Club has a rubato intro, pinned on piano), with the band joining the click later. This needs Mark's ear.
+- **Infrastructure:** merged `feature/flac-stems` into this branch, and rebuilt the worktree's binary for its `wav` and `flac` commands.
+- **Next:**
+  - the `live-beats:<key>` task (split the board span, then drum beats);
+  - the `timeline:<key>` task (pieces, then `timeline.json`);
+  - captions through `mapWords`;
+  - the automatic cut;
+  - then the real-data checks against Mark's 02 and 03 notes.

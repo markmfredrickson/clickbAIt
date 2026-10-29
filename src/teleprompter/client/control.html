@@ -53,8 +53,10 @@
     #s-next:disabled, #s-next:disabled small { color: #3b444d; }
     #s-prev { font-size: 20px; }
     #s-list { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
-    #tport { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
+    /* Play is the button people reach for, so it gets twice the width and a big label. */
+    #tport { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; border-bottom: 1px solid var(--line); }
     #tport button { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 10px 4px; }
+    #tport button[data-player="play"] { font-size: 24px; font-weight: 700; color: var(--live); padding: 18px 8px; }
     #notice { padding: 9px 14px; font-size: 12px; border-bottom: 1px solid var(--line); background: rgba(255,77,94,.15); color: var(--stop); }
     #notice[hidden] { display: none !important; }
     #setlist { position: absolute; inset: 0; background: var(--panel); display: none; overflow-y: auto; z-index: 5; }

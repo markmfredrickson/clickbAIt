@@ -26,7 +26,7 @@ import type { SongPayload, TempoPoint } from "./types.js";
 import type { LyricsDisplay, MeterSegment } from "./lyrics-display.js";
 import { toSlug } from "../core/dsongl/index.js";
 import { Curve, type Anchor } from "../core/curve.js";
-import { encode, asFloat } from "../core/osc.js";
+import { encode, asFloat, type OscArg } from "../core/osc.js";
 import { reaperDriver } from "./reaper-driver.js";
 import { stemsSend } from "./stems-hold.js";
 import { afterReport, firstAttempt, parseSongIntent, targetSong, type SongIntent } from "./song-select.js";
@@ -260,7 +260,7 @@ export function startRelay(opts: RelayOptions) {
   let playing = false;
   const control = createSocket("udp4");
 
-  function toReaper(address: string, args: (number | string | boolean)[] = []): void {
+  function toReaper(address: string, args: OscArg[] = []): void {
     const buf = encode(address, args);
     control.send(buf, reaperPort, reaperHost, (err) => {
       if (err) console.error(`  ✗ OSC → REAPER failed: ${err.message}`);

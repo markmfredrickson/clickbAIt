@@ -12,7 +12,9 @@
  */
 
 /** An OSC argument. Booleans are sent as REAPER expects them: 1.0 / 0.0 floats. */
-export type OscArg = number | string | boolean;
+export type OscArg = number | string | boolean | OscFloat;
+/** A number that goes out as float32 even when it is whole (see asFloat). */
+export interface OscFloat { f: number }
 
 /** A decoded OSC message. */
 export interface OscMessage {
@@ -50,6 +52,11 @@ export function encode(address: string, args: readonly OscArg[] = []): Buffer {
       const b = Buffer.alloc(4);
       b.writeFloatBE(a ? 1 : 0);
       bodies.push(b);
+    } else if (typeof a === "object") {
+      tags.push("f");
+      const b = Buffer.alloc(4);
+      b.writeFloatBE(a.f);
+      bodies.push(b);
     } else if (typeof a === "string") {
       tags.push("s");
       bodies.push(encodeString(a));
@@ -69,9 +76,14 @@ export function encode(address: string, args: readonly OscArg[] = []): Buffer {
   return Buffer.concat([encodeString(address), encodeString("," + tags.join("")), ...bodies]);
 }
 
-/** Force a number to be sent as a float even when it's whole (faders, /time). */
-export function asFloat(n: number): number {
-  return Number.isInteger(n) ? n + Number.EPSILON : n;
+/**
+ * Force a number to be sent as a float even when it's whole (faders, /time,
+ * mutes). It is marked rather than nudged: adding a tiny fraction to keep it
+ * off the int path turned 0 into 2e-16, which REAPER read as "on", so every
+ * unmute arrived as a mute.
+ */
+export function asFloat(n: number): OscFloat {
+  return { f: n };
 }
 
 /**

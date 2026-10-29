@@ -48,6 +48,12 @@ describe("osc encode/decode", () => {
     expect(decodeMessage(encode("/repeat", [false]))!.args[0]).toBeCloseTo(0, 6);
   });
 
+  it("asFloat sends zero as an exact 0.0 float, so REAPER reads 'off'", () => {
+    const buf = encode("/track/1/mute", [asFloat(0)]);
+    expect(buf.includes(Buffer.from(",f", "ascii"))).toBe(true);
+    expect(decodeMessage(buf)!.args[0]).toBe(0);
+  });
+
   it("asFloat keeps a whole number off the int path", () => {
     // A bare 1 encodes as int; asFloat(1) must encode as float, because REAPER
     // rejects an int where it wants a float (faders, /time).

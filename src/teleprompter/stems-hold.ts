@@ -13,3 +13,12 @@ export function stemsSend(
   if (held === undefined) return { held: undefined };
   return { mute: held, held: undefined };
 }
+
+/**
+ * Whether to send REAPER's /repeat to reach `want`. /repeat is a toggle (a 1
+ * flips it, a 0 does nothing), so it goes out only when the state REAPER last
+ * reported differs. Unreported counts as off, REAPER's default.
+ */
+export function repeatToggle(known: boolean | undefined, want: boolean): boolean {
+  return (known ?? false) !== want;
+}

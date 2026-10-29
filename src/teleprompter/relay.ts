@@ -28,7 +28,7 @@ import { toSlug } from "../core/dsongl/index.js";
 import { Curve, type Anchor } from "../core/curve.js";
 import { encode, asFloat, type OscArg } from "../core/osc.js";
 import { reaperDriver } from "./reaper-driver.js";
-import { stemsSend } from "./stems-hold.js";
+import { stemsSend, repeatToggle } from "./stems-hold.js";
 import { playbackTracks, type PlaybackTrack } from "./rpp-tracks.js";
 import { afterReport, firstAttempt, parseSongIntent, targetSong, type SongIntent } from "./song-select.js";
 import {
@@ -263,6 +263,13 @@ export function startRelay(opts: RelayOptions) {
   const trackMuted = new Map<number, boolean>();
   /** The Stems folder's mute from before a bail, put back on the way out. */
   let stemsHeld: boolean | undefined;
+  /** REAPER's repeat as it last reported it (/repeat is a toggle, so this matters). */
+  let repeatOn: boolean | undefined;
+  function setRepeat(want: boolean): void {
+    if (!repeatToggle(repeatOn, want)) return;
+    toReaper("/repeat", [asFloat(1)]);
+    repeatOn = want;
+  }
   /** The showing song's playable tracks, read from its .RPP, for the mute buttons. */
   let tracks: PlaybackTrack[] = [];
 
@@ -338,7 +345,7 @@ export function startRelay(opts: RelayOptions) {
       toReaper("/loop/start/time", [asFloat(beatsToSeconds(effect.loopBeats.from, currentSong))]);
       toReaper("/loop/end/time", [asFloat(beatsToSeconds(effect.loopBeats.to, currentSong))]);
     }
-    if (effect.repeat !== undefined) toReaper("/repeat", [asFloat(effect.repeat ? 1 : 0)]);
+    if (effect.repeat !== undefined) setRepeat(effect.repeat);
     if (effect.stems !== undefined) {
       const r = stemsSend(effect.stems, stemsHeld, trackMuted.get(trackOf.stems));
       stemsHeld = r.held;
@@ -452,7 +459,7 @@ export function startRelay(opts: RelayOptions) {
     void loadTracks(entry.filePath);
     console.log(`  Switched to: ${entry.payload.title}${entry.payload.artist ? ` — ${entry.payload.artist}` : ""}`);
     // A new song never inherits a vamp's repeat from the last one.
-    if (showState.mode === "following" || showState.mode === "stopped") toReaper("/repeat", [asFloat(0)]);
+    if (showState.mode === "following" || showState.mode === "stopped") setRepeat(false);
     broadcast(JSON.stringify({ type: "song-changed", slug }));
   }
 
@@ -953,6 +960,8 @@ export function startRelay(opts: RelayOptions) {
           }
         } else if (parsed.address === "/beat") {
           onPosition(parsed.value);
+        } else if (parsed.address === "/repeat") {
+          repeatOn = parsed.value > 0.5;
         } else if (/^\/track\/\d+\/mute$/.test(parsed.address)) {
           const n = Number(parsed.address.split("/")[2]);
           const muted = parsed.value > 0.5;

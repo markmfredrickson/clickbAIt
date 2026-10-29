@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stemsSend } from "../../src/teleprompter/stems-hold.js";
+import { stemsSend, repeatToggle } from "../../src/teleprompter/stems-hold.js";
 
 // Bail mutes the Stems folder and coming back puts it as it was. The folder is
 // muted by default, so a return must never unmute stems that were off.
@@ -29,5 +29,21 @@ describe("stemsSend", () => {
 
   it("sends nothing on a return when nothing was silenced", () => {
     expect(stemsSend(true, undefined, false)).toEqual({ held: undefined });
+  });
+});
+
+describe("repeatToggle", () => {
+  // REAPER's /repeat is a toggle: it flips the state, and a 0 does nothing.
+  // So the relay sends it only when the state REAPER reported isn't the one wanted.
+  it("toggles only when the known state differs from the wanted one", () => {
+    expect(repeatToggle(false, true)).toBe(true);
+    expect(repeatToggle(true, true)).toBe(false);
+    expect(repeatToggle(true, false)).toBe(true);
+    expect(repeatToggle(false, false)).toBe(false);
+  });
+
+  it("treats an unreported state as off, REAPER's default", () => {
+    expect(repeatToggle(undefined, true)).toBe(true);
+    expect(repeatToggle(undefined, false)).toBe(false);
   });
 });

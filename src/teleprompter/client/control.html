@@ -30,13 +30,13 @@
     @media (prefers-reduced-motion: reduce) { body.m-out { animation: none; background: #1a1206; } }
 
     /* One line: previous, this song, next song, set list, connection dot.
-       This song and the next are the same size, side by side. */
+       This song is the bigger of the two. */
     header { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
     #song, #s-next small {
       font-size: 17px; font-weight: 600; line-height: 1.2;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    #song { order: 1; flex: 1 1 0; min-width: 0; padding: 10px 12px; align-self: center; }
+    #song { order: 1; flex: 1.4 1 0; min-width: 0; padding: 10px 12px; align-self: center; font-size: 22px; }
     #song small { display: block; font-weight: 400; font-size: 11px; color: var(--dim); margin-top: 2px; }
     /* The connection is a dot; its text stays for screen readers. */
     #conn { order: 4; flex: none; width: 22px; font-size: 0; display: flex; align-items: center; justify-content: center; }

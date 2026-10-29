@@ -344,13 +344,17 @@ function renderMutes(): void {
     ...tracks
       .filter((t) => t.parent === undefined || stemMutes)
       .map((t) => {
+        // A checklist row: checked = playing; tap anywhere on it to flip.
         const b = document.createElement("button");
         b.type = "button";
-        b.className = "mute" + (t.muted ? " muted" : "") + (t.parent !== undefined ? " child" : "");
-        b.textContent = t.name.replace(/ & Counts$/, "");
-        const s = document.createElement("small");
-        s.textContent = t.muted ? "Muted" : "On";
-        b.appendChild(s);
+        b.className = "trk" + (t.muted ? "" : " on") + (t.parent !== undefined ? " child" : "");
+        b.setAttribute("role", "checkbox");
+        b.setAttribute("aria-checked", String(!t.muted));
+        const box = document.createElement("span");
+        box.className = "box";
+        box.textContent = t.muted ? "" : "✓";
+        b.appendChild(box);
+        b.appendChild(document.createTextNode(t.name));
         b.addEventListener("click", () => sendRaw({ type: "player", action: "mute", track: t.n, muted: !t.muted }));
         return b;
       }),

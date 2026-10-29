@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseOscFloat, parseOscPacket, parseOscMessage, secondsToBeats, beatStrToBeats } from "../../src/teleprompter/relay.js";
+import { parseOscFloat, parseOscPacket, parseOscMessage, secondsToBeats, beatsToSeconds, beatStrToBeats } from "../../src/teleprompter/relay.js";
 import type { SongPayload } from "../../src/teleprompter/types.js";
 
 /** Build a minimal OSC message with address and a single float arg. */
@@ -188,6 +188,25 @@ describe("secondsToBeats", () => {
     const empty: SongPayload = { title: "T", slug: "t", bpm: 90, tempoMap: [], sections: [] };
     // Falls back to master BPM: 90 BPM = 1.5 beats/sec
     expect(secondsToBeats(2, empty)).toBeCloseTo(3);
+  });
+});
+
+describe("beatsToSeconds", () => {
+  // A vamp's loop is in beats; REAPER's loop points are in seconds.
+  it("follows a lyrics display's curve, pre-roll included", () => {
+    // Last Nite's shape: beat 0 at 4.64 s, ~103.45 BPM.
+    const song = { bpm: 103.448, curve: [{ t: 4.64, b: 0 }, { t: 4.64 + 400 * (60 / 103.448), b: 400 }] };
+    expect(beatsToSeconds(0, song as never)).toBeCloseTo(4.64, 6);
+    expect(beatsToSeconds(48, song as never)).toBeCloseTo(4.64 + 48 * (60 / 103.448), 6);
+  });
+
+  it("inverts secondsToBeats through a tempo change", () => {
+    const song: SongPayload = {
+      title: "Test", slug: "test", bpm: 120, sections: [],
+      tempoMap: [{ beat: 0, seconds: 0, bpm: 120 }, { beat: 8, seconds: 4, bpm: 60 }],
+    };
+    expect(beatsToSeconds(10, song)).toBeCloseTo(6);
+    expect(secondsToBeats(beatsToSeconds(9, song), song)).toBeCloseTo(9);
   });
 });
 

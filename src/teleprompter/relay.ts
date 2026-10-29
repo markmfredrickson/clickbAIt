@@ -168,15 +168,26 @@ function getLocalIP(): string {
  */
 const curveCache = new WeakMap<object, Curve>();
 
-export function secondsToBeats(seconds: number, song: TimingSong): number {
+function curveOf(song: TimingSong): Curve | null {
   let curve = curveCache.get(song);
   if (!curve) {
     if (song.curve && song.curve.length >= 2) curve = new Curve(song.curve);
     else if (song.tempoMap && song.tempoMap.length > 0) curve = Curve.fromTempoMap(song.tempoMap);
-    else return (seconds / 60) * song.bpm;
+    else return null;
     curveCache.set(song, curve);
   }
-  return curve.toBeat(seconds);
+  return curve;
+}
+
+export function secondsToBeats(seconds: number, song: TimingSong): number {
+  const curve = curveOf(song);
+  return curve ? curve.toBeat(seconds) : (seconds / 60) * song.bpm;
+}
+
+/** REAPER project seconds for a beat, the inverse of secondsToBeats. */
+export function beatsToSeconds(beat: number, song: TimingSong): number {
+  const curve = curveOf(song);
+  return curve ? curve.toTime(beat) : (beat / song.bpm) * 60;
 }
 
 /** True when the loaded song is a LyricsDisplay (drives REAPER `/beat/str` use). */
@@ -292,6 +303,12 @@ export function startRelay(opts: RelayOptions) {
   function runEffect(effect: ShowEffect): void {
     if (effect.click !== undefined) toReaper(`/track/${trackOf.click}/mute`, [asFloat(effect.click ? 0 : 1)]);
     if (effect.cues !== undefined) toReaper(`/track/${trackOf.cues}/mute`, [asFloat(effect.cues ? 0 : 1)]);
+    // Loop points before repeat: with "seek on loop point change" on, moving
+    // them while repeat is already on would jump playback.
+    if (effect.loopBeats && currentSong) {
+      toReaper("/loop/start/time", [asFloat(beatsToSeconds(effect.loopBeats.from, currentSong))]);
+      toReaper("/loop/end/time", [asFloat(beatsToSeconds(effect.loopBeats.to, currentSong))]);
+    }
     if (effect.repeat !== undefined) toReaper("/repeat", [asFloat(effect.repeat ? 1 : 0)]);
     if (effect.stems !== undefined) {
       const r = stemsSend(effect.stems, stemsHeld, trackMuted.get(trackOf.stems));

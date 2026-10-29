@@ -61,3 +61,7 @@ GOTO_MARKER i/marker t/marker/@
 # Track mute by number; REAPER also reports each track's mute back. Bail mutes
 # the click, cues and Stems folder this way.
 TRACK_MUTE b/track/mute b/track/@/mute
+
+# Loop points in project seconds. A vamp sets them, then turns repeat on.
+LOOP_START_TIME f/loop/start/time
+LOOP_END_TIME f/loop/end/time

@@ -68,8 +68,10 @@ describe("vamping", () => {
     const vamping = advance(initialState, SECTIONS, 48).state;
     const leaving = tap(vamping, 52);
     expect(leaving.state.mode).toBe("leaving");
-    expect(leaving.effect).toMatchObject({ cues: true });
-    expect(leaving.effect.repeat).toBeUndefined();      // the pass still finishes
+    // Repeat goes off at the tap: REAPER plays the pass out to the loop end and
+    // carries on. Waiting for the loop end never worked, because REAPER jumps
+    // back to the loop start before the relay sees the position reach it.
+    expect(leaving.effect).toMatchObject({ cues: true, repeat: false });
   });
 
   it("leaving resolves at the loop end, not at the tap", () => {

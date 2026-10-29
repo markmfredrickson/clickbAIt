@@ -341,9 +341,14 @@ export function startRelay(opts: RelayOptions) {
     if (effect.cues !== undefined) toReaper(`/track/${trackOf.cues}/mute`, [asFloat(effect.cues ? 0 : 1)]);
     // Loop points before repeat: with "seek on loop point change" on, moving
     // them while repeat is already on would jump playback.
+    // Start, end, then start again: REAPER keeps start <= end, so a new start
+    // past the old end was reordered and the loop ran from the old point (the
+    // top of the song). The second start lands once the end is in place.
     if (effect.loopBeats && currentSong) {
-      toReaper("/loop/start/time", [asFloat(beatsToSeconds(effect.loopBeats.from, currentSong))]);
+      const start = asFloat(beatsToSeconds(effect.loopBeats.from, currentSong));
+      toReaper("/loop/start/time", [start]);
       toReaper("/loop/end/time", [asFloat(beatsToSeconds(effect.loopBeats.to, currentSong))]);
+      toReaper("/loop/start/time", [start]);
     }
     if (effect.repeat !== undefined) setRepeat(effect.repeat);
     if (effect.stems !== undefined) {

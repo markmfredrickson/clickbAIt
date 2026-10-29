@@ -169,8 +169,10 @@ export function apply(
 
     case "vamping":
       // Committed, but the pass finishes first — that's what quantizes the
-      // exit, and it's when the cue counts the band back in.
-      return { state: { ...state, mode: "leaving" }, effect: { cues: true } };
+      // exit, and it's when the cue counts the band back in. Repeat goes off
+      // now: REAPER plays the pass out to the loop end and carries on, where
+      // waiting for the loop end never fired (REAPER jumps back first).
+      return { state: { ...state, mode: "leaving" }, effect: { cues: true, repeat: false } };
 
     case "leaving":
     case "stopped":

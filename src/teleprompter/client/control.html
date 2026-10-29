@@ -29,18 +29,23 @@
     }
     @media (prefers-reduced-motion: reduce) { body.m-out { animation: none; background: #1a1206; } }
 
-    header {
-      padding: 10px 14px; border-bottom: 1px solid var(--line);
-      display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    /* One line: previous, this song, next song, set list, connection dot.
+       This song and the next are the same size, side by side. */
+    header { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
+    #song, #s-next small {
+      font-size: 17px; font-weight: 600; line-height: 1.2;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    #song { font-size: 15px; font-weight: 600; line-height: 1.2; }
-    #song small { display: block; font-weight: 400; font-size: 11px; color: var(--dim); }
-    #conn { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
-    #conn.ok { color: var(--live); }
-    #conn.bad { color: var(--stop); }
+    #song { order: 1; flex: 1 1 0; min-width: 0; padding: 10px 12px; align-self: center; }
+    #song small { display: block; font-weight: 400; font-size: 11px; color: var(--dim); margin-top: 2px; }
+    /* The connection is a dot; its text stays for screen readers. */
+    #conn { order: 4; flex: none; width: 22px; font-size: 0; display: flex; align-items: center; justify-content: center; }
+    #conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+    #conn.ok::before { background: var(--live); }
+    #conn.bad::before { background: var(--stop); }
 
     /* Set list: next song is the one-tap path, the list is for jumping. */
-    #set { display: grid; grid-template-columns: 52px 1fr 64px; border-bottom: 1px solid var(--line); }
+    #set { display: contents; }
     #set[hidden] { display: none !important; }
     #set button, #tport button {
       border: 0; background: var(--panel); color: var(--text); font: inherit; cursor: pointer;
@@ -48,11 +53,15 @@
     }
     #set button:last-child, #tport button:last-child { border-right: 0; }
     #set button:disabled { color: #3b444d; cursor: default; }
-    #s-next { text-align: left; padding-left: 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--live); }
-    #s-next small { display: block; font-size: 17px; letter-spacing: 0; text-transform: none; color: var(--text); margin-top: 2px; }
+    #s-next {
+      order: 2; flex: 1 1 0; min-width: 0; text-align: left; padding-left: 12px; border-left: 1px solid var(--line);
+      display: flex; flex-direction: column-reverse; justify-content: center;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--live);
+    }
+    #s-next small { display: block; letter-spacing: 0; text-transform: none; color: var(--text); margin-bottom: 2px; }
     #s-next:disabled, #s-next:disabled small { color: #3b444d; }
-    #s-prev { font-size: 20px; }
-    #s-list { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+    #s-prev { order: 0; flex: none; width: 40px; font-size: 20px; }
+    #s-list { order: 3; flex: none; width: 52px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
     /* Play is the button people reach for, so it gets twice the width and a big label. */
     #tport { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; border-bottom: 1px solid var(--line); }
     #tport button { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); padding: 10px 4px; }
@@ -163,14 +172,13 @@
 <body>
   <header>
     <div id="song">Waiting for song…<small id="song-artist"></small></div>
+    <nav id="set" hidden>
+      <button id="s-prev" type="button" aria-label="Previous song">◀</button>
+      <button id="s-next" type="button">Next<small id="s-next-name">—</small></button>
+      <button id="s-list" type="button">Set</button>
+    </nav>
     <div id="conn">Connecting…</div>
   </header>
-
-  <nav id="set" hidden>
-    <button id="s-prev" type="button" aria-label="Previous song">◀</button>
-    <button id="s-next" type="button">Next<small id="s-next-name">—</small></button>
-    <button id="s-list" type="button">Set</button>
-  </nav>
   <div id="tport">
     <button type="button" data-player="play">Play</button>
     <button type="button" data-player="stop">Stop</button>

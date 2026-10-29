@@ -26,6 +26,13 @@ describe("reaperDriver", () => {
     ]);
   });
 
+  it("seeks a playing track to section k by stopping, jumping and playing again", () => {
+    // A region jump while playing moves only REAPER's edit cursor, not playback.
+    const { sent, driver } = recorded();
+    driver.seekSection(3);
+    expect(addresses(sent)).toEqual(["/stop", "/region/5", "/play"]);
+  });
+
   it("restarts by going to the start of the project", () => {
     const { sent, driver } = recorded();
     driver.restart();

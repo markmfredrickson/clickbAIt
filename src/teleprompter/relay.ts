@@ -300,7 +300,8 @@ export function startRelay(opts: RelayOptions) {
     }
     if (effect.transport === "stop") toReaper("/stop", [asFloat(1)]);
     if (effect.locateSection !== undefined) {
-      player.locateSection(effect.locateSection);
+      if (playing) player.seekSection(effect.locateSection);
+      else player.locateSection(effect.locateSection);
       console.log(`  ⤳ re-entry at section ${effect.locateSection + 1}`);
     }
   }
@@ -832,7 +833,8 @@ export function startRelay(opts: RelayOptions) {
           const n = showSections(currentSong).length;
           if (typeof k === "number" && Number.isInteger(k) && k >= 0 && k < n
               && (showState.mode === "following" || showState.mode === "stopped")) {
-            player.locateSection(k);
+            if (playing) player.seekSection(k);
+            else player.locateSection(k);
           }
         }
         else if (msg.action === "video") player.toggleVideo();

@@ -19,6 +19,9 @@ export interface PlayerDriver {
   stop(): void;
   /** Jump to section k (0-based) of the song showing. */
   locateSection(k: number): void;
+  /** Jump a PLAYING track to section k. A region jump while playing moves
+   *  only REAPER's edit cursor, so stop, jump and play again. */
+  seekSection(k: number): void;
   /** Go to the start of the song, explicitly, whatever REAPER's stop setting. */
   restart(): void;
   /** Mute or unmute track n (1-based). */
@@ -58,6 +61,11 @@ export function reaperDriver(send: (m: OscMessage) => void): PlayerDriver {
     stop: () => msg("/stop"),
     // Region 1 is the song's title region; sections are regions 2, 3, ...
     locateSection: (k) => msg(`/region/${k + 2}`),
+    seekSection(k) {
+      msg("/stop");
+      msg(`/region/${k + 2}`);
+      msg("/play");
+    },
     restart: () => action(ACTION.goToStart),
     muteTrack: (n, muted) => send({ address: `/track/${n}/mute`, args: [muted ? 1 : 0] }),
     identify,

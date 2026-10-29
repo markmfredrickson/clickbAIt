@@ -151,6 +151,8 @@ function render(): void {
   segEls.forEach((el, i) => {
     const inLoop = (loop && i >= loop.from && i <= loop.to) || (drawerOpen && i >= anchorIdx && i <= endIdx);
     el.classList.toggle("loop", !!inLoop);
+    el.classList.toggle("lp-now", !!inLoop && i === here);
+    el.classList.toggle("lp-past", !!inLoop && i < here);
     el.classList.toggle("now", i === here && !inLoop);
     el.classList.toggle("past", i < here && !inLoop);
     // How far through the current section, for its fill.

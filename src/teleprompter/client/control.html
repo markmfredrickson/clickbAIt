@@ -108,7 +108,11 @@
     /* The current section fills as it plays (--p, 0 to 1); played ones stay tinted. */
     .seg.now { background: linear-gradient(to right, var(--live) calc(var(--p, 0) * 100%), rgba(59,224,138,.25) 0); }
     .seg.past { background: rgba(59,224,138,.35); }
-    .seg.loop { background: var(--vamp); }
+    /* A loop shows its pass like the song does, in purple: played sections
+       solid, the playing one filling, the rest faint. */
+    .seg.loop { background: rgba(166,120,255,.3); }
+    .seg.loop.lp-past { background: var(--vamp); }
+    .seg.loop.lp-now { background: linear-gradient(to right, var(--vamp) calc(var(--p, 0) * 100%), rgba(166,120,255,.3) 0); }
     .m-out .seg.now { background: linear-gradient(to right, var(--out) calc(var(--p, 0) * 100%), rgba(255,158,44,.25) 0); }
 
     #banner { padding: 13px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2); }

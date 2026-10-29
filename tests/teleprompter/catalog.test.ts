@@ -54,6 +54,31 @@ describe("relaySongs", () => {
     expect(relaySongs([], r.root).setlist).toEqual([r.saveMe, r.lonely]);
   });
 
+  it("keeps a given set list with the named folders, in the file's order", () => {
+    const r = repo();
+    const file = join(r.root, "set2.txt");
+    writeFileSync(file, "band/radiohead/creep  # Creep\nband/black-keys/lonely-boy\n");
+    const got = relaySongs([r.lonely, r.creep], r.root, file);
+    expect(got.songsDirs).toEqual([r.lonely, r.creep]);
+    expect(got.setlist).toEqual([r.creep, r.lonely]);
+  });
+
+  it("refuses a given set list naming a song that isn't among the named folders", () => {
+    const r = repo();
+    const file = join(r.root, "set2.txt");
+    writeFileSync(file, "band/radiohead/creep\nduo/aimee-mann/save-me\n");
+    expect(() => relaySongs([r.creep], r.root, file)).toThrow(/save-me/);
+  });
+
+  it("uses a given set list over the configured one", () => {
+    const r = repo();
+    writeFileSync(join(r.root, "setlist.txt"), "band/black-keys/lonely-boy\n");
+    const file = join(r.root, "set2.txt");
+    writeFileSync(file, "duo/aimee-mann/save-me\n");
+    r.config({ songs: ["band", "duo"], setlist: "setlist.txt" });
+    expect(relaySongs([], r.root, file).setlist).toEqual([r.saveMe]);
+  });
+
   it("has no set list when none is configured", () => {
     const r = repo();
     r.config({ songs: ["band"] });

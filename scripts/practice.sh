@@ -12,7 +12,11 @@
 # Example:
 #   scripts/practice.sh songs/aimee-mann songs/the-white-stripes
 #   scripts/practice.sh -f local/setlist.txt
+#   scripts/practice.sh --setlist local/setlist2.txt <song-dir> ...
 #
+# The set list file (from -f or --setlist) also goes to the teleprompter, so
+# the control page can switch songs in REAPER's tab order. --setlist only
+# passes it on; the song dirs come from the arguments.
 # A setlist file is one song dir per line, in playing order. Blank lines and
 # text from '#' to end-of-line are ignored, so trailing "# Song Title" comments
 # are fine. Relative paths in the file resolve against the repo root.
@@ -32,18 +36,25 @@ usage() {
 
 # Collect raw dir arguments from -f files and positional args, in order.
 raw_dirs=()
+setlist_file=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -f)
       [ $# -ge 2 ] || { echo "Error: -f needs a file argument." >&2; usage; exit 1; }
       file="$2"; shift 2
       [ -f "$file" ] || { echo "Error: no such setlist file: $file" >&2; exit 1; }
+      setlist_file="$file"
       # Strip '#' comments, then read non-blank lines as dirs.
       while IFS= read -r line; do
         line="${line%%#*}"
         line="$(printf '%s' "$line" | xargs)"  # trim surrounding whitespace
         [ -n "$line" ] && raw_dirs+=("$line")
       done < "$file"
+      ;;
+    --setlist)
+      [ $# -ge 2 ] || { echo "Error: --setlist needs a file argument." >&2; usage; exit 1; }
+      [ -f "$2" ] || { echo "Error: no such setlist file: $2" >&2; exit 1; }
+      setlist_file="$2"; shift 2
       ;;
     -h|--help)
       usage; exit 0
@@ -100,5 +111,9 @@ fi
 
 echo ""
 echo "Starting teleprompter (Ctrl-C to stop)..."
+if [ -n "$setlist_file" ]; then
+  setlist_abs="$(cd "$(dirname "$setlist_file")" && pwd)/$(basename "$setlist_file")"
+  tp_args+=(--setlist "$setlist_abs")
+fi
 cd "$REPO_ROOT"
 exec npx tsx scripts/teleprompter.ts "${tp_args[@]}"

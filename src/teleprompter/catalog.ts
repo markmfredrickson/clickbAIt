@@ -4,8 +4,10 @@
  * Folders named with --songs-dir are served as they are. Without them, the
  * relay reads `.clickbait.json`: every built song (a folder holding a
  * `*.lyrics-display.json`) under its "songs" folders, plus the "setlist" file
- * if there is one. The set list is the same file `practice-all.sh` reads, so
- * REAPER's tab order and the relay's song order come from one place.
+ * if there is one. A set list file given with --setlist wins over the
+ * configured one, and works with named folders too. `practice.sh -f` passes
+ * the set list it opened REAPER from, so REAPER's tab order and the relay's
+ * song order come from one file.
  */
 
 import { execFileSync } from "node:child_process";
@@ -22,8 +24,11 @@ export interface RelaySongs {
   unbuilt: string[];
 }
 
-export function relaySongs(named: string[], configDir: string): RelaySongs {
-  if (named.length > 0) return { songsDirs: named, unbuilt: [] };
+export function relaySongs(named: string[], configDir: string, setlistFile?: string): RelaySongs {
+  if (named.length > 0) {
+    const setlist = setlistFile ? readSetlist(setlistFile, configDir, named) : undefined;
+    return { songsDirs: named, ...(setlist ? { setlist } : {}), unbuilt: [] };
+  }
   const config = readClickbaitConfig(configDir);
   if (!config.songs || config.songs.length === 0) {
     throw new Error('name the songs with --songs-dir, or list their folders under "songs" in .clickbait.json');
@@ -31,7 +36,8 @@ export function relaySongs(named: string[], configDir: string): RelaySongs {
   const songsDirs: string[] = [];
   const unbuilt: string[] = [];
   for (const dir of songFolders(config.songs)) (isBuilt(dir) ? songsDirs : unbuilt).push(dir);
-  const setlist = config.setlist ? readSetlist(config.setlist, configDir, songsDirs) : undefined;
+  const file = setlistFile ?? config.setlist;
+  const setlist = file ? readSetlist(file, configDir, songsDirs) : undefined;
   return { songsDirs, ...(setlist ? { setlist } : {}), unbuilt };
 }
 

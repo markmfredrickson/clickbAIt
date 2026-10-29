@@ -17,13 +17,11 @@ export interface OscMessage {
 export interface PlayerDriver {
   play(): void;
   stop(): void;
-  /** Jump to section k (0-based) of the song showing. */
+  /** Jump to section k (0-based) of the song showing; -1 is the title region, the top. */
   locateSection(k: number): void;
   /** Jump a PLAYING track to section k. A region jump while playing moves
    *  only REAPER's edit cursor, so stop, jump and play again. */
   seekSection(k: number): void;
-  /** Go to the start of the song, explicitly, whatever REAPER's stop setting. */
-  restart(): void;
   /** Mute or unmute track n (1-based). */
   muteTrack(n: number, muted: boolean): void;
   /** Get the player to name the song showing. */
@@ -40,8 +38,6 @@ const ACTION = {
   tabBase: 3121,
   lastNumberedTab: 10,
   nextTab: 40861,
-  /** "Transport: Go to start of project". */
-  goToStart: 40042,
   videoWindow: 50125,
   videoFullscreen: 50122,
 };
@@ -66,7 +62,6 @@ export function reaperDriver(send: (m: OscMessage) => void): PlayerDriver {
       msg(`/region/${k + 2}`);
       msg("/play");
     },
-    restart: () => action(ACTION.goToStart),
     muteTrack: (n, muted) => send({ address: `/track/${n}/mute`, args: [muted ? 1 : 0] }),
     identify,
     selectTab(tab) {

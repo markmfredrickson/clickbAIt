@@ -29,6 +29,7 @@ import { Curve, type Anchor } from "../core/curve.js";
 import { encode, asFloat, type OscArg } from "../core/osc.js";
 import { reaperDriver } from "./reaper-driver.js";
 import { stemsSend } from "./stems-hold.js";
+import { playbackTracks, type PlaybackTrack } from "./rpp-tracks.js";
 import { afterReport, firstAttempt, parseSongIntent, targetSong, type SongIntent } from "./song-select.js";
 import {
   apply as applyIntent,
@@ -262,6 +263,34 @@ export function startRelay(opts: RelayOptions) {
   const trackMuted = new Map<number, boolean>();
   /** The Stems folder's mute from before a bail, put back on the way out. */
   let stemsHeld: boolean | undefined;
+  /** The showing song's playable tracks, read from its .RPP, for the mute buttons. */
+  let tracks: PlaybackTrack[] = [];
+
+  /** Mute state as REAPER last said, else as the project saved it. */
+  function tracksMessage(): string {
+    return JSON.stringify({
+      type: "tracks",
+      tracks: tracks.map((t) => ({ ...t, muted: trackMuted.get(t.n) ?? t.muted })),
+    });
+  }
+
+  /** Read the song's tracks from the newest .RPP beside its display file. */
+  async function loadTracks(displayFile: string): Promise<void> {
+    tracks = [];
+    try {
+      const dir = dirname(displayFile);
+      const rpps = (await readdir(dir)).filter((f) => /\.rpp$/i.test(f));
+      let newest: { f: string; m: number } | undefined;
+      for (const f of rpps) {
+        const m = (await stat(join(dir, f))).mtimeMs;
+        if (!newest || m > newest.m) newest = { f, m };
+      }
+      if (newest) tracks = playbackTracks(await readFile(join(dir, newest.f), "utf8"));
+    } catch (err) {
+      console.error(`  ✗ could not read tracks: ${(err as Error).message}`);
+    }
+    broadcast(tracksMessage());
+  }
 
   // ── Show control (bail / vamp / stop) ──
   // The state machine is shared with both browser clients so all three agree;
@@ -417,6 +446,10 @@ export function startRelay(opts: RelayOptions) {
     currentSlug = slug;
     currentCacheEntry = entry;
     qrSvgCache = null; // reset QR (song title changed)
+    // Another project: REAPER's mute reports so far were about the last one.
+    trackMuted.clear();
+    stemsHeld = undefined;
+    void loadTracks(entry.filePath);
     console.log(`  Switched to: ${entry.payload.title}${entry.payload.artist ? ` — ${entry.payload.artist}` : ""}`);
     // A new song never inherits a vamp's repeat from the last one.
     if (showState.mode === "following" || showState.mode === "stopped") toReaper("/repeat", [asFloat(0)]);
@@ -822,6 +855,7 @@ export function startRelay(opts: RelayOptions) {
       ws.send(JSON.stringify({ type: "song-changed", slug: currentSlug }));
     }
     ws.send(JSON.stringify({ type: "show-state", state: showState, playing }));
+    ws.send(tracksMessage());
     if (setlist.length > 0) void setlistMessage().then((m) => ws.send(m));
 
     // Control intents arrive here from /control. Anything on this socket is
@@ -840,17 +874,22 @@ export function startRelay(opts: RelayOptions) {
         const m = msg as { action?: unknown; section?: unknown };
         if (msg.action === "play") player.play();
         else if (msg.action === "stop") player.stop();
-        else if (msg.action === "restart") {
-          // Out of any bail or vamp first, so the top of the song is audible.
-          resetShowState();
-          pushShowState();
-          player.restart();
+        else if (msg.action === "mute") {
+          // A mute button: only the song's playable tracks, only a real boolean.
+          const t = (msg as { track?: unknown }).track;
+          const muted = (msg as { muted?: unknown }).muted;
+          if (typeof muted === "boolean" && tracks.some((x) => x.n === t)) {
+            player.muteTrack(t as number, muted);
+            trackMuted.set(t as number, muted);
+            broadcast(tracksMessage());
+          }
         } else if (msg.action === "locate") {
           // Jump to a tapped section, only while simply following or stopped:
           // a jump mid-bail or mid-vamp would strand the show state.
           const k = m.section;
           const n = showSections(currentSong).length;
-          if (typeof k === "number" && Number.isInteger(k) && k >= 0 && k < n
+          // -1 is the title region, the top of the song.
+          if (typeof k === "number" && Number.isInteger(k) && k >= -1 && k < n
               && (showState.mode === "following" || showState.mode === "stopped")) {
             if (playing) player.seekSection(k);
             else player.locateSection(k);
@@ -915,7 +954,12 @@ export function startRelay(opts: RelayOptions) {
         } else if (parsed.address === "/beat") {
           onPosition(parsed.value);
         } else if (/^\/track\/\d+\/mute$/.test(parsed.address)) {
-          trackMuted.set(Number(parsed.address.split("/")[2]), parsed.value > 0.5);
+          const n = Number(parsed.address.split("/")[2]);
+          const muted = parsed.value > 0.5;
+          if (trackMuted.get(n) !== muted) {
+            trackMuted.set(n, muted);
+            if (tracks.some((t) => t.n === n)) broadcast(tracksMessage());
+          }
         } else if (parsed.address === "/play") {
           const isPlaying = parsed.value > 0.5;
           broadcast(JSON.stringify({ type: isPlaying ? "play" : "stop" }));

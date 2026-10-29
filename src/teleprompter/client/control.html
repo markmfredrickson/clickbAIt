@@ -64,14 +64,29 @@
     /* Filled buttons. Play, bail and stop live on the big bottom bar; video
        and full screen are set-up choices, kept behind More. */
     #tport, #more { display: grid; gap: 6px; padding: 6px; border-bottom: 1px solid var(--line); }
-    #tport { grid-template-columns: 1fr 1fr 1fr; }
+    #tport { grid-template-columns: 1fr 1fr; }
     #t-vamp:disabled { opacity: .35; cursor: default; }
-    #more { grid-template-columns: 1fr 1fr; }
+    #more { grid-template-columns: 1fr 1fr 1fr; }
     #more[hidden] { display: none !important; }
     #tport button, #more button {
       border: 0; border-radius: 6px; background: var(--text); color: var(--ground); font: inherit; cursor: pointer;
-      font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 12px 4px;
+      font-size: 14px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 18px 4px;
     }
+    #m-stems.on { background: var(--live); }
+
+    /* Mutes: big targets, since they get stabbed mid-song. A muted track is an
+       outline in red; a playing one is filled. Single stems show only when
+       "Stem mutes" is on under More. */
+    #mutes { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 6px; padding: 6px; border-bottom: 1px solid var(--line); }
+    #mutes:empty { display: none; }
+    .mute {
+      border: 2px solid var(--text); border-radius: 6px; background: var(--text); color: var(--ground);
+      font: inherit; font-size: 15px; font-weight: 700; padding: 18px 6px; cursor: pointer; line-height: 1.15;
+    }
+    .mute small { display: block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 4px; opacity: .7; }
+    .mute.muted { background: transparent; color: var(--stop); border-color: var(--stop); }
+    .mute.child { border-style: dashed; }
+    .mute.child:not(.muted) { border-style: solid; }
     #t-more.on { background: var(--dim); }
     #notice { padding: 9px 14px; font-size: 12px; border-bottom: 1px solid var(--line); background: rgba(255,77,94,.15); color: var(--stop); }
     #notice[hidden] { display: none !important; }
@@ -197,14 +212,15 @@
     <div id="conn">Connecting…</div>
   </header>
   <div id="tport">
-    <button type="button" data-player="restart">Restart</button>
     <button type="button" id="t-vamp">Vamp</button>
     <button type="button" id="t-more">More</button>
   </div>
   <div id="more" hidden>
     <button type="button" data-player="video">Video</button>
     <button type="button" data-player="fullscreen">Full screen</button>
+    <button type="button" id="m-stems">Stem mutes</button>
   </div>
+  <div id="mutes"></div>
   <div id="notice" hidden></div>
 
   <div id="map"></div>

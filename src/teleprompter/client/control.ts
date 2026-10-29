@@ -27,6 +27,12 @@ const drawer = $("drawer"), drawerTitle = $("drawer-title"), drawerRows = $("dra
 const dVamp = $("d-vamp"), dStop = $("d-stop"), drawerClose = $("drawer-close");
 const setNav = $("set"), sNext = $("s-next") as HTMLButtonElement;
 const tMore = $("t-more"), moreEl = $("more"), tVamp = $("t-vamp") as HTMLButtonElement;
+const mutesEl = $("mutes"), mStems = $("m-stems");
+let songTitle = "";
+let tracks: { n: number; name: string; muted: boolean; folder?: boolean; parent?: number }[] = [];
+// Single-stem mutes are an option, remembered on this device.
+let stemMutes = false;
+try { stemMutes = localStorage.getItem("clickbait.stemMutes") === "1"; } catch { /* no storage */ }
 const sNextName = $("s-next-name"), sList = $("s-list"), setlistEl = $("setlist"), noticeEl = $("notice");
 
 let sections: ShowSection[] = [];
@@ -50,6 +56,7 @@ async function loadSong(): Promise<void> {
     if (!res.ok) return;
     const song = (await res.json()) as LyricsDisplay & { sections?: ShowSection[] };
     $("song").firstChild!.textContent = song.title ?? "Untitled";
+    songTitle = song.title ?? "Untitled";
     $("song-artist").textContent = song.artist ?? "";
 
     const secs = song.display?.sections;
@@ -76,6 +83,22 @@ function buildLists(): void {
   drawerRows.textContent = "";
   segEls = []; rowEls = []; drawerRowEls = [];
   const widths = songMap(metered);
+
+  // The song's title row goes first: tapping it jumps to the top, count-in
+  // and all (REAPER's title region).
+  if (sections.length > 0) {
+    const top = document.createElement("div");
+    top.className = "row";
+    const name = document.createElement("div");
+    name.className = "row-name";
+    name.textContent = songTitle;
+    const b = document.createElement("div");
+    b.className = "row-beat";
+    b.textContent = "From the top";
+    top.appendChild(name); top.appendChild(b);
+    top.addEventListener("click", () => sendRaw({ type: "player", action: "locate", section: -1 }));
+    rowsEl.appendChild(top);
+  }
 
   sections.forEach((s, i) => {
     const seg = document.createElement("div");
@@ -316,6 +339,31 @@ sList.addEventListener("click", () => setlistEl.classList.toggle("on"));
 for (const b of document.querySelectorAll<HTMLButtonElement>("#tport button[data-player], #more button[data-player]")) {
   b.addEventListener("click", () => sendRaw({ type: "player", action: b.dataset.player }));
 }
+function renderMutes(): void {
+  mutesEl.replaceChildren(
+    ...tracks
+      .filter((t) => t.parent === undefined || stemMutes)
+      .map((t) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "mute" + (t.muted ? " muted" : "") + (t.parent !== undefined ? " child" : "");
+        b.textContent = t.name.replace(/ & Counts$/, "");
+        const s = document.createElement("small");
+        s.textContent = t.muted ? "Muted" : "On";
+        b.appendChild(s);
+        b.addEventListener("click", () => sendRaw({ type: "player", action: "mute", track: t.n, muted: !t.muted }));
+        return b;
+      }),
+  );
+}
+mStems.classList.toggle("on", stemMutes);
+mStems.addEventListener("click", () => {
+  stemMutes = !stemMutes;
+  try { localStorage.setItem("clickbait.stemMutes", stemMutes ? "1" : "0"); } catch { /* no storage */ }
+  mStems.classList.toggle("on", stemMutes);
+  renderMutes();
+});
+
 tMore.addEventListener("click", () => {
   moreEl.hidden = !moreEl.hidden;
   tMore.classList.toggle("on", !moreEl.hidden);
@@ -347,6 +395,10 @@ function connect(): void {
     }
     else if (msg.type === "setlist" && Array.isArray(msg.songs)) { setSongs = msg.songs; renderSet(); }
     else if (msg.type === "notice" && typeof msg.text === "string") showNotice(msg.text);
+    else if (msg.type === "tracks" && Array.isArray((msg as { tracks?: unknown }).tracks)) {
+      tracks = (msg as unknown as { tracks: typeof tracks }).tracks;
+      renderMutes();
+    }
   };
   ws.onclose = () => {
     conn.textContent = "Disconnected";

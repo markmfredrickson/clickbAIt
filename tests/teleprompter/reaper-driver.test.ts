@@ -33,10 +33,11 @@ describe("reaperDriver", () => {
     expect(addresses(sent)).toEqual(["/stop", "/region/5", "/play"]);
   });
 
-  it("restarts by going to the start of the project", () => {
+  it("locates the top of the song, the title region, as section -1", () => {
     const { sent, driver } = recorded();
-    driver.restart();
-    expect(addresses(sent)).toEqual(["/action/40042"]);
+    driver.locateSection(-1);
+    driver.seekSection(-1);
+    expect(addresses(sent)).toEqual(["/region/1", "/stop", "/region/1", "/play"]);
   });
 
   it("locates section k at region k+2 (region 1 is the title)", () => {

@@ -52,12 +52,15 @@ export interface ShowEffect {
   /** Mute or unmute the click and cue tracks. */
   click?: boolean;
   cues?: boolean;
+  /** false mutes the Stems folder; true puts it back as it was before. */
+  stems?: boolean;
   /** Turn REAPER's repeat on or off. */
   repeat?: boolean;
   /** Loop bounds in beats, when repeat is being turned on. */
   loopBeats?: { from: number; to: number };
-  /** Seek here (beats) — re-entry only. Unimplemented until locate is settled. */
+  /** Where re-entry lands, in beats (the display) and as a section (REAPER). */
   locateBeat?: number;
+  locateSection?: number;
   /** Stop the transport. */
   transport?: "stop";
 }
@@ -94,8 +97,8 @@ function loopBeats(sections: readonly ShowSection[], loop: { from: number; to: n
 }
 
 /** Everything live goes quiet; offsets are released by the relay separately. */
-const SILENT: ShowEffect = { click: false, cues: false };
-const AUDIBLE: ShowEffect = { click: true, cues: true };
+const SILENT: ShowEffect = { click: false, cues: false, stems: false };
+const AUDIBLE: ShowEffect = { click: true, cues: true, stems: true };
 
 /**
  * Apply an intent. `beat` is where the transport is now — the tap that leaves
@@ -160,7 +163,7 @@ export function apply(
       const next = Math.min(here + 1, sections.length - 1);
       return {
         state: { mode: "following", at: next },
-        effect: { ...AUDIBLE, locateBeat: sections[next].beat },
+        effect: { ...AUDIBLE, locateBeat: sections[next].beat, locateSection: next },
       };
     }
 
@@ -216,7 +219,7 @@ export function controlLabel(
 ): { main: string; sub: string } {
   switch (state.mode) {
     case "following":
-      return { main: "Bail", sub: "Kills click, cues and mixer control" };
+      return { main: "Bail", sub: "Mutes click, cues and stems. Hold to stop" };
     case "out": {
       const next = sections[Math.min(state.at + 1, sections.length - 1)];
       return { main: "Tap on the 1", sub: next ? next.name : "" };

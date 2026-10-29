@@ -28,6 +28,7 @@ import { toSlug } from "../core/dsongl/index.js";
 import { Curve, type Anchor } from "../core/curve.js";
 import { encode, asFloat } from "../core/osc.js";
 import { reaperDriver } from "./reaper-driver.js";
+import { stemsSend } from "./stems-hold.js";
 import { afterReport, firstAttempt, parseSongIntent, targetSong, type SongIntent } from "./song-select.js";
 import {
   apply as applyIntent,
@@ -246,6 +247,10 @@ export function startRelay(opts: RelayOptions) {
   const reaperHost = opts.reaperHost ?? "127.0.0.1";
   const reaperPort = opts.reaperPort ?? 8000;
   const trackOf = { click: 1, cues: 2, stems: 3, ...opts.tracks };
+  /** Track mutes as REAPER last reported them (/track/n/mute). */
+  const trackMuted = new Map<number, boolean>();
+  /** The Stems folder's mute from before a bail, put back on the way out. */
+  let stemsHeld: boolean | undefined;
 
   // ── Show control (bail / vamp / stop) ──
   // The state machine is shared with both browser clients so all three agree;
@@ -283,18 +288,20 @@ export function startRelay(opts: RelayOptions) {
     return song.sections.map((s) => ({ name: s.name, beat: s.beat, durationBeats: s.durationBeats }));
   }
 
-  /** Push a transition's effects to REAPER. Locate is deliberately not sent. */
+  /** Push a transition's effects to REAPER. */
   function runEffect(effect: ShowEffect): void {
     if (effect.click !== undefined) toReaper(`/track/${trackOf.click}/mute`, [asFloat(effect.click ? 0 : 1)]);
     if (effect.cues !== undefined) toReaper(`/track/${trackOf.cues}/mute`, [asFloat(effect.cues ? 0 : 1)]);
     if (effect.repeat !== undefined) toReaper("/repeat", [asFloat(effect.repeat ? 1 : 0)]);
+    if (effect.stems !== undefined) {
+      const r = stemsSend(effect.stems, stemsHeld, trackMuted.get(trackOf.stems));
+      stemsHeld = r.held;
+      if (r.mute !== undefined) player.muteTrack(trackOf.stems, r.mute);
+    }
     if (effect.transport === "stop") toReaper("/stop", [asFloat(1)]);
-    // Seeking to a section needs a locate REAPER's OSC vocabulary may not
-    // expose (see scripts/osc-probe.ts). Until that's settled, re-entry moves
-    // the DISPLAY and leaves the transport alone — so say so rather than
-    // silently doing half of it.
-    if (effect.locateBeat !== undefined) {
-      console.log(`  ⤳ re-entry at beat ${effect.locateBeat.toFixed(0)} — display only, no locate sent`);
+    if (effect.locateSection !== undefined) {
+      player.locateSection(effect.locateSection);
+      console.log(`  ⤳ re-entry at section ${effect.locateSection + 1}`);
     }
   }
 
@@ -310,7 +317,7 @@ export function startRelay(opts: RelayOptions) {
   function resetShowState(): void {
     if (showState.mode === "following") return;
     showState = initialShowState;
-    runEffect({ click: true, cues: true, repeat: false });
+    runEffect({ click: true, cues: true, stems: true, repeat: false });
     console.log(`  ⎉ transport stopped → following (show state reset)`);
     // The caller pushes — it has to anyway, to carry the new `playing` value.
   }
@@ -805,12 +812,29 @@ export function startRelay(opts: RelayOptions) {
       try { msg = JSON.parse(String(raw)); } catch { return; }
       if (msg.type === "song") {
         const intent = parseSongIntent(msg.intent);
+        if (intent && openWait) { clearInterval(openWait); openWait = undefined; }
         if (intent) selectSong(intent).catch((err) => console.error("  ✗ song select failed:", err));
         return;
       }
       if (msg.type === "player") {
+        const m = msg as { action?: unknown; section?: unknown };
         if (msg.action === "play") player.play();
         else if (msg.action === "stop") player.stop();
+        else if (msg.action === "restart") {
+          // Out of any bail or vamp first, so the top of the song is audible.
+          resetShowState();
+          pushShowState();
+          player.restart();
+        } else if (msg.action === "locate") {
+          // Jump to a tapped section, only while simply following or stopped:
+          // a jump mid-bail or mid-vamp would strand the show state.
+          const k = m.section;
+          const n = showSections(currentSong).length;
+          if (typeof k === "number" && Number.isInteger(k) && k >= 0 && k < n
+              && (showState.mode === "following" || showState.mode === "stopped")) {
+            player.locateSection(k);
+          }
+        }
         else if (msg.action === "video") player.toggleVideo();
         else if (msg.action === "fullscreen") player.toggleFullscreen();
         return;
@@ -869,6 +893,8 @@ export function startRelay(opts: RelayOptions) {
           }
         } else if (parsed.address === "/beat") {
           onPosition(parsed.value);
+        } else if (/^\/track\/\d+\/mute$/.test(parsed.address)) {
+          trackMuted.set(Number(parsed.address.split("/")[2]), parsed.value > 0.5);
         } else if (parsed.address === "/play") {
           const isPlaying = parsed.value > 0.5;
           broadcast(JSON.stringify({ type: isPlaying ? "play" : "stop" }));
@@ -905,12 +931,36 @@ export function startRelay(opts: RelayOptions) {
   udp.bind(oscPort);
   server.listen(httpPort);
 
+  // practice.sh opens the set's projects in order and REAPER ends on the last
+  // one. Ask REAPER which song it shows until it names the set's last song,
+  // then go to the first. Anyone choosing a song first takes over.
+  let openWait: ReturnType<typeof setInterval> | undefined;
+  if (setlist.length > 0) {
+    const last = setlist[setlist.length - 1];
+    let tries = 0;
+    openWait = setInterval(() => {
+      if (currentSlug === last) {
+        clearInterval(openWait);
+        openWait = undefined;
+        console.log("  ⇥ every set list song is open; going to the first");
+        void selectSong({ to: "song", slug: setlist[0] });
+      } else if (++tries > 90) {
+        clearInterval(openWait);
+        openWait = undefined;
+        notice("REAPER never showed the set's last song; pick the first song yourself");
+      } else if (!playing && !selecting) {
+        player.identify();
+      }
+    }, 2000);
+  }
+
   return {
     server,
     wss,
     udp,
     close() {
       clearInterval(pollTimer);
+      if (openWait) clearInterval(openWait);
       udp.close();
       wss.close();
       server.close();

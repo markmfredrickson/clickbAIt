@@ -19,6 +19,12 @@ export interface PlayerDriver {
   stop(): void;
   /** Jump to section k (0-based) of the song showing. */
   locateSection(k: number): void;
+  /** Go to the start of the song, explicitly, whatever REAPER's stop setting. */
+  restart(): void;
+  /** Mute or unmute track n (1-based). */
+  muteTrack(n: number, muted: boolean): void;
+  /** Get the player to name the song showing. */
+  identify(): void;
   /** Switch to project tab `tab` (1-based) and get the player to name the song in it. */
   selectTab(tab: number): void;
   toggleVideo(): void;
@@ -31,6 +37,8 @@ const ACTION = {
   tabBase: 3121,
   lastNumberedTab: 10,
   nextTab: 40861,
+  /** "Transport: Go to start of project". */
+  goToStart: 40042,
   videoWindow: 50125,
   videoFullscreen: 50122,
 };
@@ -39,20 +47,26 @@ export function reaperDriver(send: (m: OscMessage) => void): PlayerDriver {
   // REAPER's patterns want a float argument; 1 means "do it".
   const msg = (address: string) => send({ address, args: [1] });
   const action = (id: number) => msg(`/action/${id}`);
+  // REAPER says nothing about a project on its own. Moving the playhead off
+  // and back onto region 1 makes it send that region's name, the song's slug.
+  const identify = () => {
+    msg("/region/2");
+    msg("/region/1");
+  };
   return {
     play: () => msg("/play"),
     stop: () => msg("/stop"),
     // Region 1 is the song's title region; sections are regions 2, 3, ...
     locateSection: (k) => msg(`/region/${k + 2}`),
+    restart: () => action(ACTION.goToStart),
+    muteTrack: (n, muted) => send({ address: `/track/${n}/mute`, args: [muted ? 1 : 0] }),
+    identify,
     selectTab(tab) {
       if (!Number.isInteger(tab) || tab < 1) throw new Error(`no project tab ${tab}`);
       action(ACTION.tabBase + Math.min(tab, ACTION.lastNumberedTab));
       for (let t = ACTION.lastNumberedTab; t < tab; t++) action(ACTION.nextTab);
-      // After a switch REAPER reports nothing about the new project. Moving the
-      // playhead off and back onto region 1 makes it send that region's name,
-      // which is the song's slug.
-      msg("/region/2");
-      msg("/region/1");
+      // After a switch REAPER reports nothing about the new project.
+      identify();
     },
     toggleVideo: () => action(ACTION.videoWindow),
     toggleFullscreen: () => action(ACTION.videoFullscreen),

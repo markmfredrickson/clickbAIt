@@ -16,6 +16,22 @@ describe("reaperDriver", () => {
     expect(addresses(sent)).toEqual(["/play", "/stop"]);
   });
 
+  it("mutes and unmutes a track by number", () => {
+    const { sent, driver } = recorded();
+    driver.muteTrack(3, true);
+    driver.muteTrack(3, false);
+    expect(sent).toEqual([
+      { address: "/track/3/mute", args: [1] },
+      { address: "/track/3/mute", args: [0] },
+    ]);
+  });
+
+  it("restarts by going to the start of the project", () => {
+    const { sent, driver } = recorded();
+    driver.restart();
+    expect(addresses(sent)).toEqual(["/action/40042"]);
+  });
+
   it("locates section k at region k+2 (region 1 is the title)", () => {
     const { sent, driver } = recorded();
     driver.locateSection(0);

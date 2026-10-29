@@ -33,10 +33,10 @@ describe("sectionAt", () => {
 });
 
 describe("bail and re-entry", () => {
-  it("a tap while following goes out and silences click and cues", () => {
+  it("a tap while following goes out and silences click, cues and stems", () => {
     const t = tap(initialState, 20);
     expect(t.state.mode).toBe("out");
-    expect(t.effect).toMatchObject({ click: false, cues: false });
+    expect(t.effect).toMatchObject({ click: false, cues: false, stems: false });
   });
 
   it("a tap while out returns to following at the NEXT section's downbeat", () => {
@@ -45,7 +45,8 @@ describe("bail and re-entry", () => {
     expect(back.state.mode).toBe("following");
     expect(back.state.at).toBe(2);                     // Breakdown
     expect(back.effect.locateBeat).toBe(48);           // its downbeat
-    expect(back.effect).toMatchObject({ click: true, cues: true });
+    expect(back.effect.locateSection).toBe(2);         // REAPER jumps there too
+    expect(back.effect).toMatchObject({ click: true, cues: true, stems: true });
   });
 
   it("re-entry from the last section stays on the last section", () => {

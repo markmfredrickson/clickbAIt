@@ -8,19 +8,21 @@
 #   Mode: Configure device IP+local port
 #   Device IP: 127.0.0.1
 #   Device port: 9000  (the teleprompter relay's OSC port)
-#   Local listen port: 8000  (for receiving — not used by clickbAIt)
+#   Local listen port: 8000  (the relay drives REAPER through it)
+#   Allow binding messages to REAPER actions and FX learn: on
 #   Pattern config: clickbait
 #
 # Minimal config — only what clickbAIt needs. Keeps OSC traffic low.
 
-DEVICE_TRACK_COUNT 0
+# Tracks 1..32 can be addressed by number (Click 1, Cues 2, Stems folder 3).
+DEVICE_TRACK_COUNT 32
 DEVICE_SEND_COUNT 0
 DEVICE_RECEIVE_COUNT 0
 DEVICE_FX_COUNT 0
 DEVICE_FX_PARAM_COUNT 0
 DEVICE_FX_INST_PARAM_COUNT 0
 DEVICE_MARKER_COUNT 0
-DEVICE_REGION_COUNT 8
+DEVICE_REGION_COUNT 64
 
 # Transport position in seconds (float, sent continuously during playback)
 TIME f/time s/time/str
@@ -55,3 +57,7 @@ LAST_REGION_LENGTH f/lastregion/length
 ACTION i/action s/action/str t/action/@ f/action/@/cc
 GOTO_REGION i/region t/region/@
 GOTO_MARKER i/marker t/marker/@
+
+# Track mute by number; REAPER also reports each track's mute back. Bail mutes
+# the click, cues and Stems folder this way.
+TRACK_MUTE b/track/mute b/track/@/mute

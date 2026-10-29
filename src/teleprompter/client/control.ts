@@ -25,7 +25,8 @@ const bannerLabel = $("banner-label"), bannerName = $("banner-name");
 const warn = $("warn"), mapEl = $("map"), rowsEl = $("rows"), conn = $("conn");
 const drawer = $("drawer"), drawerTitle = $("drawer-title"), drawerRows = $("drawer-rows");
 const dVamp = $("d-vamp"), dStop = $("d-stop"), drawerClose = $("drawer-close");
-const setNav = $("set"), sPrev = $("s-prev") as HTMLButtonElement, sNext = $("s-next") as HTMLButtonElement;
+const setNav = $("set"), sNext = $("s-next") as HTMLButtonElement;
+const tMore = $("t-more"), moreEl = $("more"), tVamp = $("t-vamp") as HTMLButtonElement;
 const sNextName = $("s-next-name"), sList = $("s-list"), setlistEl = $("setlist"), noticeEl = $("notice");
 
 let sections: ShowSection[] = [];
@@ -93,6 +94,10 @@ function buildLists(): void {
       b.className = "row-beat";
       b.textContent = `${Math.round(s.durationBeats)} beats`;
       row.appendChild(name); row.appendChild(b);
+      if (host === rowsEl) {
+        // Tap a section to jump REAPER there.
+        row.addEventListener("click", () => sendRaw({ type: "player", action: "locate", section: i }));
+      }
       if (host === drawerRows) {
         row.addEventListener("click", () => {
           if (i < anchorIdx) return;       // contiguous, forward only
@@ -124,14 +129,18 @@ function render(): void {
   });
   rowEls.forEach((el, i) => el.classList.toggle("here", i === here));
 
+  // Stopped, the bar is Play. Playing, it is the show control: tap to bail
+  // (or come back in), hold to stop.
   const live = isControllable(state, playing);
-  document.body.classList.toggle("idle", !live);
-  bar.toggleAttribute("disabled", !live);
-  const label = live
-    ? controlLabel(state, sections)
-    : state.mode === "stopped"
-      ? controlLabel(state, sections)
-      : { main: "Waiting for playback", sub: "Start the track in REAPER" };
+  // The drawer (vamp from here, stop the track) opens from a button too,
+  // since a swipe up is awkward with a mouse.
+  tVamp.disabled = !(state.mode === "following" && playing);
+  document.body.classList.toggle("ready", !playing);
+  document.body.classList.toggle("idle", playing && !live);
+  bar.toggleAttribute("disabled", playing && !live);
+  const label = !playing
+    ? { main: "Play", sub: "Starts the track" }
+    : controlLabel(state, sections);
   barMain.textContent = label.main;
   barSub.textContent = label.sub;
 
@@ -196,26 +205,64 @@ function openDrawer(): void {
 }
 function closeDrawer(): void { drawerOpen = false; stopArmed = false; render(); }
 
-// Tap, or swipe up for the drawer. No hold: the common cases are all taps, so
-// there's no press-and-hold threshold for a panicked tap to fall foul of.
+// Stopped: tap plays. Playing: tap bails or comes back in, swipe up opens
+// the drawer, and press-and-hold stops the track. The hold is long enough
+// that a panicked tap can't stop the song.
 const SWIPE_PX = 44;
-let downY = 0, swiped = false;
+const HOLD_MS = 700;
+// After a tap acts, the bar ignores taps for a second, so a double hit can't
+// bail right after Play, or come straight back in after a bail.
+const LOCK_MS = 1000;
+let lockUntil = 0;
+let downY = 0, swiped = false, held = false;
+let holdTimer: ReturnType<typeof setTimeout> | undefined;
+
+function cancelHold(): void {
+  if (holdTimer) clearTimeout(holdTimer);
+  holdTimer = undefined;
+  bar.classList.remove("holding");
+}
 
 bar.addEventListener("pointerdown", (e) => {
   bar.setPointerCapture(e.pointerId);
   downY = e.clientY;
   swiped = false;
+  held = false;
+  if (playing) {
+    bar.classList.add("holding");
+    holdTimer = setTimeout(() => {
+      held = true;
+      cancelHold();
+      send({ action: "stop" });
+      closeDrawer();
+    }, HOLD_MS);
+  }
 });
 bar.addEventListener("pointermove", (e) => {
+  // Any real movement is a swipe in progress, never a hold to stop.
+  if (Math.abs(downY - e.clientY) > 10) cancelHold();
   if (downY - e.clientY > SWIPE_PX) swiped = true;
 });
+tVamp.addEventListener("click", openDrawer);
 bar.addEventListener("pointerup", () => {
+  cancelHold();
+  if (held) { held = false; swiped = false; return; }
+  if (!swiped && Date.now() < lockUntil) return;
+  if (!playing) {
+    sendRaw({ type: "player", action: "play" });
+    lockUntil = Date.now() + LOCK_MS;
+    swiped = false;
+    return;
+  }
   if (!isControllable(state, playing) && state.mode !== "stopped") { swiped = false; return; }
   if (swiped) openDrawer();
-  else send({ action: state.mode === "stopped" ? "restart" : "tap" });
+  else {
+    send({ action: state.mode === "stopped" ? "restart" : "tap" });
+    lockUntil = Date.now() + LOCK_MS;
+  }
   swiped = false;
 });
-bar.addEventListener("pointercancel", () => { swiped = false; });
+bar.addEventListener("pointercancel", () => { swiped = false; cancelHold(); });
 
 dVamp.addEventListener("click", () => {
   send({ action: "vamp", from: anchorIdx, to: endIdx });
@@ -241,7 +288,6 @@ function renderSet(): void {
   const next = at < 0 ? (currentSlug ? undefined : setSongs[0]) : setSongs[at + 1];
   sNextName.textContent = next ? next.title : at === setSongs.length - 1 ? "End of the set" : "—";
   sNext.disabled = !next;
-  sPrev.disabled = at <= 0;
   setlistEl.replaceChildren(
     ...setSongs.map((s, i) => {
       const row = document.createElement("div");
@@ -266,11 +312,14 @@ function showNotice(text: string): void {
 }
 
 sNext.addEventListener("click", () => sendRaw({ type: "song", intent: { to: "next" } }));
-sPrev.addEventListener("click", () => sendRaw({ type: "song", intent: { to: "prev" } }));
 sList.addEventListener("click", () => setlistEl.classList.toggle("on"));
-for (const b of document.querySelectorAll<HTMLButtonElement>("#tport button")) {
+for (const b of document.querySelectorAll<HTMLButtonElement>("#tport button[data-player], #more button[data-player]")) {
   b.addEventListener("click", () => sendRaw({ type: "player", action: b.dataset.player }));
 }
+tMore.addEventListener("click", () => {
+  moreEl.hidden = !moreEl.hidden;
+  tMore.classList.toggle("on", !moreEl.hidden);
+});
 
 // ── Relay socket ──
 

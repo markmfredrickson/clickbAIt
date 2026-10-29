@@ -852,7 +852,9 @@ export function startRelay(opts: RelayOptions) {
       const fullPath = join(clientDir, filePath);
       const content = await readFile(fullPath);
       const ext = extname(filePath);
-      res.writeHead(200, { "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream" });
+      // no-cache: a phone must pick up a rebuilt client script on reload,
+      // not keep running the copy from before the relay restarted.
+      res.writeHead(200, { "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream", "Cache-Control": "no-cache" });
       res.end(content);
     } catch {
       res.writeHead(404);

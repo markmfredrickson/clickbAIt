@@ -141,6 +141,12 @@ function render(): void {
 
   const here = sectionAt(sections, beat);
   const loop = state.loop;
+  // While the drawer is open its range starts at the playing section, so it
+  // follows the song into the next one instead of sitting behind it.
+  if (drawerOpen && here > anchorIdx) {
+    anchorIdx = here;
+    if (endIdx < anchorIdx) endIdx = anchorIdx;
+  }
   const progress = songProgress(metered, beat);
   segEls.forEach((el, i) => {
     const inLoop = (loop && i >= loop.from && i <= loop.to) || (drawerOpen && i >= anchorIdx && i <= endIdx);

@@ -94,6 +94,16 @@ describe("vamping", () => {
     expect(t.effect.loopBeats).toEqual({ from: 16, to: 96 });
   });
 
+  it("starts a vamp at the playing section when its range began behind the playhead", () => {
+    // Drawer opened in Verse 1 (1), Start tapped once the Breakdown (2) began.
+    const t = apply(initialState, { action: "vamp", from: 1, to: 1 }, SECTIONS, 50);
+    expect(t.state.loop).toEqual({ from: 2, to: 2 });
+    expect(t.effect.loopBeats).toEqual({ from: 48, to: 64 });
+    // A range that still reaches ahead keeps its end.
+    const u = apply(initialState, { action: "vamp", from: 1, to: 3 }, SECTIONS, 50);
+    expect(u.state.loop).toEqual({ from: 2, to: 3 });
+  });
+
   it("rejects a backwards or out-of-range vamp instead of looping nonsense", () => {
     for (const bad of [{ from: 3, to: 1 }, { from: -1, to: 2 }, { from: 1, to: 99 }]) {
       const t = apply(initialState, { action: "vamp", ...bad }, SECTIONS, 20);

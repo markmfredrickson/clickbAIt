@@ -356,7 +356,12 @@ export function startRelay(opts: RelayOptions) {
       stemsHeld = r.held;
       if (r.mute !== undefined) player.muteTrack(trackOf.stems, r.mute);
     }
-    if (effect.transport === "stop") toReaper("/stop", [asFloat(1)]);
+    if (effect.transport === "stop") {
+      // An explicit end of the song: stop, and put the playhead back at the
+      // top (the title region) ready for the next run.
+      toReaper("/stop", [asFloat(1)]);
+      player.locateSection(-1);
+    }
     if (effect.locateSection !== undefined) {
       if (playing) player.seekSection(effect.locateSection);
       else player.locateSection(effect.locateSection);

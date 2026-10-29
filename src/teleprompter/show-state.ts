@@ -61,7 +61,7 @@ export interface ShowEffect {
   /** Where re-entry lands, in beats (the display) and as a section (REAPER). */
   locateBeat?: number;
   locateSection?: number;
-  /** Stop the transport. */
+  /** Stop the transport; the relay also returns the playhead to the top. */
   transport?: "stop";
 }
 
@@ -136,7 +136,10 @@ export function apply(
     if (!Number.isInteger(intent.from) || !Number.isInteger(intent.to)) return { state, effect: {} };
     if (intent.from > intent.to) return { state, effect: {} };
     if (intent.from < 0 || intent.to >= sections.length) return { state, effect: {} };
-    const loop = { from: intent.from, to: intent.to };
+    // The song may have moved on while the drawer was open. A loop behind the
+    // playhead never plays, so the vamp starts at the playing section.
+    const from = Math.max(intent.from, here);
+    const loop = { from, to: Math.max(intent.to, from) };
     return {
       state: { ...state, mode: "vamping", loop, at: intent.from },
       // Click keeps running so the groove holds; the cue is muted so the

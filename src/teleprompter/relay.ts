@@ -418,6 +418,8 @@ export function startRelay(opts: RelayOptions) {
     currentCacheEntry = entry;
     qrSvgCache = null; // reset QR (song title changed)
     console.log(`  Switched to: ${entry.payload.title}${entry.payload.artist ? ` — ${entry.payload.artist}` : ""}`);
+    // A new song never inherits a vamp's repeat from the last one.
+    if (showState.mode === "following" || showState.mode === "stopped") toReaper("/repeat", [asFloat(0)]);
     broadcast(JSON.stringify({ type: "song-changed", slug }));
   }
 

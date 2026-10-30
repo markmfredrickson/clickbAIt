@@ -99,13 +99,21 @@ const PAGE = `<!doctype html>
   :root { --bg: #f6f5f2; --fg: #1d1d1b; --muted: #6b6a66; --card: #fff; --line: #d9d7d0; --box: #e0412b; --r0: #c9d8e8; --r1: #e8dcc4; --r2: #cfe3cf; }
   @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecebe6; --muted: #9a9892; --card: #222220; --line: #3a3936; --box: #ff6a50; --r0: #34465a; --r1: #5a4c33; --r2: #35503a; } }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 24px 16px 170px; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
-  main { max-width: 1000px; margin: 0 auto; }
+  body { margin: 0; padding: 10px 16px; height: 100vh; overflow: hidden; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; }
+  .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .bar h1 { margin: 0; }
+  .bar select { font: inherit; padding: 3px 6px; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+  .bar .grow { flex: 1; }
+  .help { position: relative; }
+  .help summary { cursor: pointer; color: var(--muted); list-style: none; border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; }
+  .help p { position: absolute; z-index: 10; right: 0; top: 28px; width: min(70ch, 90vw); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 0; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
   h1 { font-size: 20px; margin: 0 0 4px; }
-  p.lead { color: var(--muted); margin: 0 0 24px; max-width: 72ch; }
-  .song { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 20px; }
+  p.lead { color: var(--muted); }
+  .song { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: none; }
+  .song.shown { display: block; }
   .song h2 { font-size: 16px; margin: 0 0 8px; }
-  .frame { position: relative; width: 100%; margin: 0 auto; overflow: hidden; user-select: none; touch-action: none; background: #000; }
+  .frame { position: relative; width: min(100%, calc((100vh - 330px) * 16 / 9)); margin: 0 auto; overflow: hidden; user-select: none; touch-action: none; background: #000; }
   .pic { position: absolute; inset: 0; }
   .pic video, .pic canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   .box { position: absolute; border: 2px solid var(--box); box-shadow: 0 0 0 9999px rgba(0,0,0,.45); cursor: move; }
@@ -120,8 +128,8 @@ const PAGE = `<!doctype html>
   .person { position: absolute; border: 1px solid rgba(120, 255, 140, .8); }
   .key input.strength { width: 70px; padding: 0; }
   .knot { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--box); }
-  .plot { display: block; width: 100%; height: 70px; margin-top: 4px; }
-  .lane { display: block; width: 100%; height: 60px; margin-top: 4px; cursor: grab; touch-action: none; }
+  .plot { display: block; width: 100%; height: 80px; margin-top: 4px; cursor: grab; touch-action: none; }
+
   .box.pinned { border-width: 3px; }
   .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--box); pointer-events: none; }
   .now { font-size: 13px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; min-height: 1.4em; }
@@ -139,19 +147,16 @@ const PAGE = `<!doctype html>
   .key button, .add, .reset { font: inherit; font-size: 13px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; }
   .key button { border: 0; padding: 0 6px; color: var(--muted); }
   .warn { color: var(--box); font-size: 13px; margin-top: 6px; min-height: 1em; }
-  .out { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line); padding: 10px 16px; }
-  .out div { max-width: 1000px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-start; }
-  textarea { flex: 1; height: 120px; font: 12px/1.3 ui-monospace, monospace; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
-  .copy { font: inherit; padding: 8px 14px; border: 0; border-radius: 6px; background: var(--fg); color: var(--bg); cursor: pointer; }
+  textarea { display: none; position: fixed; inset: 20% 10%; z-index: 20; height: 50vh; font: 12px/1.3 ui-monospace, monospace; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  .copy { font: inherit; font-size: 13px; padding: 4px 12px; border: 0; border-radius: 6px; background: var(--fg); color: var(--bg); cursor: pointer; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Crop picker</h1>
-  <p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p>
+  <div class="bar"><h1>Crop picker</h1><select id="pick" aria-label="Song"></select><span class="grow"></span><details class="help"><summary>?</summary><p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p></details><button class="copy" id="copy" type="button">Copy crops</button></div>
   <div id="songs"></div>
 </main>
-<div class="out"><div><textarea id="json" readonly></textarea><button class="copy" id="copy" type="button">Copy crops</button></div></div>
+<textarea id="json" readonly></textarea>
 <script>
 /*FOLLOW*/
 const SONGS = /*SONGS*/[];
@@ -180,11 +185,12 @@ let active = null;
 for (const s of SONGS) {
   const el = document.createElement("section");
   el.className = "song";
-  el.innerHTML = '<h2></h2><div class="frame"><div class="pic"></div></div>';
-  el.querySelector("h2").textContent = s.key;
+  el.dataset.key = s.key;
+  { const o = document.createElement("option"); o.value = o.textContent = s.key; document.getElementById("pick").append(o); }
+  el.innerHTML = '<div class="frame"><div class="pic"></div></div>';
   const frame = el.querySelector(".frame"), pic = el.querySelector(".pic");
   frame.style.aspectRatio = s.width + " / " + s.height;
-  const video = document.createElement("video"); video.muted = true; video.preload = "auto"; video.src = s.video; pic.append(video);
+  const video = document.createElement("video"); video.muted = true; video.preload = "metadata"; video.src = s.video; pic.append(video);
   document.getElementById("songs").append(el);
   if (!s.wide) {
     frame.style.maxWidth = Math.round(560 * s.width / s.height) + "px";
@@ -215,7 +221,7 @@ for (const s of SONGS) {
 
   const ui = document.createElement("div");
   ui.innerHTML =
-    '<div class="timeline"></div><canvas class="lane" width="1000" height="60"></canvas><canvas class="plot" width="1000" height="70"></canvas><div class="now"></div>' +
+    '<div class="timeline"></div><canvas class="plot" width="1000" height="80"></canvas><div class="now"></div>' +
     '<div class="controls">' +
     '<label>Curve</label><div class="onion"><label><input type="checkbox" class="follow"> follow the band</label><label>smooth over <input type="number" class="smooth" min="1" step="1"> s</label></div><span></span>' +
     '<label>Onion skin</label><div class="onion"><label><input type="checkbox" class="on"> on</label><label><input type="number" class="len" min="1" step="1"> seconds ahead</label><label><input type="number" class="count" min="2" max="30" step="1"> frames</label></div><span></span>' +
@@ -223,7 +229,7 @@ for (const s of SONGS) {
     '</div><div class="keys"></div><div class="warn"></div>';
   el.append(ui);
   const q = (c) => ui.querySelector(c);
-  const timeline = q(".timeline"), lane = q(".lane"), plot = q(".plot"), now = q(".now"), followEl = q(".follow"), smoothEl = q(".smooth");
+  const timeline = q(".timeline"), plot = q(".plot"), lane = plot, now = q(".now"), followEl = q(".follow"), smoothEl = q(".smooth");
   const on = q(".on"), len = q(".len"), count = q(".count"), angle = q(".angle"), deg = q(".deg"), keysEl = q(".keys"), warn = q(".warn");
   if (!motion || !people) { followEl.disabled = true; followEl.parentElement.title = "this song hasn't been measured"; }
   const boxEl = document.createElement("div"); boxEl.className = "box";
@@ -278,9 +284,7 @@ for (const s of SONGS) {
   const laneY = (v) => lane.height - LANE_PAD - v * (lane.height - 2 * LANE_PAD);
   const pull = (k, t) => { const sd = (k.width || 0) / 2; return (k.strength ?? 1) * (sd > 0 ? Math.exp(-((t - k.at) ** 2) / (2 * sd * sd)) : Math.abs(t - k.at) < 0.26 ? 1 : 0); };
   function drawLane() {
-    const g = lane.getContext("2d"), css = getComputedStyle(document.body), w = lane.width, h = lane.height;
-    g.clearRect(0, 0, w, h);
-    g.fillStyle = css.getPropertyValue("--muted"); g.font = "11px system-ui"; g.fillText("knots: drag up to pull harder, sideways to reach further", 4, 12);
+    const g = lane.getContext("2d"), css = getComputedStyle(document.body);
     for (const k of st.knots) {
       const sd = (k.width || 0) / 2, sel = Math.abs(k.at - st.t) < 0.26;
       g.strokeStyle = css.getPropertyValue("--box"); g.fillStyle = css.getPropertyValue("--box"); g.lineWidth = sel ? 2.5 : 1.5;
@@ -333,9 +337,9 @@ for (const s of SONGS) {
       g.globalAlpha = 1; g.lineWidth = 2; g.beginPath(); path.forEach((b, i) => { const x = X(b.t), y = Y(get(b)); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
     };
     const sizes = path.map((b) => b.size).concat(raw.map((b) => b.size)), angles = path.map((b) => b.angle).concat(raw.map((b) => b.angle));
-    lane((b) => b.size, Math.min(...sizes), Math.max(...sizes), 2, css.getPropertyValue("--fg"));
-    lane((b) => b.angle, Math.min(...angles), Math.max(...angles), 36, css.getPropertyValue("--box"));
-    g.fillStyle = css.getPropertyValue("--muted"); g.font = "11px system-ui"; g.fillText("zoom", 4, 12); g.fillText("turn", 4, 46);
+    lane((b) => b.size, Math.min(...sizes), Math.max(...sizes), 4, css.getPropertyValue("--fg"));
+    lane((b) => b.angle, Math.min(...angles), Math.max(...angles), 42, css.getPropertyValue("--box"));
+    g.fillStyle = css.getPropertyValue("--muted"); g.font = "11px system-ui"; g.fillText("zoom", 4, 12); g.fillText("turn", 4, 52); g.textAlign = "right"; g.fillText("knots: drag up to pull harder, sideways to reach further", w - 4, 12); g.textAlign = "left";
     g.strokeStyle = css.getPropertyValue("--box"); g.lineWidth = 2; g.beginPath(); g.moveTo(X(st.t), 0); g.lineTo(X(st.t), h); g.stroke();
   }
 
@@ -368,8 +372,8 @@ for (const s of SONGS) {
       keysEl.append(chip);
     });
     warn.textContent = !motion || !people ? "This song hasn't been measured, so the curve only runs between your knots." : "";
-    drawLane();
     drawPlot();
+    drawLane();
     output();
   }
   function seek(t) {
@@ -425,6 +429,14 @@ for (const s of SONGS) {
   });
   seek(st.t);
 }
+const pick = document.getElementById("pick");
+const show = (key) => {
+  document.querySelectorAll(".song").forEach((el) => el.classList.toggle("shown", el.dataset.key === key));
+  pick.value = key;
+  store.set("crop-song", key);
+};
+pick.onchange = () => show(pick.value);
+show(SONGS.some((s) => s.key === store.get("crop-song")) ? store.get("crop-song") : SONGS.find((s) => s.wide)?.key || SONGS[0].key);
 output();
 addEventListener("keydown", (e) => {
   if ((e.key === "s" || e.key === "S") && active && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "")) active();
@@ -432,7 +444,7 @@ addEventListener("keydown", (e) => {
 document.getElementById("copy").onclick = async () => {
   const b = document.getElementById("copy");
   try { await navigator.clipboard.writeText(document.getElementById("json").value); b.textContent = "Copied"; }
-  catch { document.getElementById("json").select(); b.textContent = "Press ⌘C"; }
+  catch { const j = document.getElementById("json"); j.style.display = "block"; j.select(); b.textContent = "Press ⌘C"; j.onblur = () => (j.style.display = "none"); }
   setTimeout(() => (b.textContent = "Copy crops"), 1500);
 };
 </script>

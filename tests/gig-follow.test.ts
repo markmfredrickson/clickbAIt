@@ -191,3 +191,13 @@ describe("a knot's pull over time", () => {
     expect(off(38)).toBeLessThan(off(50));
   });
 });
+
+describe("lost camera samples", () => {
+  it("hold the turn across them rather than letting it run off", () => {
+    const crop: CurveCrop = { follow: true, smooth: 6, knots: [] };
+    const motion = times(160).map((t, i) => (i >= 60 && i < 120 ? { angle: -150, scale: 20, dx: 1, dy: 2, lost: true } : { ...still, angle: -1 }));
+    const path = cropPath(times(160), motion, band(160, [[0.2, 0.3, 0.1, 0.4, 0.9]]), crop, W, H);
+    // The camera holds at -1° from the start, so levelling leaves the turn at 0.
+    for (const p of path) expect(Math.abs(p.angle)).toBeLessThan(0.2);
+  });
+});

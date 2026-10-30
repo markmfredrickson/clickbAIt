@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { alignTo, pyramid, type Similarity } from "../src/gig/motion.js";
+import { alignTo, pyramid, track, type Similarity } from "../src/gig/motion.js";
 
 const W = 384;
 const H = 216;
@@ -63,5 +63,36 @@ describe("alignTo", () => {
     const got = alignTo(pyramid(ref, W, H), pyramid(moved(ref, truth), W, H), near);
     expect(got.scale).toBeCloseTo(truth.scale, 2);
     expect(got.angle).toBeCloseTo(truth.angle, 1);
+  });
+});
+
+describe("track", () => {
+  const ref = scene();
+  const steps: Similarity[] = Array.from({ length: 8 }, (_, i) => ({ angle: 0.4 * i, scale: 1 + 0.01 * i, dx: 0.004 * i, dy: -0.003 * i }));
+
+  it("follows a camera that moves a little at a time", () => {
+    const samples = track(steps.map((m) => moved(ref, m)), W, H, 0, 2);
+    samples.forEach((s, i) => {
+      expect(s.lost).toBeFalsy();
+      expect(s.angle).toBeCloseTo(steps[i].angle, 1);
+      expect(s.scale).toBeCloseTo(steps[i].scale, 2);
+    });
+  });
+
+  it("marks a frame it can't match as lost, and picks up again after it", () => {
+    let seed = 11;
+    const noise = Float32Array.from({ length: W * H }, () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 255);
+    const frames = steps.map((m) => moved(ref, m));
+    frames[4] = noise;
+    const samples = track(frames, W, H, 0, 2);
+    expect(samples[4].lost).toBe(true);
+    for (const i of [5, 6, 7]) {
+      expect(samples[i].lost).toBeFalsy();
+      expect(samples[i].angle).toBeCloseTo(steps[i].angle, 1);
+    }
+  });
+
+  it("gives each sample its time", () => {
+    expect(track(steps.slice(0, 3).map((m) => moved(ref, m)), W, H, 10, 2).map((s) => s.t)).toEqual([10, 10.5, 11]);
   });
 });

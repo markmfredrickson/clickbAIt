@@ -79,8 +79,8 @@ export async function writeCropPage(gig: Gig): Promise<string> {
         : s.crop;
     songs.push({
       key, start, end, width, height, wide, video: `../../${s.phone}`, crop, hasCrop: !!s.crop, defaultSmooth: DEFAULT_SMOOTH,
-      // Compact: [t, angle, scale, dx, dy].
-      motion: motion && motion.map((m) => [m.t, +m.angle.toFixed(4), +m.scale.toFixed(5), +m.dx.toFixed(5), +m.dy.toFixed(5)]),
+      // Compact: [t, angle, scale, dx, dy, lost].
+      motion: motion && motion.map((m) => [m.t, +m.angle.toFixed(4), +m.scale.toFixed(5), +m.dx.toFixed(5), +m.dy.toFixed(5), m.lost ? 1 : 0]),
       people: people && people.map((p) => [p.t, p.boxes]),
     });
   }
@@ -204,7 +204,7 @@ for (const s of SONGS) {
     t: s.start, onion: { on: false, length: 10, count: 8 }, touched: s.hasCrop,
   });
   const times = s.motion ? s.motion.map((m) => m[0]) : Array.from({ length: Math.floor((s.end - s.start) * 2) + 1 }, (_, i) => s.start + i / 2);
-  const motion = s.motion ? s.motion.map(([, angle, scale, dx, dy]) => ({ angle, scale, dx, dy })) : null;
+  const motion = s.motion ? s.motion.map(([, angle, scale, dx, dy, lost]) => ({ angle, scale, dx, dy, lost: !!lost })) : null;
   const people = s.people ? s.people.map(([t, boxes]) => ({ t, boxes })) : null;
   const need = people ? bandNeed(people) : null;
   let path = [], raw = [];
@@ -214,7 +214,7 @@ for (const s of SONGS) {
     if (st.follow && need && motion) {
       const k0 = [...st.knots].sort((a, b) => a.at - b.at)[0];
       const i0 = k0 ? Math.min(times.length - 1, Math.max(0, Math.round((k0.at - times[0]) * 2))) : 0, level = k0 ? k0.angle : 0;
-      raw = times.map((t, i) => ({ t, size: need[i].size, angle: level - (motion[i].angle - motion[i0].angle) }));
+      raw = times.map((t, i) => ({ t, size: need[Math.min(need.length - 1, i)].size, angle: level - (motion[i].angle - motion[i0].angle) })).filter((_, i) => !motion[i].lost);
     } else raw = [];
   };
   refit();

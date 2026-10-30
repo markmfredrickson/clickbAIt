@@ -13,7 +13,7 @@
  */
 
 import { corners } from "./crop.js";
-import type { Similarity } from "./motion.js";
+import type { MotionSample, Similarity } from "./motion.js";
 
 /** People found in a frame (see people.swift): [x, y, w, h, confidence], fractions of the frame from its top-left. */
 export interface PeopleSample {
@@ -157,7 +157,7 @@ export function fitOnPicture(box: Box, width: number, height: number): Box {
 }
 
 /** The crop at each of `times` (evenly spaced), with the camera's motion and the people found at each if following. */
-export function cropPath(times: number[], motion: Similarity[] | null, people: PeopleSample[] | null, crop: CurveCrop, width: number, height: number): PathPoint[] {
+export function cropPath(times: number[], motion: (Similarity & Pick<MotionSample, "lost">)[] | null, people: PeopleSample[] | null, crop: CurveCrop, width: number, height: number): PathPoint[] {
   const n = times.length, rate = n > 1 ? 1 / (times[1] - times[0]) : 1;
   const index = (t: number) => Math.min(n - 1, Math.max(0, Math.round((t - times[0]) * rate)));
   const knots = [...crop.knots].sort((a, b) => a.at - b.at);
@@ -192,8 +192,10 @@ export function cropPath(times: number[], motion: Similarity[] | null, people: P
   }
   if (crop.follow && motion) {
     // Level: undo the camera's roll since the earliest knot (or the start), at that knot's angle.
-    const ref = first ? index(first.at) : 0, level = first ? first.angle : 0;
-    angle = smoothCurve(motion.map((m) => level - (m.angle - motion[ref].angle)), times.map(() => 1), pins((b) => b.angle), lambda);
+    // Where the camera fit was lost, hold the last good turn, lightly, rather than letting the curve run off.
+    const good = (i: number) => { for (let j = i; j >= 0; j--) if (!motion[j].lost) return motion[j]; return motion.find((m) => !m.lost) ?? motion[0]; };
+    const ref = good(first ? index(first.at) : 0).angle, level = first ? first.angle : 0;
+    angle = smoothCurve(motion.map((_, i) => level - (good(i).angle - ref)), motion.map((m) => (m.lost ? 0.05 : 1)), pins((b) => b.angle), lambda);
   } else {
     const held = first ? times.map((t) => knots.reduce((best, k) => (Math.abs(k.at - t) < Math.abs(best.at - t) ? k : best)).angle) : times.map(() => 0);
     angle = smoothCurve(held, times.map(() => 0.05), pins((b) => b.angle), lambda);

@@ -122,6 +122,30 @@ describe("readGig", () => {
     expect(readGig(gig, root).songs.map((s) => s.cut)).toEqual([{ in: 12.5, out: 190 }, { in: 4 }, {}]);
   });
 
+  it("reads a song's crop, a 16:9 box given as fractions of the frame", () => {
+    writeGig(gig, {
+      board: "media/board.m4a",
+      songs: [
+        { song: YCHL, phone: "media/02.mov", crop: { x: 0.1, y: 0.05, size: 0.8 } },
+        { song: YCHL, phone: "media/03.mov" },
+        { song: YCHL, phone: "media/04.mov", crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 } },
+      ],
+    });
+    expect(readGig(gig, root).songs.map((s) => s.crop)).toEqual([{ x: 0.1, y: 0.05, size: 0.8 }, undefined, { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 }]);
+  });
+
+  it("rejects a crop that runs off the frame or has no size", () => {
+    const crop = (c: unknown) => writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", crop: c }] });
+    crop({ x: 0.3, y: 0, size: 0.8 });
+    expect(() => readGig(gig, root)).toThrow(/crop/);
+    crop({ x: 0, y: 0.25, size: 0.8 });
+    expect(() => readGig(gig, root)).toThrow(/crop/);
+    crop({ x: 0, y: 0, size: 0 });
+    expect(() => readGig(gig, root)).toThrow(/crop/);
+    crop({ x: 0, y: 0, size: 0.8, angle: 50 });
+    expect(() => readGig(gig, root)).toThrow(/crop/);
+  });
+
   it("rejects a cut that ends before it starts, or a negative time", () => {
     writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", in: 30, out: 30 }] });
     expect(() => readGig(gig, root)).toThrow(/out/);
@@ -134,7 +158,7 @@ describe("gigRecipe", () => {
   let root: string, gig: string;
   beforeEach(() => ({ root, gig } = layout()));
 
-  function recipe(cut: { in?: number; out?: number } = {}): Recipe {
+  function recipe(cut: { in?: number; out?: number; crop?: { x: number; y: number; size: number; angle?: number } } = {}): Recipe {
     writeGig(gig, {
       board: "media/board.m4a",
       songs: [
@@ -276,6 +300,13 @@ describe("gigRecipe", () => {
       output: ["renders/02-you-cant-hurry-love-16x9.mp4"],
       dependencies: ["captions:02-you-cant-hurry-love"],
     });
+  });
+
+  it("passes a song's crop to its final video", () => {
+    const { wireit } = recipe({ crop: { x: 0.1, y: 0.05, size: 0.8 } });
+    expect(wireit["final:02-you-cant-hurry-love"].command).toMatch(/ --crop 0\.1,0\.05,0\.8$/);
+    expect(wireit["render:02-you-cant-hurry-love"].command).not.toContain("--crop");
+    expect(recipe({ crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 } }).wireit["final:02-you-cant-hurry-love"].command).toMatch(/ --crop 0\.1,0\.05,0\.8,-2\.5$/);
   });
 
   it("runs every song's final video from one final task", () => {

@@ -149,6 +149,16 @@ describe("finalArgs", () => {
     expect(opt(args, "-crf")).toBe("20");
   });
 
+  it("crops a 16:9 box and scales it back to 1080p, or leaves the picture alone without one", () => {
+    const cropped = finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, crop: { x: 0.1, y: 0.05, size: 0.8 }, out: "f.mp4" });
+    expect(opt(cropped, "-vf")).toBe("crop=w=iw*0.8:h=ih*0.8:x=iw*0.1:y=ih*0.05,scale=1920:1080:flags=lanczos");
+  });
+
+  it("rotates the frame about its centre before cropping, clockwise for a positive angle", () => {
+    const turned = finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 }, out: "f.mp4" });
+    expect(opt(turned, "-vf")).toBe("rotate=a=-2.5*PI/180:ow=iw:oh=ih:c=black,crop=w=iw*0.8:h=ih*0.8:x=iw*0.1:y=ih*0.05,scale=1920:1080:flags=lanczos");
+  });
+
   it("cuts the picture and the mix to the same stretch", () => {
     const before = (file: string) => args.slice(args.indexOf(file) - 5, args.indexOf(file));
     expect(before("p.mov")).toEqual(["-ss", "15", "-to", "170", "-i"]);

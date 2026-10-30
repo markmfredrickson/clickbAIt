@@ -113,7 +113,8 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
         `${tsx("gig/render-cli.ts")} "${s.phone}" ${words} renders/${key}-16x9.mp4 --final` +
         (fromBoard ? ` --board "${gig.board}" --sync ${sync} --mix ${s.mix}` : "") +
         (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") +
-        (s.cut.out !== undefined ? ` --out ${s.cut.out}` : ""),
+        (s.cut.out !== undefined ? ` --out ${s.cut.out}` : "") +
+        (s.crop ? ` --crop ${s.crop.x},${s.crop.y},${s.crop.size}` + (s.crop.angle !== undefined ? `,${s.crop.angle}` : "") : ""),
       files: fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words],
       output: [`renders/${key}-16x9.mp4`],
       dependencies: [`captions:${key}`],

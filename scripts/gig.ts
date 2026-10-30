@@ -3,6 +3,7 @@
  *
  *   npm run gig -- songs/gigs/2026-08-08            # sync every song (the default task)
  *   npm run gig -- songs/gigs/2026-08-08 sync       # any task the gig recipe has
+ *   npm run gig -- songs/gigs/2026-08-08 crop-page  # stills and a page for choosing each song's crop
  *   npm run gig -- songs/gigs/2026-08-08 stamp      # pin the gig to both repos' commits
  *       [--songs <commit>] [--clickbait <commit>] [--force]
  *
@@ -16,6 +17,7 @@ import { relative, resolve } from "node:path";
 import { readGig } from "../src/gig/gig.js";
 import { gigRecipe } from "../src/gig/gig-recipe.js";
 import { stamp } from "../src/gig/stamp.js";
+import { writeCropPage } from "../src/gig/crop-page.js";
 
 const [dirArg, task = "sync", ...rest] = process.argv.slice(2);
 if (!dirArg) {
@@ -26,7 +28,9 @@ const root = process.cwd();
 const dir = resolve(dirArg);
 
 try {
-  if (task === "stamp") {
+  if (task === "crop-page") {
+    console.log(`wrote ${relative(root, writeCropPage(readGig(dir, root)))}`);
+  } else   if (task === "stamp") {
     const flag = (name: string) => {
       const i = rest.indexOf(`--${name}`);
       return i >= 0 ? rest[i + 1] : undefined;

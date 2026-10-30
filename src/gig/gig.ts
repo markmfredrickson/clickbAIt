@@ -23,6 +23,9 @@
  *
  * `in` and `out` cut a song's video to the part worth keeping, in the
  * video's seconds; without them the whole video is used.
+ *
+ * `crop` keeps part of a song's picture in its final video, as a 16:9 box (see
+ * `Crop`). It is per song because the phone moves between songs.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -32,6 +35,10 @@ import { z } from "zod";
 const DEFAULT_MIX = 0.6;
 const Mix = z.number().min(0).max(1);
 const Seconds = z.number().min(0);
+const Crop = z
+  .object({ x: z.number().min(0), y: z.number().min(0), size: z.number().gt(0).max(1), angle: z.number().min(-45).max(45).optional() })
+  .strict()
+  .refine((c) => c.x + c.size <= 1 && c.y + c.size <= 1, { message: "the box runs off the frame" });
 
 const GigSchema = z
   .object({
@@ -46,12 +53,26 @@ const GigSchema = z
           mix: Mix.optional(),
           in: Seconds.optional(),
           out: Seconds.optional(),
+          crop: Crop.optional(),
         })
         .strict()
         .refine((s) => s.in === undefined || s.out === undefined || s.in < s.out, { message: "out must come after in", path: ["out"] }),
     ),
   })
   .strict();
+
+/**
+ * A 16:9 box inside a 16:9 frame: its top-left corner and its size, all as
+ * fractions of the frame (a size of 0.8 is 80% of the width and of the height).
+ * `angle` turns the picture under the box first, in degrees about the frame's
+ * centre, clockwise when positive, for a phone that sat crooked.
+ */
+export interface Crop {
+  x: number;
+  y: number;
+  size: number;
+  angle?: number;
+}
 
 export interface Cut {
   in?: number;
@@ -74,6 +95,8 @@ export interface GigSong {
   mix: number;
   /** Where the video is cut, in its own seconds; either end may be left open. */
   cut: Cut;
+  /** The part of the picture to keep in the final video. */
+  crop?: Crop;
 }
 
 export interface Gig {
@@ -119,6 +142,7 @@ export function readGig(dir: string, root: string): Gig {
         audio: s.audio,
         mix: s.audio === "phone" ? 0 : (s.mix ?? mix ?? DEFAULT_MIX),
         cut: { ...(s.in !== undefined ? { in: s.in } : {}), ...(s.out !== undefined ? { out: s.out } : {}) },
+        ...(s.crop ? { crop: s.crop } : {}),
       };
     }),
   };

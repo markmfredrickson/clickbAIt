@@ -265,6 +265,25 @@ describe("gigRecipe", () => {
     });
   });
 
+  it("renders a song's final video, stabilized and at full size, beside its review", () => {
+    const { scripts, wireit } = recipe({ in: 12.5, out: 190 });
+    expect(scripts["final:02-you-cant-hurry-love"]).toBe("wireit");
+    expect(wireit["final:02-you-cant-hurry-love"]).toEqual({
+      command:
+        `${GIG}/render-cli.ts "media/02.mov" captions/02-you-cant-hurry-love.words.json renders/02-you-cant-hurry-love-16x9.mp4 --final` +
+        ` --board "media/board.m4a" --sync sync/02-you-cant-hurry-love.sync.json --mix 0.6 --in 12.5 --out 190`,
+      files: ["media/02.mov", "captions/02-you-cant-hurry-love.words.json", "media/board.m4a", "sync/02-you-cant-hurry-love.sync.json"],
+      output: ["renders/02-you-cant-hurry-love-16x9.mp4"],
+      dependencies: ["captions:02-you-cant-hurry-love"],
+    });
+  });
+
+  it("runs every song's final video from one final task", () => {
+    const { scripts, wireit } = recipe();
+    expect(scripts.final).toBe("wireit");
+    expect(wireit.final.dependencies).toEqual(["final:01-seven-nation-army", "final:02-you-cant-hurry-love"]);
+  });
+
   it("runs every song's render from one render task", () => {
     const { scripts, wireit } = recipe();
     expect(scripts.render).toBe("wireit");

@@ -11,6 +11,9 @@
  * The captions are commented out until their timing is fixed; see
  * docs/gig-video-plan.md.
  *
+ * The final video (`finalArgs`) uses the same sound but stabilizes the picture
+ * at full size, after a pass that measures the shake (`stabilizeArgs`).
+ *
  * ffmpeg trims each file's encoder delay as it decodes, and a sync offset is
  * already in those trimmed times (see `correctOffset`), so seeking the board to
  * the span start lands on the video's first frame.
@@ -107,6 +110,59 @@ export function reviewArgs(r: ReviewInput): string[] {
     "-af", `volume=${r.gainDb}dB,alimiter=limit=-1.5dB:level=disabled`,
     "-c:a", "aac", "-b:a", "192k",
     // "-c:s", "mov_text", "-metadata:s:s:0", "language=eng", "-disposition:s:0", "0",
+    "-movflags", "+faststart",
+    r.out,
+  ];
+}
+
+/**
+ * How many frames the stabilizer averages the camera's path over. Mark chose
+ * 300 (10 s at 30 fps) against 60, 150 and 600 on Lonely Boy: the phone wanders
+ * slowly more than it shakes, and shorter windows left the wander in.
+ */
+export const SMOOTHING = 300;
+
+/** ffmpeg arguments that measure the phone's shake into `trf`, for `finalArgs`. */
+export function stabilizeArgs(s: { phone: string; trf: string; cut?: Cut }): string[] {
+  // vidstab numbers frames from the first one it sees, so this reads from the
+  // video's start, as the final pass does.
+  return [
+    "-y", "-v", "error",
+    ...(s.cut?.out !== undefined ? ["-to", String(s.cut.out)] : []), "-i", s.phone,
+    "-vf", `vidstabdetect=shakiness=6:accuracy=15:result=${s.trf}`,
+    "-f", "null", "-",
+  ];
+}
+
+export interface FinalInput {
+  phone: string;
+  mix: string;
+  /** The shake measured by `stabilizeArgs`. */
+  trf: string;
+  gainDb: number;
+  cut?: Cut;
+  out: string;
+}
+
+/**
+ * ffmpeg arguments for a song's finished 16:9 video: the phone's picture
+ * stabilized at full size, and the finished sound. The cut is made after
+ * stabilizing, so the transforms line up frame for frame.
+ */
+export function finalArgs(r: FinalInput): string[] {
+  const to = r.cut?.out !== undefined ? ["-to", String(r.cut.out)] : [];
+  const trim = r.cut?.in !== undefined ? `,trim=start=${r.cut.in},setpts=PTS-STARTPTS` : "";
+  const atrim = r.cut?.in !== undefined ? `,atrim=start=${r.cut.in},asetpts=PTS-STARTPTS` : "";
+  const video = `[0:v]setpts=PTS-STARTPTS,vidstabtransform=input=${r.trf}:smoothing=${SMOOTHING}:optzoom=0:zoom=0:crop=keep${trim}[v]`;
+  // A sample-peak limit half a dB under -1 dBTP leaves room for intersample peaks.
+  const audio = `[1:a]asetpts=PTS-STARTPTS${atrim},volume=${r.gainDb}dB,alimiter=limit=-1.5dB:level=disabled[a]`;
+  return [
+    "-y", "-v", "error",
+    ...to, "-i", r.phone, ...to, "-i", r.mix,
+    "-filter_complex", `${video};${audio}`,
+    "-map", "[v]", "-map", "[a]",
+    "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "192k",
     "-movflags", "+faststart",
     r.out,
   ];

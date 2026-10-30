@@ -34,3 +34,18 @@ export function loudness(file: string, span?: { start: number; seconds: number }
   if (r.status !== 0 || !found) throw new Error(`can't measure the loudness of ${file}`);
   return Number(found[1]);
 }
+
+/**
+ * An ffmpeg built with vidstab, for stabilizing. Homebrew's `ffmpeg` lacks it
+ * and its keg-only `ffmpeg-full` has it, so this takes `CLICKBAIT_FFMPEG`, then
+ * `ffmpeg` on the path if it has the filter, then ffmpeg-full's usual place.
+ */
+export function vidstabFfmpeg(): string {
+  const candidates = [process.env.CLICKBAIT_FFMPEG, "ffmpeg", "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg", "/usr/local/opt/ffmpeg-full/bin/ffmpeg"];
+  for (const bin of candidates) {
+    if (!bin) continue;
+    const r = spawnSync(bin, ["-hide_banner", "-filters"], { encoding: "utf8" });
+    if (r.status === 0 && r.stdout.includes("vidstabdetect")) return bin;
+  }
+  throw new Error("no ffmpeg with vidstab: run `brew install ffmpeg-full`, or set CLICKBAIT_FFMPEG");
+}

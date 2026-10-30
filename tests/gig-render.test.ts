@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { finalGainDb, mixArgs, mixGains, reviewArgs, TARGET_LUFS } from "../src/gig/render.js";
+import { finalArgs, finalGainDb, mixArgs, mixGains, reviewArgs, SMOOTHING, stabilizeArgs, TARGET_LUFS } from "../src/gig/render.js";
 
 const db = (gain: number) => 20 * Math.log10(gain);
 
@@ -136,5 +136,59 @@ describe("reviewArgs", () => {
     const to = reviewArgs({ phone: "p.mov", mix: "mix.flac", srt: "s.srt", gainDb: 0, cut: { out: 170 }, out: "r.mp4" });
     expect(to).not.toContain("-ss");
     expect(to.filter((a) => a === "-to")).toHaveLength(2);
+  });
+});
+
+describe("stabilizeArgs", () => {
+  it("measures the shake from the video's first frame, so the transforms line up with the final pass", () => {
+    const args = stabilizeArgs({ phone: "p.mov", trf: "t.trf", cut: { in: 15, out: 170 } });
+    expect(args).not.toContain("-ss");
+    expect(opt(args, "-vf")).toMatch(/^vidstabdetect=.*result=t\.trf/);
+    expect(args.slice(-3)).toEqual(["-f", "null", "-"]);
+  });
+
+  it("stops at the cut's out, and reads to the end without one", () => {
+    expect(stabilizeArgs({ phone: "p.mov", trf: "t.trf", cut: { out: 170 } }).slice(0, 7)).toEqual(["-y", "-v", "error", "-to", "170", "-i", "p.mov"]);
+    expect(stabilizeArgs({ phone: "p.mov", trf: "t.trf" })).not.toContain("-to");
+  });
+});
+
+describe("finalArgs", () => {
+  const args = finalArgs({ phone: "p.mov", mix: "mix.flac", trf: "t.trf", gainDb: 3.5, cut: { in: 15, out: 170 }, out: "f.mp4" });
+  const graph = () => opt(args, "-filter_complex");
+
+  it("stabilizes the picture over a long window, without zooming", () => {
+    expect(SMOOTHING).toBe(300);
+    expect(graph()).toContain(`vidstabtransform=input=t.trf:smoothing=${SMOOTHING}:optzoom=0:zoom=0:crop=keep`);
+  });
+
+  it("cuts after stabilizing, so the transforms count frames from the video's start", () => {
+    expect(args).not.toContain("-ss");
+    expect(graph()).toMatch(/vidstabtransform=[^;]*trim=start=15,setpts=PTS-STARTPTS\[v\]/);
+    expect(graph()).toMatch(/\[1:a\][^;]*atrim=start=15,asetpts=PTS-STARTPTS/);
+  });
+
+  it("reads both inputs only as far as the cut's out", () => {
+    const before = (file: string) => args.slice(args.indexOf(file) - 3, args.indexOf(file));
+    expect(before("p.mov")).toEqual(["-to", "170", "-i"]);
+    expect(before("mix.flac")).toEqual(["-to", "170", "-i"]);
+  });
+
+  it("keeps the whole video when there is no cut", () => {
+    const whole = finalArgs({ phone: "p.mov", mix: "mix.flac", trf: "t.trf", gainDb: 0, out: "f.mp4" });
+    expect(whole).not.toContain("-to");
+    expect(opt(whole, "-filter_complex")).not.toContain("trim=");
+  });
+
+  it("keeps the phone's full resolution and has no subtitle track", () => {
+    expect(graph()).not.toContain("scale=");
+    expect(args).not.toContain("-c:s");
+    expect(opt(args, "-crf")).toBe("20");
+  });
+
+  it("brings the sound to the target and limits it, as the review does", () => {
+    expect(graph()).toMatch(/\[1:a\][^;]*volume=3\.5dB,alimiter=limit=-1\.5dB:level=disabled\[a\]/);
+    expect(args.join(" ")).toContain("-map [v] -map [a]");
+    expect(args[args.length - 1]).toBe("f.mp4");
   });
 });

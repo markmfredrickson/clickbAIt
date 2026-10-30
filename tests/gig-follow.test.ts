@@ -178,3 +178,16 @@ describe("knot width and strength", () => {
     expect(cropPath(times(80), times(80).map(() => still), band(80, two), crop, W, H)[40].size).toBeCloseTo(0.4, 2);
   });
 });
+
+describe("a knot's pull over time", () => {
+  const two = [[0.2, 0.3, 0.1, 0.4, 0.9], [0.6, 0.3, 0.1, 0.4, 0.9]];
+
+  it("falls off like a normal curve: closest to the knot's box at its time, less so further out", () => {
+    const crop: CurveCrop = { follow: true, smooth: 2, knots: [{ at: 30, x: 0.05, y: 0.05, size: 0.9, angle: 0, width: 10, strength: 0.4 }] };
+    const path = cropPath(times(120), times(120).map(() => still), band(120, two), crop, W, H);
+    const off = (t: number) => Math.abs(path[t * 2].size - 0.9);
+    expect(off(30)).toBeLessThan(off(34));
+    expect(off(34)).toBeLessThan(off(38));
+    expect(off(38)).toBeLessThan(off(50));
+  });
+});

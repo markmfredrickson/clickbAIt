@@ -121,6 +121,7 @@ const PAGE = `<!doctype html>
   .key input.strength { width: 70px; padding: 0; }
   .knot { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--box); }
   .plot { display: block; width: 100%; height: 70px; margin-top: 4px; }
+  .lane { display: block; width: 100%; height: 60px; margin-top: 4px; cursor: grab; touch-action: none; }
   .box.pinned { border-width: 3px; }
   .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--box); pointer-events: none; }
   .now { font-size: 13px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; min-height: 1.4em; }
@@ -147,7 +148,7 @@ const PAGE = `<!doctype html>
 <body>
 <main>
   <h1>Crop picker</h1>
-  <p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick). Give a knot a width to hold its box over a stretch, and turn its pull down to only nudge the curve. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p>
+  <p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p>
   <div id="songs"></div>
 </main>
 <div class="out"><div><textarea id="json" readonly></textarea><button class="copy" id="copy" type="button">Copy crops</button></div></div>
@@ -214,7 +215,7 @@ for (const s of SONGS) {
 
   const ui = document.createElement("div");
   ui.innerHTML =
-    '<div class="timeline"></div><canvas class="plot" width="1000" height="70"></canvas><div class="now"></div>' +
+    '<div class="timeline"></div><canvas class="lane" width="1000" height="60"></canvas><canvas class="plot" width="1000" height="70"></canvas><div class="now"></div>' +
     '<div class="controls">' +
     '<label>Curve</label><div class="onion"><label><input type="checkbox" class="follow"> follow the band</label><label>smooth over <input type="number" class="smooth" min="1" step="1"> s</label></div><span></span>' +
     '<label>Onion skin</label><div class="onion"><label><input type="checkbox" class="on"> on</label><label><input type="number" class="len" min="1" step="1"> seconds ahead</label><label><input type="number" class="count" min="2" max="30" step="1"> frames</label></div><span></span>' +
@@ -222,7 +223,7 @@ for (const s of SONGS) {
     '</div><div class="keys"></div><div class="warn"></div>';
   el.append(ui);
   const q = (c) => ui.querySelector(c);
-  const timeline = q(".timeline"), plot = q(".plot"), now = q(".now"), followEl = q(".follow"), smoothEl = q(".smooth");
+  const timeline = q(".timeline"), lane = q(".lane"), plot = q(".plot"), now = q(".now"), followEl = q(".follow"), smoothEl = q(".smooth");
   const on = q(".on"), len = q(".len"), count = q(".count"), angle = q(".angle"), deg = q(".deg"), keysEl = q(".keys"), warn = q(".warn");
   if (!motion || !people) { followEl.disabled = true; followEl.parentElement.title = "this song hasn't been measured"; }
   const boxEl = document.createElement("div"); boxEl.className = "box";
@@ -271,6 +272,57 @@ for (const s of SONGS) {
     if (st.onion.on) onionTimer = setTimeout(drawOnion, 250);
   }
 
+  // The knot lane: each knot's pull as a normal curve, its height the pull and its spread the width.
+  const LANE_PAD = 6;
+  const laneX = (t) => ((t - s.start) / (s.end - s.start)) * lane.width;
+  const laneY = (v) => lane.height - LANE_PAD - v * (lane.height - 2 * LANE_PAD);
+  const pull = (k, t) => { const sd = (k.width || 0) / 2; return (k.strength ?? 1) * (sd > 0 ? Math.exp(-((t - k.at) ** 2) / (2 * sd * sd)) : Math.abs(t - k.at) < 0.26 ? 1 : 0); };
+  function drawLane() {
+    const g = lane.getContext("2d"), css = getComputedStyle(document.body), w = lane.width, h = lane.height;
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = css.getPropertyValue("--muted"); g.font = "11px system-ui"; g.fillText("knots: drag up to pull harder, sideways to reach further", 4, 12);
+    for (const k of st.knots) {
+      const sd = (k.width || 0) / 2, sel = Math.abs(k.at - st.t) < 0.26;
+      g.strokeStyle = css.getPropertyValue("--box"); g.fillStyle = css.getPropertyValue("--box"); g.lineWidth = sel ? 2.5 : 1.5;
+      g.beginPath();
+      if (sd === 0) { g.moveTo(laneX(k.at), laneY(0)); g.lineTo(laneX(k.at), laneY(k.strength ?? 1)); }
+      else {
+        const from = Math.max(s.start, k.at - 3.5 * sd), to = Math.min(s.end, k.at + 3.5 * sd);
+        for (let i = 0; i <= 80; i++) { const t = from + ((to - from) * i) / 80; const x = laneX(t), y = laneY(pull(k, t)); i ? g.lineTo(x, y) : g.moveTo(x, y); }
+      }
+      g.stroke();
+      if (sd > 0) { g.globalAlpha = 0.18; g.lineTo(laneX(Math.min(s.end, k.at + 3.5 * sd)), laneY(0)); g.lineTo(laneX(Math.max(s.start, k.at - 3.5 * sd)), laneY(0)); g.fill(); g.globalAlpha = 1; }
+      g.beginPath(); g.arc(laneX(k.at), laneY(k.strength ?? 1), sel ? 5 : 4, 0, 2 * Math.PI); g.fill();
+    }
+  }
+  lane.addEventListener("pointerdown", (e) => {
+    const r = lane.getBoundingClientRect(), sx = lane.width / r.width, sy = lane.height / r.height;
+    const px = (e.clientX - r.left) * sx, py = (e.clientY - r.top) * sy;
+    const t = s.start + (px / lane.width) * (s.end - s.start);
+    // The knot whose curve is nearest the pointer, if any is close.
+    let best = -1, bestD = 14;
+    st.knots.forEach((k, i) => {
+      const peak = Math.hypot(px - laneX(k.at), py - laneY(k.strength ?? 1));
+      const under = laneY(pull(k, t)) <= py + 6 && pull(k, t) > 0.02 ? Math.abs(py - laneY(pull(k, t))) : Infinity;
+      const d = Math.min(peak, under);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    if (best < 0) return;
+    e.preventDefault(); active = dropKnot;
+    const k = st.knots[best], s0 = k.strength ?? 1, w0 = k.width || 0, x0 = px, y0 = py;
+    // Sideways from the knot's side of the curve widens it; toward the middle narrows it.
+    const side = px >= laneX(k.at) ? 1 : -1, secPerPx = (s.end - s.start) / lane.width;
+    seek(k.at);
+    const move = (ev) => {
+      const mx = (ev.clientX - r.left) * sx, my = (ev.clientY - r.top) * sy;
+      k.strength = Math.round(Math.min(1, Math.max(0, s0 - (my - y0) / (lane.height - 2 * LANE_PAD))) * 100) / 100;
+      k.width = Math.round(Math.min(60, Math.max(0, w0 + 2 * side * (mx - x0) * secPerPx)) * 10) / 10;
+      st.touched = true; refit(); draw();
+    };
+    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); };
+    addEventListener("pointermove", move); addEventListener("pointerup", up);
+  });
+
   function drawPlot() {
     const g = plot.getContext("2d"), w = plot.width, h = plot.height, css = getComputedStyle(document.body);
     g.clearRect(0, 0, w, h);
@@ -298,7 +350,6 @@ for (const s of SONGS) {
     timeline.innerHTML = "";
     if (st.onion.on) { const o = document.createElement("div"); o.className = "gl"; o.style.background = "var(--box)"; o.style.opacity = ".25"; o.style.left = pct(st.t); o.style.width = "calc(" + pct(Math.min(st.t + st.onion.length, s.end)) + " - " + pct(st.t) + ")"; timeline.append(o); }
     st.knots.forEach((k) => {
-      if (k.width) { const w = document.createElement("div"); w.className = "gl"; w.style.background = "var(--box)"; w.style.opacity = String(0.15 + 0.35 * (k.strength ?? 1)); w.style.left = pct(k.at - k.width / 2); w.style.width = "calc(" + pct(k.at + k.width / 2) + " - " + pct(k.at - k.width / 2) + ")"; timeline.append(w); }
       const m = document.createElement("div"); m.className = "knot"; m.style.left = pct(k.at); m.style.opacity = String(0.4 + 0.6 * (k.strength ?? 1)); m.title = "knot at " + fmt(k.at); timeline.append(m);
     });
     const p = document.createElement("div"); p.className = "playhead"; p.style.left = pct(st.t); timeline.append(p);
@@ -307,14 +358,7 @@ for (const s of SONGS) {
     const sp = document.createElement("button"); sp.type = "button"; sp.className = "split"; sp.textContent = "Knot here (S)"; sp.onclick = dropKnot; keysEl.append(sp);
     [...st.knots].sort((a, b) => a.at - b.at).forEach((k) => {
       const chip = document.createElement("span"); chip.className = "key"; chip.setAttribute("aria-selected", String(Math.abs(k.at - st.t) < 0.26));
-      chip.append(fmt(k.at), " width ");
-      const wid = document.createElement("input"); wid.type = "number"; wid.min = "0"; wid.step = "1"; wid.value = k.width || 0; wid.title = "seconds the knot holds its box over";
-      wid.onclick = (e) => e.stopPropagation();
-      wid.onchange = () => { k.width = Math.max(0, Number(wid.value) || 0); st.touched = true; refit(); draw(); };
-      const str = document.createElement("input"); str.type = "range"; str.min = "0"; str.max = "1"; str.step = "0.05"; str.value = k.strength ?? 1; str.title = "how hard it pulls: left nudges, right pins"; str.className = "strength";
-      str.onclick = (e) => e.stopPropagation();
-      str.oninput = () => { k.strength = Number(str.value); st.touched = true; refit(); draw(); };
-      chip.append(wid, " s · pull ", str);
+      chip.append(fmt(k.at));
       if (st.knots.length > 1 || st.follow) {
         const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.title = "remove this knot";
         del.onclick = (e) => { e.stopPropagation(); st.knots.splice(st.knots.indexOf(k), 1); st.touched = true; refit(); draw(); };
@@ -324,6 +368,7 @@ for (const s of SONGS) {
       keysEl.append(chip);
     });
     warn.textContent = !motion || !people ? "This song hasn't been measured, so the curve only runs between your knots." : "";
+    drawLane();
     drawPlot();
     output();
   }

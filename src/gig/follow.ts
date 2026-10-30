@@ -34,9 +34,13 @@ export interface Box {
 export interface Knot extends Box {
   /** Seconds into the phone video. */
   at: number;
-  /** Seconds the knot holds its box over, centred on `at`; 0 (the default) pins a single moment. */
+  /**
+   * How far the knot's pull reaches, in seconds: it falls off like a normal
+   * curve around `at`, `width` being twice its standard deviation. 0 (the
+   * default) pulls at a single moment.
+   */
   width?: number;
-  /** How hard the knot pulls, 0 to 1: 1 (the default) pins the curve, less only nudges it. */
+  /** How hard the knot pulls at its peak, 0 to 1: 1 (the default) pins the curve, less only nudges it. */
   strength?: number;
 }
 
@@ -159,11 +163,16 @@ export function cropPath(times: number[], motion: Similarity[] | null, people: P
   const knots = [...crop.knots].sort((a, b) => a.at - b.at);
   const first = knots[0];
   const lambda = lambdaFor(crop.smooth, rate);
-  /** Each knot's hold on a curve: every sample across its width, at its strength. */
+  /** Each knot's pull on a curve: its strength at its time, falling off like a normal curve out to three standard deviations. */
   const pins = (get: (b: Box) => number) =>
     knots.flatMap((k) => {
-      const from = index(k.at - (k.width ?? 0) / 2), to = index(k.at + (k.width ?? 0) / 2);
-      return Array.from({ length: to - from + 1 }, (_, j) => ({ i: from + j, v: get(k), w: knotWeight(k.strength) }));
+      const sd = (k.width ?? 0) / 2;
+      if (sd === 0) return [{ i: index(k.at), v: get(k), w: knotWeight(k.strength) }];
+      const from = index(k.at - 3 * sd), to = index(k.at + 3 * sd);
+      return Array.from({ length: to - from + 1 }, (_, j) => {
+        const t = times[from + j];
+        return { i: from + j, v: get(k), w: knotWeight(k.strength) * Math.exp(-((t - k.at) ** 2) / (2 * sd * sd)) };
+      });
     });
   let cx: number[], cy: number[], size: number[], angle: number[];
   if (crop.follow && people) {

@@ -8,6 +8,9 @@
  * moves the mix's measured loudness to the target, limits its peaks and
  * attaches the SRT (`reviewArgs`).
  *
+ * The captions are commented out until their timing is fixed; see
+ * docs/gig-video-plan.md.
+ *
  * ffmpeg trims each file's encoder delay as it decodes, and a sync offset is
  * already in those trimmed times (see `correctOffset`), so seeking the board to
  * the span start lands on the video's first frame.
@@ -81,7 +84,7 @@ export function mixArgs(m: MixInput): string[] {
 export interface ReviewInput {
   phone: string;
   mix: string;
-  srt: string;
+  srt?: string;
   gainDb: number;
   /** Where to cut the video; the SRT is expected to be cut already. */
   cut?: Cut;
@@ -96,14 +99,14 @@ export function reviewArgs(r: ReviewInput): string[] {
   ];
   return [
     "-y", "-v", "error",
-    ...seek, "-i", r.phone, ...seek, "-i", r.mix, "-i", r.srt,
-    "-map", "0:v:0", "-map", "1:a:0", "-map", "2:s:0",
+    ...seek, "-i", r.phone, ...seek, "-i", r.mix, // "-i", r.srt,
+    "-map", "0:v:0", "-map", "1:a:0", // "-map", "2:s:0",
     "-vf", "scale=-2:720",
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
     // A sample-peak limit half a dB under -1 dBTP leaves room for intersample peaks.
     "-af", `volume=${r.gainDb}dB,alimiter=limit=-1.5dB:level=disabled`,
     "-c:a", "aac", "-b:a", "192k",
-    "-c:s", "mov_text", "-metadata:s:s:0", "language=eng", "-disposition:s:0", "0",
+    // "-c:s", "mov_text", "-metadata:s:s:0", "language=eng", "-disposition:s:0", "0",
     "-movflags", "+faststart",
     r.out,
   ];

@@ -2,6 +2,15 @@
 
 As of 2026-10-27. Branch `feature/gig-sync`, worktree `~/Code/clickbAIt-gig-sync`. The gig is `songs/gigs/2026-08-08/`.
 
+## Direction and TODO, 2026-10-29
+
+- **16:9:** no captions. Mark is fine leaving them to YouTube. The 16:9 work left is cuts, the final render, and later stage crop and shake.
+- **9:16:** this is where lyric timing has to be exact.
+- **Choosing 9:16 clips:** the best chorus of every song. A verse also gets a clip when the singer does something especially fun in it.
+- **Caption source for 9:16:** the official lyrics from the manifest, placed by aligning each song as closely as we can to its show-track (manifest) timing.
+- **Captions in renders:** commented out of `reviewArgs` and `render-cli.ts` until their timing is fixed. The `captions` task still writes the SRT files.
+- **TODO:** the live beat map ("Plan, revised 2026-10-27 late" and "Beat map progress" below, `src/gig/beatmap.ts`) is on hold. Review it after the `feature/beat-model` branch is worked out.
+
 ## Where things stand
 
 All 13 songs from the 2026-08-08 garage show have a 720p 16:9 review render with captions. The board audio is synced correctly on all 12 board songs. 01 Seven Nation Army uses the phone's own audio, so it has no sync.

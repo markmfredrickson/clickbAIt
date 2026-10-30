@@ -106,7 +106,8 @@ describe("reviewArgs", () => {
     expect(opt(args, "-af")).toBe("volume=3.5dB,alimiter=limit=-1.5dB:level=disabled");
   });
 
-  it("attaches the SRT as a subtitle track, off until chosen", () => {
+  // The captions are commented out in reviewArgs until their timing is fixed.
+  it.skip("attaches the SRT as a subtitle track, off until chosen", () => {
     expect(args.join(" ")).toContain("-map 2:s:0");
     expect(opt(args, "-c:s")).toBe("mov_text");
     expect(opt(args, "-disposition:s:0")).toBe("0");
@@ -124,7 +125,7 @@ describe("reviewArgs", () => {
     const before = (file: string) => cut.slice(cut.indexOf(file) - 5, cut.indexOf(file));
     expect(before("p.mov")).toEqual(["-ss", "15", "-to", "170", "-i"]);
     expect(before("mix.flac")).toEqual(["-ss", "15", "-to", "170", "-i"]);
-    expect(before("s.srt").slice(-1)).toEqual(["-i"]);
+    // expect(before("s.srt").slice(-1)).toEqual(["-i"]);
     expect(cut.filter((a) => a === "-ss")).toHaveLength(2);
   });
 

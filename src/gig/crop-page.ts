@@ -96,8 +96,8 @@ const PAGE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Crop Picker</title>
 <style>
-  :root { --bg: #f6f5f2; --fg: #1d1d1b; --muted: #6b6a66; --card: #fff; --line: #d9d7d0; --box: #e0412b; --r0: #c9d8e8; --r1: #e8dcc4; --r2: #cfe3cf; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecebe6; --muted: #9a9892; --card: #222220; --line: #3a3936; --box: #ff6a50; --r0: #34465a; --r1: #5a4c33; --r2: #35503a; } }
+  :root { --bg: #f6f5f2; --fg: #1d1d1b; --muted: #6b6a66; --card: #fff; --line: #d9d7d0; --box: #e0412b; --knot: #c98a0b; --r0: #c9d8e8; --r1: #e8dcc4; --r2: #cfe3cf; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecebe6; --muted: #9a9892; --card: #222220; --line: #3a3936; --box: #ff6a50; --knot: #f2b33d; --r0: #34465a; --r1: #5a4c33; --r2: #35503a; } }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 10px 16px; height: 100vh; overflow: hidden; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
   main { max-width: 1100px; margin: 0 auto; }
@@ -127,7 +127,7 @@ const PAGE = `<!doctype html>
   .people { position: absolute; inset: 0; pointer-events: none; }
   .person { position: absolute; border: 1px solid rgba(120, 255, 140, .8); }
   .key input.strength { width: 70px; padding: 0; }
-  .knot { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--box); }
+  .knot { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--knot); }
   .plot { display: block; width: 100%; height: 80px; margin-top: 4px; cursor: grab; touch-action: none; }
 
   .box.pinned { border-width: 3px; }
@@ -153,7 +153,7 @@ const PAGE = `<!doctype html>
 </head>
 <body>
 <main>
-  <div class="bar"><h1>Crop picker</h1><select id="pick" aria-label="Song"></select><span class="grow"></span><details class="help"><summary>?</summary><p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. On a trackpad, pinch on the picture to zoom the box and scroll with two fingers to move it. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p></details><button class="copy" id="copy" type="button">Copy crops</button></div>
+  <div class="bar"><h1>Crop picker</h1><select id="pick" aria-label="Song"></select><span class="grow"></span><details class="help"><summary>?</summary><p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (amber tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. On a trackpad, pinch on the picture to zoom the box and scroll with two fingers to move it. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p></details><button class="copy" id="copy" type="button">Copy crops</button></div>
   <div id="songs"></div>
 </main>
 <textarea id="json" readonly></textarea>
@@ -287,7 +287,7 @@ for (const s of SONGS) {
     const g = lane.getContext("2d"), css = getComputedStyle(document.body);
     for (const k of st.knots) {
       const sd = (k.width || 0) / 2, sel = Math.abs(k.at - st.t) < 0.26;
-      g.strokeStyle = css.getPropertyValue("--box"); g.fillStyle = css.getPropertyValue("--box"); g.lineWidth = sel ? 2.5 : 1.5;
+      g.strokeStyle = css.getPropertyValue("--knot"); g.fillStyle = css.getPropertyValue("--knot"); g.lineWidth = sel ? 2.5 : 1.5;
       g.beginPath();
       if (sd === 0) { g.moveTo(laneX(k.at), laneY(0)); g.lineTo(laneX(k.at), laneY(k.strength ?? 1)); }
       else {

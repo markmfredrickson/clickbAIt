@@ -156,6 +156,8 @@ const PAGE = `<!doctype html>
 const SONGS = /*SONGS*/[];
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 const r3 = (v) => Math.round(v * 1000) / 1000;
+// A knot dropped on the page holds a few seconds and pulls halfway; one in gig.json without these is a hard pin.
+const NEW_KNOT = { width: 4, strength: 0.5 };
 const fmt = (t) => { const m = Math.floor(t / 60); return m + ":" + (t - m * 60).toFixed(1).padStart(4, "0"); };
 const state = {};
 
@@ -165,7 +167,7 @@ function output() {
     const st = state[s.key];
     // Every 16:9 song goes out, so ones left alone get the automatic framing.
     if (!st) continue;
-    out[s.key] = { follow: st.follow, ...(st.smooth !== s.defaultSmooth ? { smooth: st.smooth } : {}), knots: [...st.knots].sort((a, b) => a.at - b.at).map((k) => ({ at: k.at, x: r3(k.x), y: r3(k.y), size: r3(k.size), angle: Math.round(k.angle * 10) / 10, ...(k.width ? { width: k.width } : {}), ...(k.strength !== undefined && k.strength < 1 ? { strength: k.strength } : {}) })) };
+    out[s.key] = { follow: st.follow, ...(st.smooth !== s.defaultSmooth ? { smooth: st.smooth } : {}), knots: [...st.knots].sort((a, b) => a.at - b.at).map((k) => ({ at: k.at, x: r3(k.x), y: r3(k.y), size: r3(k.size), angle: Math.round(k.angle * 10) / 10, width: k.width ?? 0, strength: k.strength ?? 1 })) };
   }
   document.getElementById("json").value = JSON.stringify(out, null, 1);
   store.set("crop-curves-v3", state);
@@ -333,7 +335,7 @@ for (const s of SONGS) {
   /** The knot at the playhead, made from the curve there if there isn't one. */
   function knotHere() {
     let i = knotNear(st.t);
-    if (i < 0) { const t = times[idx(st.t)]; st.knots.push({ at: Number(t.toFixed(2)), ...at(t), width: 0, strength: 1 }); i = st.knots.length - 1; st.t = t; }
+    if (i < 0) { const t = times[idx(st.t)]; st.knots.push({ at: Number(t.toFixed(2)), ...at(t), width: NEW_KNOT.width, strength: NEW_KNOT.strength }); i = st.knots.length - 1; st.t = t; }
     st.touched = true;
     return st.knots[i];
   }

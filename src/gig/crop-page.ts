@@ -122,7 +122,7 @@ const PAGE = `<!doctype html>
   .h { position: absolute; width: 18px; height: 18px; background: var(--box); border-radius: 3px; }
   .h.tl { left: -9px; top: -9px; cursor: nwse-resize; } .h.br { right: -9px; bottom: -9px; cursor: nwse-resize; }
   .h.tr { right: -9px; top: -9px; cursor: nesw-resize; } .h.bl { left: -9px; bottom: -9px; cursor: nesw-resize; }
-  .timeline { position: relative; height: 34px; margin-top: 10px; border-radius: 4px; overflow: hidden; cursor: pointer; touch-action: none; background: var(--line); }
+  .timeline { position: relative; height: 16px; margin-top: 8px; border-radius: 4px; overflow: hidden; cursor: pointer; touch-action: none; background: var(--line); }
   .gl { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, var(--card) 0 4px, transparent 4px 8px); opacity: .8; }
   .people { position: absolute; inset: 0; pointer-events: none; }
   .person { position: absolute; border: 1px solid rgba(120, 255, 140, .8); }
@@ -153,7 +153,7 @@ const PAGE = `<!doctype html>
 </head>
 <body>
 <main>
-  <div class="bar"><h1>Crop picker</h1><select id="pick" aria-label="Song"></select><span class="grow"></span><details class="help"><summary>?</summary><p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p></details><button class="copy" id="copy" type="button">Copy crops</button></div>
+  <div class="bar"><h1>Crop picker</h1><select id="pick" aria-label="Song"></select><span class="grow"></span><details class="help"><summary>?</summary><p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. On a trackpad, pinch on the picture to zoom the box and scroll with two fingers to move it. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p></details><button class="copy" id="copy" type="button">Copy crops</button></div>
   <div id="songs"></div>
 </main>
 <textarea id="json" readonly></textarea>
@@ -404,6 +404,21 @@ for (const s of SONGS) {
   len.onchange = () => { st.onion.length = Math.max(1, Number(len.value) || 10); draw(); onionLater(); };
   count.onchange = () => { st.onion.count = Math.min(30, Math.max(2, Math.round(Number(count.value)) || 8)); draw(); onionLater(); };
   angle.oninput = () => { const k = knotHere(); k.angle = Number(angle.value); refit(); draw(); };
+
+  // Trackpad gestures on the picture: pinching (which the browser sends as a
+  // wheel with ctrl held) zooms the box about its centre, and two-finger
+  // scrolling moves it.
+  frame.addEventListener("wheel", (e) => {
+    e.preventDefault(); active = dropKnot;
+    const k = knotHere();
+    const cx = k.x + k.size / 2, cy = k.y + k.size / 2;
+    if (e.ctrlKey) k.size = r3(Math.min(1, Math.max(0.2, k.size * Math.exp(e.deltaY * 0.01))));
+    const r = frame.getBoundingClientRect();
+    const nx = e.ctrlKey ? cx : cx + e.deltaX / r.width, ny = e.ctrlKey ? cy : cy + e.deltaY / r.height;
+    k.x = r3(Math.min(Math.max(nx - k.size / 2, 0), 1 - k.size));
+    k.y = r3(Math.min(Math.max(ny - k.size / 2, 0), 1 - k.size));
+    refit(); draw();
+  }, { passive: false });
 
   boxEl.addEventListener("pointerdown", (e) => {
     e.preventDefault(); e.stopPropagation(); active = dropKnot;

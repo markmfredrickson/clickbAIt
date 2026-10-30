@@ -168,10 +168,10 @@ function output() {
     out[s.key] = { follow: st.follow, ...(st.smooth !== s.defaultSmooth ? { smooth: st.smooth } : {}), knots: [...st.knots].sort((a, b) => a.at - b.at).map((k) => ({ at: k.at, x: r3(k.x), y: r3(k.y), size: r3(k.size), angle: Math.round(k.angle * 10) / 10, ...(k.width ? { width: k.width } : {}), ...(k.strength !== undefined && k.strength < 1 ? { strength: k.strength } : {}) })) };
   }
   document.getElementById("json").value = JSON.stringify(out, null, 1);
-  store.set("crop-curves-v2", state);
+  store.set("crop-curves-v3", state);
 }
 
-const saved = store.get("crop-curves-v2") || {};
+const saved = store.get("crop-curves-v3") || {};
 /** The song whose knot S drops: the last one touched. */
 let active = null;
 for (const s of SONGS) {
@@ -312,7 +312,7 @@ for (const s of SONGS) {
       const str = document.createElement("input"); str.type = "range"; str.min = "0"; str.max = "1"; str.step = "0.05"; str.value = k.strength ?? 1; str.title = "how hard it pulls: left nudges, right pins"; str.className = "strength";
       str.onclick = (e) => e.stopPropagation();
       str.oninput = () => { k.strength = Number(str.value); st.touched = true; refit(); draw(); };
-      chip.append(wid, "s pull ", str);
+      chip.append(wid, " s · pull ", str);
       if (st.knots.length > 1 || st.follow) {
         const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.title = "remove this knot";
         del.onclick = (e) => { e.stopPropagation(); st.knots.splice(st.knots.indexOf(k), 1); st.touched = true; refit(); draw(); };

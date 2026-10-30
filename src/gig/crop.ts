@@ -82,6 +82,40 @@ function num(v: number): string {
 }
 
 /**
+ * Terms added up as a balanced tree, ((a+b)+(c+d)), not a+b+c+d: ffmpeg's
+ * expression parser nests one level per `+` and gives up past about a hundred.
+ */
+function sum(terms: string[]): string {
+  return terms.length === 1 ? terms[0] : `(${sum(terms.slice(0, terms.length >> 1))}+${sum(terms.slice(terms.length >> 1))})`;
+}
+
+/** The `perspective` filter options for corner expressions, top-left, top-right, bottom-left, bottom-right. */
+function perspective(points: string[][], evalFrame: boolean): string {
+  const opts = points.flatMap(([px, py], i) => [`x${i}='${px}'`, `y${i}='${py}'`]);
+  return `perspective=${opts.join(":")}:interpolation=cubic:sense=source:eval=${evalFrame ? "frame" : "init"}`;
+}
+
+/**
+ * The `perspective` filter that follows a crop path sampled through the song
+ * (see follow.ts), moving each corner in a straight line from one sample to
+ * the next.
+ */
+export function pathFilter(path: (Box & { t: number })[], v: { start: number; fps: number }): string {
+  // Corners as fractions of the frame (a 16:9 one, as crops need), scaled by ffmpeg's W and H.
+  const pts = path.map((p) => corners(p, 16, 9).flat().map((v, i) => v / (i % 2 ? 9 : 16)));
+  const frames = path.map((p) => (p.t - v.start) * v.fps);
+  const coord = (c: number) => {
+    const terms = [num(pts[0][c])];
+    for (let k = 1; k < path.length; k++) {
+      const d = pts[k][c] - pts[k - 1][c];
+      if (d !== 0) terms.push(`${num(d)}*clip((in-${num(frames[k - 1])})/${num(frames[k] - frames[k - 1])},0,1)`);
+    }
+    return `${c % 2 ? "H" : "W"}*${sum(terms)}`;
+  };
+  return perspective([0, 1, 2, 3].map((i) => [coord(2 * i), coord(2 * i + 1)]), path.length > 1);
+}
+
+/**
  * The `perspective` filter that cuts the keyed boxes out of the picture.
  * `start` is the phone video's time at the cut's first frame, where ffmpeg's
  * frame count `in` starts from 0.
@@ -89,15 +123,15 @@ function num(v: number): string {
 export function perspectiveFilter(keys: CropKey[], v: { start: number; fps: number }): string {
   /** One of the box's values over time: the first key's, plus each glide's change. */
   const over = (get: (b: Box) => number): string => {
-    let expr = num(get(box(keys[0])));
+    const terms = [num(get(box(keys[0])))];
     for (let i = 1; i < keys.length; i++) {
       const change = get(box(keys[i])) - get(box(keys[i - 1]));
       if (change === 0) continue;
       const glide = keys[i].glide ?? DEFAULT_GLIDE;
       const p = `clip((in-${num((keys[i].at - glide - v.start) * v.fps)})/${num(glide * v.fps)},0,1)`;
-      expr += `+${num(change)}*${p}*${p}*(3-2*${p})`;
+      terms.push(`${num(change)}*${p}*${p}*(3-2*${p})`);
     }
-    return expr;
+    return sum(terms);
   };
   const [x, y, size, angle] = [over((b) => b.x), over((b) => b.y), over((b) => b.size), over((b) => b.angle)];
   const a = `(${angle})*PI/180`;
@@ -105,9 +139,7 @@ export function perspectiveFilter(keys: CropKey[], v: { start: number; fps: numb
     const [dx, dy] = [`((${fx})*W-W/2)`, `((${fy})*H-H/2)`];
     return [`W/2+cos(${a})*${dx}+sin(${a})*${dy}`, `H/2-sin(${a})*${dx}+cos(${a})*${dy}`];
   };
-  const pts = [point(x, y), point(`${x}+${size}`, y), point(x, `${y}+${size}`), point(`${x}+${size}`, `${y}+${size}`)];
-  const opts = pts.flatMap(([px, py], i) => [`x${i}='${px}'`, `y${i}='${py}'`]);
-  return `perspective=${opts.join(":")}:interpolation=cubic:sense=source:eval=${keys.length > 1 ? "frame" : "init"}`;
+  return perspective([point(x, y), point(`${x}+${size}`, y), point(x, `${y}+${size}`), point(`${x}+${size}`, `${y}+${size}`)], keys.length > 1);
 }
 
 /** `boxAt` as JavaScript source, so the picker page previews glides with the same code. */

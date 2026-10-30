@@ -18,6 +18,8 @@
  *             where the band starts and stops playing.
  *   render    a 720p review of the song, cut to its `in` and `out`
  *             (`renders/<nn>-<slug>-16x9-review.mp4`).
+ *   motion    how the phone moved over the cut, for a crop that follows the camera
+ *             (`work/<nn>-<slug>.motion.json`).
  *   final     the finished video for upload: full size, cut the same way
  *             (`renders/<nn>-<slug>-16x9.mp4`).
  */
@@ -97,6 +99,18 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
     });
     edges.push(`edges:${key}`);
     const words = `captions/${key}.words.json`;
+    // A crop that follows the camera needs the camera measured first.
+    const motion = s.crop && !Array.isArray(s.crop) && s.crop.follow ? `work/${key}.motion.json` : undefined;
+    if (motion) {
+      add(`motion:${key}`, {
+        command:
+          `${tsx("gig/motion-cli.ts")} "${s.phone}" ${motion}` +
+          (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") +
+          (s.cut.out !== undefined ? ` --out ${s.cut.out}` : ""),
+        files: [s.phone],
+        output: [motion],
+      });
+    }
     add(`render:${key}`, {
       command:
         `${tsx("gig/render-cli.ts")} "${s.phone}" ${words} renders/${key}-16x9-review.mp4` +
@@ -114,10 +128,11 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
         (fromBoard ? ` --board "${gig.board}" --sync ${sync} --mix ${s.mix}` : "") +
         (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") +
         (s.cut.out !== undefined ? ` --out ${s.cut.out}` : "") +
-        (s.crop ? ` --crop '${JSON.stringify(s.crop)}'` : ""),
-      files: fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words],
+        (s.crop ? ` --crop '${JSON.stringify(s.crop)}'` : "") +
+        (motion ? ` --motion ${motion}` : ""),
+      files: [...(fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words]), ...(motion ? [motion] : [])],
       output: [`renders/${key}-16x9.mp4`],
-      dependencies: [`captions:${key}`],
+      dependencies: [`captions:${key}`, ...(motion ? [`motion:${key}`] : [])],
     });
     finals.push(`final:${key}`);
   }

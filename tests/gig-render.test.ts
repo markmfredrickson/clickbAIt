@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { perspectiveFilter } from "../src/gig/crop.js";
 import { finalArgs, finalGainDb, mixArgs, mixGains, reviewArgs, TARGET_LUFS } from "../src/gig/render.js";
 
 const db = (gain: number) => 20 * Math.log10(gain);
@@ -150,10 +149,9 @@ describe("finalArgs", () => {
     expect(opt(args, "-crf")).toBe("20");
   });
 
-  it("cuts the keyed boxes out with the perspective filter, counting frames from the cut", () => {
-    const keys = [{ at: 15, x: 0.1, y: 0.05, size: 0.8 }, { at: 60, x: 0.05, y: 0.1, size: 0.7, angle: -2.5 }];
-    const cropped = finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, cut: { in: 15 }, crop: { keys, fps: 30 }, out: "f.mp4" });
-    expect(opt(cropped, "-vf")).toBe(perspectiveFilter(keys, { start: 15, fps: 30 }));
+  it("puts the crop's filter on the picture", () => {
+    const cropped = finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, crop: "perspective=x0=1", out: "f.mp4" });
+    expect(opt(cropped, "-vf")).toBe("perspective=x0=1");
   });
 
   it("cuts the picture and the mix to the same stretch", () => {

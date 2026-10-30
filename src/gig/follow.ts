@@ -36,6 +36,9 @@ export interface PathPoint extends Box {
   t: number;
 }
 
+/** How many seconds a curve crop smooths over unless gig.json says otherwise. */
+export const DEFAULT_SMOOTH = 12;
+
 /** The Whittaker smoother's weight for a curve that smooths over `seconds`, sampled `rate` times a second. */
 export function lambdaFor(seconds: number, rate: number): number {
   return ((seconds * rate) / (2 * Math.PI)) ** 4;

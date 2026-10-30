@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxAt, corners, perspectiveFilter, type CropKey } from "../src/gig/crop.js";
+import { boxAt, corners, pathFilter, perspectiveFilter, type CropKey } from "../src/gig/crop.js";
 
 const W = 1920;
 const H = 1080;
@@ -81,5 +81,33 @@ describe("perspectiveFilter", () => {
       const n = Math.round((t - start) * 30);
       expect(expressions(f).map((e) => evaluate(e, n))).toEqual(corners(boxAt([A, B], start + n / 30), W, H).flat().map((v) => expect.closeTo(v, 4)));
     }
+  });
+});
+
+/** How deeply an expression nests its brackets. */
+const depth = (e: string) => [...e].reduce((d, c) => ({ cur: d.cur + (c === "(" ? 1 : c === ")" ? -1 : 0), max: Math.max(d.max, d.cur + (c === "(" ? 1 : 0)) }), { cur: 0, max: 0 }).max;
+
+describe("pathFilter", () => {
+  const path = Array.from({ length: 900 }, (_, i) => ({ t: 10 + i / 2, x: 0.05 + 0.0001 * i, y: 0.05, size: 0.9 - 0.0001 * i, angle: Math.sin(i / 40) }));
+
+  it("sends each sample's corners to the frame's corners on that sample's frame", () => {
+    const f = pathFilter(path, { start: 10, fps: 30 });
+    for (const i of [0, 1, 300, 899]) {
+      const n = Math.round((path[i].t - 10) * 30);
+      expect(expressions(f).map((e) => evaluate(e, n))).toEqual(corners(path[i], W, H).flat().map((v) => expect.closeTo(v, 1)));
+    }
+  });
+
+  it("moves in a straight line between samples", () => {
+    const f = pathFilter(path, { start: 10, fps: 30 });
+    const a = corners(path[300], W, H)[0], b = corners(path[301], W, H)[0];
+    const n = Math.round((path[300].t - 10) * 30) + 5;
+    expect(evaluate(expressions(f)[0], n)).toBeCloseTo(a[0] + ((b[0] - a[0]) * 5) / 15, 1);
+  });
+
+  it("keeps its expressions shallow however long the song, which ffmpeg needs", () => {
+    for (const e of expressions(pathFilter(path, { start: 10, fps: 30 }))) expect(depth(e)).toBeLessThan(40);
+    const keys: CropKey[] = Array.from({ length: 200 }, (_, i) => ({ at: i * 3, x: 0.05, y: 0.05, size: 0.8 + (i % 2) * 0.1 }));
+    for (const e of expressions(perspectiveFilter(keys, { start: 0, fps: 30 }))) expect(depth(e)).toBeLessThan(60);
   });
 });

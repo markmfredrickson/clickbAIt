@@ -18,7 +18,6 @@
  * the span start lands on the video's first frame.
  */
 
-import { type CropKey, perspectiveFilter } from "./crop.js";
 import type { Cut } from "./gig.js";
 import { boardSpan, type Sync } from "./timeline.js";
 
@@ -118,9 +117,10 @@ export function reviewArgs(r: ReviewInput): string[] {
 /**
  * ffmpeg arguments for a song's finished 16:9 video: the phone's picture at
  * full size and the finished sound, cut as the review is, with no captions. A
- * crop fills the whole frame, so the video stays at the phone's size.
+ * crop is a filter (see crop.ts) that fills the whole frame, so the video stays
+ * at the phone's size.
  */
-export function finalArgs(r: Omit<ReviewInput, "srt"> & { crop?: { keys: CropKey[]; fps: number } }): string[] {
+export function finalArgs(r: Omit<ReviewInput, "srt"> & { crop?: string }): string[] {
   const seek = [
     ...(r.cut?.in !== undefined ? ["-ss", String(r.cut.in)] : []),
     ...(r.cut?.out !== undefined ? ["-to", String(r.cut.out)] : []),
@@ -129,7 +129,7 @@ export function finalArgs(r: Omit<ReviewInput, "srt"> & { crop?: { keys: CropKey
     "-y", "-v", "error",
     ...seek, "-i", r.phone, ...seek, "-i", r.mix,
     "-map", "0:v:0", "-map", "1:a:0",
-    ...(r.crop ? ["-vf", perspectiveFilter(r.crop.keys, { start: r.cut?.in ?? 0, fps: r.crop.fps })] : []),
+    ...(r.crop ? ["-vf", r.crop] : []),
     "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
     "-af", `volume=${r.gainDb}dB,alimiter=limit=-1.5dB:level=disabled`,
     "-c:a", "aac", "-b:a", "192k",

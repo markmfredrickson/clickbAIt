@@ -2,7 +2,7 @@
  * A song's 16:9 review render, or with --final its finished video (see render.ts).
  *
  *   npx tsx src/gig/render-cli.ts <phone video> <words.json> <out.mp4> [--final]
- *     [--board <board> --sync <sync.json> --mix <share>] [--in <seconds>] [--out <seconds>] [--crop <keys as JSON>]
+ *     [--board <board> --sync <sync.json> --mix <share>] [--in <seconds>] [--out <seconds>] [--crop <crop as JSON> [--motion <motion.json>]]
  *
  * Without --board the sound is the phone's own. The captions come from the
  * words file (see captions-cli.ts), cut to match the video. They are commented
@@ -14,7 +14,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { checkCut } from "./edges.js";
-import type { CropKey } from "./crop.js";
+import { type CropKey, pathFilter, perspectiveFilter } from "./crop.js";
+import { cropPath, type CurveCrop } from "./follow.js";
+import type { MotionSample } from "./motion.js";
 import type { Cut } from "./gig.js";
 import { frameRate, loudness, mediaSeconds } from "./media.js";
 import { finalArgs, finalGainDb, mixArgs, mixGains, reviewArgs } from "./render.js";
@@ -32,7 +34,7 @@ const board = option("--board");
 const syncFile = option("--sync");
 if (!out || !board !== !syncFile) {
   console.error(
-    "usage: npx tsx src/gig/render-cli.ts <phone video> <words.json> <out.mp4> [--final] [--board <board> --sync <sync.json> --mix <share>] [--in <seconds>] [--out <seconds>] [--crop <keys as JSON>]",
+    "usage: npx tsx src/gig/render-cli.ts <phone video> <words.json> <out.mp4> [--final] [--board <board> --sync <sync.json> --mix <share>] [--in <seconds>] [--out <seconds>] [--crop <crop as JSON> [--motion <motion.json>]]",
   );
   process.exit(1);
 }
@@ -43,7 +45,7 @@ const cut: Cut = {
   ...(option("--out") !== undefined ? { out: Number(option("--out")) } : {}),
 };
 const cropArg = option("--crop");
-const crop = cropArg ? { keys: JSON.parse(cropArg) as CropKey[], fps: frameRate(phone) } : undefined;
+const motionFile = option("--motion");
 const lines: CaptionLine[] = JSON.parse(readFileSync(wordsFile, "utf8")).lines;
 // The live alignment this checks against is not reliable enough to overrule a
 // cut someone chose, so a failed check only warns.
@@ -69,8 +71,18 @@ try {
   const kept = { start: cut.in ?? 0, seconds: (cut.out ?? videoSeconds) - (cut.in ?? 0) };
   mkdirSync(dirname(out), { recursive: true });
   const gainDb = finalGainDb(loudness(mixed, kept));
+  const crop = cropArg ? cropFilter(JSON.parse(cropArg), cut.in ?? 0, cut.out ?? videoSeconds) : undefined;
   const ffmpegArgs = final ? finalArgs({ phone, mix: mixed, gainDb, cut, crop, out }) : reviewArgs({ phone, mix: mixed, gainDb, cut, out });
   execFileSync("ffmpeg", ffmpegArgs, { stdio: "inherit" });
 } finally {
   rmSync(tmp, { recursive: true, force: true });
+}
+
+/** The crop's filter: keyed boxes, or curves sampled twice a second (from the camera's motion when they follow it). */
+function cropFilter(c: CropKey[] | CurveCrop, start: number, end: number): string {
+  const fps = frameRate(phone);
+  if (Array.isArray(c)) return perspectiveFilter(c, { start, fps });
+  const samples: MotionSample[] | null = motionFile ? JSON.parse(readFileSync(motionFile, "utf8")).samples : null;
+  const times = samples ? samples.map((s) => s.t) : Array.from({ length: Math.floor((end - start) * 2) + 1 }, (_, i) => start + i / 2);
+  return pathFilter(cropPath(times, samples, c, 1920, 1080), { start, fps });
 }

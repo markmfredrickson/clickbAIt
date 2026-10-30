@@ -26,14 +26,16 @@
  *
  * `crop` keeps part of a song's picture in its final video: a 16:9 box given
  * as fractions of the frame, `{ x, y, size, angle? }`, or a list of boxes keyed
- * by time that glide from one to the next (see crop.ts). It is per song
- * because the phone moves between songs.
+ * by time that glide from one to the next (see crop.ts), or curves pinned by
+ * knots that can follow the camera, `{ follow, smooth?, knots }` (see
+ * follow.ts). It is per song because the phone moves between songs.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, normalize, resolve } from "node:path";
 import { z } from "zod";
 import { type CropKey, DEFAULT_GLIDE } from "./crop.js";
+import { type CurveCrop, DEFAULT_SMOOTH } from "./follow.js";
 
 const DEFAULT_MIX = 0.6;
 const Mix = z.number().min(0).max(1);
@@ -45,6 +47,13 @@ const Key = z
   .object({ at: Seconds, ...boxFields, glide: z.number().gt(0).optional() })
   .strict()
   .refine(inFrame, { message: "the box runs off the frame" });
+const Curve = z
+  .object({
+    follow: z.boolean(),
+    smooth: z.number().gt(0).default(DEFAULT_SMOOTH),
+    knots: z.array(z.object({ at: Seconds, ...boxFields, angle: z.number().min(-45).max(45).default(0) }).strict().refine(inFrame, { message: "the box runs off the frame" })).min(1),
+  })
+  .strict();
 const Keys = z
   .array(Key)
   .min(1)
@@ -65,7 +74,7 @@ const GigSchema = z
           mix: Mix.optional(),
           in: Seconds.optional(),
           out: Seconds.optional(),
-          crop: z.union([Box, Keys]).optional(),
+          crop: z.union([Box, Keys, Curve]).optional(),
         })
         .strict()
         .refine((s) => s.in === undefined || s.out === undefined || s.in < s.out, { message: "out must come after in", path: ["out"] }),
@@ -94,8 +103,8 @@ export interface GigSong {
   mix: number;
   /** Where the video is cut, in its own seconds; either end may be left open. */
   cut: Cut;
-  /** The part of the picture to keep in the final video, as keyed boxes (see crop.ts). */
-  crop?: CropKey[];
+  /** The part of the picture to keep in the final video: keyed boxes (see crop.ts) or curves (see follow.ts). */
+  crop?: CropKey[] | CurveCrop;
 }
 
 export interface Gig {
@@ -141,7 +150,7 @@ export function readGig(dir: string, root: string): Gig {
         audio: s.audio,
         mix: s.audio === "phone" ? 0 : (s.mix ?? mix ?? DEFAULT_MIX),
         cut: { ...(s.in !== undefined ? { in: s.in } : {}), ...(s.out !== undefined ? { out: s.out } : {}) },
-        ...(s.crop ? { crop: Array.isArray(s.crop) ? s.crop : [{ at: s.in ?? 0, ...s.crop }] } : {}),
+        ...(s.crop ? { crop: Array.isArray(s.crop) || "knots" in s.crop ? s.crop : [{ at: s.in ?? 0, ...s.crop }] } : {}),
       };
     }),
   };

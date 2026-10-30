@@ -138,6 +138,23 @@ describe("readGig", () => {
     expect(readGig(gig, root).songs.map((s) => s.crop)).toEqual([[{ at: 4.5, x: 0.1, y: 0.05, size: 0.8, angle: -2.5 }], undefined, keys]);
   });
 
+  it("reads a curve crop, which smooths over 12 seconds unless told otherwise", () => {
+    const knots = [{ at: 4, x: 0.05, y: 0.05, size: 0.9, angle: 1.4 }];
+    writeGig(gig, {
+      board: "media/board.m4a",
+      songs: [
+        { song: YCHL, phone: "media/02.mov", crop: { follow: true, knots } },
+        { song: YCHL, phone: "media/03.mov", crop: { follow: false, smooth: 6, knots } },
+      ],
+    });
+    expect(readGig(gig, root).songs.map((s) => s.crop)).toEqual([{ follow: true, smooth: 12, knots }, { follow: false, smooth: 6, knots }]);
+  });
+
+  it("needs a curve crop to have a knot", () => {
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", crop: { follow: true, knots: [] } }] });
+    expect(() => readGig(gig, root)).toThrow(/crop/);
+  });
+
   it("rejects keyed boxes out of order, or whose glide starts before the box before it is in place", () => {
     const keyed = (crop: unknown) => writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", crop }] });
     keyed([{ at: 60, x: 0, y: 0, size: 1 }, { at: 30, x: 0, y: 0, size: 0.8 }]);
@@ -320,6 +337,27 @@ describe("gigRecipe", () => {
     const { wireit } = recipe({ crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 } });
     expect(wireit["final:02-you-cant-hurry-love"].command).toMatch(/ --crop '\[\{"at":0,"x":0\.1,"y":0\.05,"size":0\.8,"angle":-2\.5\}\]'$/);
     expect(wireit["render:02-you-cant-hurry-love"].command).not.toContain("--crop");
+  });
+
+  it("measures the camera for a song whose crop follows it, and renders from that", () => {
+    const knots = [{ at: 12.5, x: 0.05, y: 0.05, size: 0.9, angle: 0 }];
+    const { scripts, wireit } = recipe({ in: 12.5, out: 190, crop: { follow: true, knots } });
+    expect(scripts["motion:02-you-cant-hurry-love"]).toBe("wireit");
+    expect(wireit["motion:02-you-cant-hurry-love"]).toEqual({
+      command: `${GIG}/motion-cli.ts "media/02.mov" work/02-you-cant-hurry-love.motion.json --in 12.5 --out 190`,
+      files: ["media/02.mov"],
+      output: ["work/02-you-cant-hurry-love.motion.json"],
+    });
+    const final = wireit["final:02-you-cant-hurry-love"];
+    expect(final.command).toMatch(/ --motion work\/02-you-cant-hurry-love\.motion\.json$/);
+    expect(final.files).toContain("work/02-you-cant-hurry-love.motion.json");
+    expect(final.dependencies).toEqual(["captions:02-you-cant-hurry-love", "motion:02-you-cant-hurry-love"]);
+  });
+
+  it("measures no camera for a crop that doesn't follow it", () => {
+    const knots = [{ at: 12.5, x: 0.05, y: 0.05, size: 0.9, angle: 0 }];
+    expect(recipe({ crop: { follow: false, knots } }).wireit["motion:02-you-cant-hurry-love"]).toBeUndefined();
+    expect(recipe({ crop: { x: 0.1, y: 0.1, size: 0.8 } }).wireit["motion:02-you-cant-hurry-love"]).toBeUndefined();
   });
 
   it("runs every song's final video from one final task", () => {

@@ -61,6 +61,18 @@ describe("liveBeatMap", () => {
     expect(pieces[1].fromBeat).toBeGreaterThan(26);
   });
 
+  it("steps by a whole bar where the band jumped a measure, however noisy the words", () => {
+    const noise = (i: number) => [0.3, -0.25, 0.1, -0.3, 0.2, 0][i % 6];
+    const words = [
+      ...Array.from({ length: 30 }, (_, i) => sung(4 + i * 2, 10.4 + noise(i))),
+      ...Array.from({ length: 30 }, (_, i) => sung(70 + i * 2, 6.4 + noise(i))),
+    ];
+    const { pieces } = map(words);
+    expect(pieces).toHaveLength(2);
+    expect(pieces[0].shift - pieces[1].shift).toBeCloseTo(4);
+    expect(pieces[0].shift % 1).toBeCloseTo(pieces[1].shift % 1);
+  });
+
   it("is not moved by a few badly aligned words", () => {
     const words = Array.from({ length: 20 }, (_, i) => sung(4 + i * 2, i === 7 || i === 13 ? 13 : 10));
     expect(map(words).pieces).toHaveLength(1);

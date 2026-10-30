@@ -109,3 +109,6 @@ export function perspectiveFilter(keys: CropKey[], v: { start: number; fps: numb
   const opts = pts.flatMap(([px, py], i) => [`x${i}='${px}'`, `y${i}='${py}'`]);
   return `perspective=${opts.join(":")}:interpolation=cubic:sense=source:eval=${keys.length > 1 ? "frame" : "init"}`;
 }
+
+/** `boxAt` as JavaScript source, so the picker page previews glides with the same code. */
+export const boxAtSource = (): string => `const DEFAULT_GLIDE = ${DEFAULT_GLIDE};\nconst smooth = ${smooth};\nconst box = ${box};\n${boxAt}`;

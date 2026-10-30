@@ -7,7 +7,8 @@ describe("followBundle", () => {
     const pageCropPath = new Function(`${followBundle()}\nreturn cropPath;`)() as typeof cropPath;
     const times = Array.from({ length: 80 }, (_, i) => i / 2);
     const motion = times.map((t) => ({ angle: 0.01 * t, scale: 1 + 0.001 * t, dx: -0.0005 * t, dy: 0 }));
-    const crop: CurveCrop = { follow: true, smooth: 4, knots: [{ at: 0, x: 0.05, y: 0.05, size: 0.9, angle: 0 }, { at: 20, x: 0.1, y: 0.08, size: 0.8, angle: 1 }] };
-    expect(pageCropPath(times, motion, crop, 1920, 1080)).toEqual(cropPath(times, motion, crop, 1920, 1080));
+    const people = times.map((t) => ({ t, boxes: [[0.2 + 0.001 * t, 0.3, 0.1, 0.4, 0.9], [0.6, 0.3, 0.1, 0.4, 0.9]] }));
+    const crop: CurveCrop = { follow: true, smooth: 4, knots: [{ at: 0, x: 0.05, y: 0.05, size: 0.9, angle: 0 }, { at: 20, x: 0.1, y: 0.08, size: 0.8, angle: 1, width: 4, strength: 0.5 }] };
+    expect(pageCropPath(times, motion, people, crop, 1920, 1080)).toEqual(cropPath(times, motion, people, crop, 1920, 1080));
   });
 });

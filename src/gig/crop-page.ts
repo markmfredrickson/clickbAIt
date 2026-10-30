@@ -1,10 +1,11 @@
 /**
  * The crop picker: a page in `renders/crop/` for shaping each song's crop
- * curve (see follow.ts). Scrubbing the timeline shows the video with the box
+ * curve (see follow.ts), framed on the band where it follows. Scrubbing the timeline shows the video with the box
  * the render will cut there; dragging, resizing or turning the box pins the
  * curve with a knot at that moment, and the curve is refitted around it. With
- * "follow the camera" on, the curve starts from the camera's measured motion
- * (see motion.ts), which the page measures for any song that lacks it. Plots
+ * "follow the band" on, the curve starts from the people found (see
+ * people.swift) and the camera's roll (see motion.ts), which the page measures
+ * for any song that lacks them. Plots
  * under the timeline show zoom and turn, raw and smoothed. Copy the crops out
  * for gig.json; the page writes nothing back itself. A video that isn't 16:9,
  * such as one shot upright, is shown at its own shape with no box.
@@ -18,6 +19,8 @@ import { DEFAULT_SMOOTH } from "./follow.js";
 import type { Gig } from "./gig.js";
 import { mediaSeconds } from "./media.js";
 import { measureMotion, type MotionSample } from "./motion.js";
+import { findPeople } from "./people.js";
+import type { PeopleSample } from "./follow.js";
 
 /**
  * follow.ts bundled for the browser, defining a global `Follow` with the
@@ -25,10 +28,10 @@ import { measureMotion, type MotionSample } from "./motion.js";
  */
 export function followBundle(): string {
   const { outputFiles } = buildSync({
-    stdin: { contents: `export { cropPath, fitOnPicture, frameToScene, sceneToFrame } from "./follow.ts";`, resolveDir: import.meta.dirname, loader: "ts" },
+    stdin: { contents: `export { bandNeed, cropPath, fitOnPicture } from "./follow.ts";`, resolveDir: import.meta.dirname, loader: "ts" },
     bundle: true, format: "iife", globalName: "Follow", platform: "browser", target: "es2020", write: false,
   });
-  return outputFiles[0].text + "\nconst { cropPath, fitOnPicture, frameToScene, sceneToFrame } = Follow;";
+  return outputFiles[0].text + "\nconst { bandNeed, cropPath, fitOnPicture } = Follow;";
 }
 
 export async function writeCropPage(gig: Gig): Promise<string> {
@@ -57,9 +60,20 @@ export async function writeCropPage(gig: Gig): Promise<string> {
         writeFileSync(motionFile, JSON.stringify({ rate: 2, samples: motion }) + "\n");
       }
     }
+    // The same file and format as the song's people task writes.
+    const peopleFile = join(gig.dir, `work/${key}.people.json`);
+    let people: PeopleSample[] | null = null;
+    if (wide) {
+      if (existsSync(peopleFile)) people = JSON.parse(readFileSync(peopleFile, "utf8")).samples;
+      else {
+        console.log(`finding people in ${key}`);
+        people = findPeople(phone, start, end, 2);
+        writeFileSync(peopleFile, JSON.stringify({ rate: 2, samples: people }) + "\n");
+      }
+    }
     // Keyed boxes from before curves become knots on a curve that doesn't follow.
     const crop = !s.crop
-      ? { follow: true, smooth: DEFAULT_SMOOTH, knots: [{ at: start, x: 0.05, y: 0.05, size: 0.9, angle: 0 }] }
+      ? { follow: true, smooth: DEFAULT_SMOOTH, knots: [] }
       : Array.isArray(s.crop)
         ? { follow: false, smooth: DEFAULT_SMOOTH, knots: s.crop.map((k, i) => ({ at: i === 0 ? start : k.at, x: k.x, y: k.y, size: k.size, angle: k.angle ?? 0 })) }
         : s.crop;
@@ -67,6 +81,7 @@ export async function writeCropPage(gig: Gig): Promise<string> {
       key, start, end, width, height, wide, video: `../../${s.phone}`, crop, hasCrop: !!s.crop, defaultSmooth: DEFAULT_SMOOTH,
       // Compact: [t, angle, scale, dx, dy].
       motion: motion && motion.map((m) => [m.t, +m.angle.toFixed(4), +m.scale.toFixed(5), +m.dx.toFixed(5), +m.dy.toFixed(5)]),
+      people: people && people.map((p) => [p.t, p.boxes]),
     });
   }
   const page = join(out, "index.html");
@@ -101,6 +116,9 @@ const PAGE = `<!doctype html>
   .h.tr { right: -9px; top: -9px; cursor: nesw-resize; } .h.bl { left: -9px; bottom: -9px; cursor: nesw-resize; }
   .timeline { position: relative; height: 34px; margin-top: 10px; border-radius: 4px; overflow: hidden; cursor: pointer; touch-action: none; background: var(--line); }
   .gl { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, var(--card) 0 4px, transparent 4px 8px); opacity: .8; }
+  .people { position: absolute; inset: 0; pointer-events: none; }
+  .person { position: absolute; border: 1px solid rgba(120, 255, 140, .8); }
+  .key input.strength { width: 70px; padding: 0; }
   .knot { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--box); }
   .plot { display: block; width: 100%; height: 70px; margin-top: 4px; }
   .box.pinned { border-width: 3px; }
@@ -129,7 +147,7 @@ const PAGE = `<!doctype html>
 <body>
 <main>
   <h1>Crop picker</h1>
-  <p class="lead">The box follows a smooth curve over the song. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick), and the curve bends to pass through it. Press S to pin the curve where it is. With "follow the camera" on, the curve starts from how the phone moved, so the box stays over the band; "smooth over" sets how slowly it changes. The plots show zoom and turn, faint for the camera's raw motion and bold for the curve. The onion skin lays frames from the playhead forward over each other. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p>
+  <p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick). Give a knot a width to hold its box over a stretch, and turn its pull down to only nudge the curve. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p>
   <div id="songs"></div>
 </main>
 <div class="out"><div><textarea id="json" readonly></textarea><button class="copy" id="copy" type="button">Copy crops</button></div></div>
@@ -145,14 +163,15 @@ function output() {
   const out = {};
   for (const s of SONGS) {
     const st = state[s.key];
-    if (!st || !st.touched) continue;
-    out[s.key] = { follow: st.follow, ...(st.smooth !== s.defaultSmooth ? { smooth: st.smooth } : {}), knots: st.knots.map((k) => ({ at: k.at, x: r3(k.x), y: r3(k.y), size: r3(k.size), angle: Math.round(k.angle * 10) / 10 })) };
+    // Every 16:9 song goes out, so ones left alone get the automatic framing.
+    if (!st) continue;
+    out[s.key] = { follow: st.follow, ...(st.smooth !== s.defaultSmooth ? { smooth: st.smooth } : {}), knots: [...st.knots].sort((a, b) => a.at - b.at).map((k) => ({ at: k.at, x: r3(k.x), y: r3(k.y), size: r3(k.size), angle: Math.round(k.angle * 10) / 10, ...(k.width ? { width: k.width } : {}), ...(k.strength !== undefined && k.strength < 1 ? { strength: k.strength } : {}) })) };
   }
   document.getElementById("json").value = JSON.stringify(out, null, 1);
-  store.set("crop-curves-v1", state);
+  store.set("crop-curves-v2", state);
 }
 
-const saved = store.get("crop-curves-v1") || {};
+const saved = store.get("crop-curves-v2") || {};
 /** The song whose knot S drops: the last one touched. */
 let active = null;
 for (const s of SONGS) {
@@ -172,20 +191,21 @@ for (const s of SONGS) {
   }
   const canvas = document.createElement("canvas"); canvas.width = 960; canvas.height = 540; canvas.style.display = "none"; pic.append(canvas);
   const st = (state[s.key] = saved[s.key] || {
-    follow: s.crop.follow, smooth: s.crop.smooth, knots: s.crop.knots.map((k) => ({ ...k, angle: k.angle || 0 })),
+    follow: s.crop.follow, smooth: s.crop.smooth, knots: s.crop.knots.map((k) => ({ ...k, angle: k.angle || 0, width: k.width || 0, strength: k.strength ?? 1 })),
     t: s.start, onion: { on: false, length: 10, count: 8 }, touched: s.hasCrop,
   });
   const times = s.motion ? s.motion.map((m) => m[0]) : Array.from({ length: Math.floor((s.end - s.start) * 2) + 1 }, (_, i) => s.start + i / 2);
   const motion = s.motion ? s.motion.map(([, angle, scale, dx, dy]) => ({ angle, scale, dx, dy })) : null;
+  const people = s.people ? s.people.map(([t, boxes]) => ({ t, boxes })) : null;
+  const need = people ? bandNeed(people) : null;
   let path = [], raw = [];
   const refit = () => {
-    path = cropPath(times, motion, st, 1920, 1080);
-    // The unsmoothed follow, for the plots: the first knot carried through the camera motion.
-    if (st.follow && motion) {
+    path = cropPath(times, motion, people, st, 1920, 1080);
+    // For the plots: the size the band needs, and the turn that would level the camera.
+    if (st.follow && need && motion) {
       const k0 = [...st.knots].sort((a, b) => a.at - b.at)[0];
-      const i0 = Math.min(times.length - 1, Math.max(0, Math.round((k0.at - times[0]) * 2)));
-      const scene = frameToScene(k0, motion[i0], 1920, 1080);
-      raw = motion.map((m) => fitOnPicture(sceneToFrame(scene, m, 1920, 1080), 1920, 1080));
+      const i0 = k0 ? Math.min(times.length - 1, Math.max(0, Math.round((k0.at - times[0]) * 2))) : 0, level = k0 ? k0.angle : 0;
+      raw = times.map((t, i) => ({ t, size: need[i].size, angle: level - (motion[i].angle - motion[i0].angle) }));
     } else raw = [];
   };
   refit();
@@ -194,7 +214,7 @@ for (const s of SONGS) {
   ui.innerHTML =
     '<div class="timeline"></div><canvas class="plot" width="1000" height="70"></canvas><div class="now"></div>' +
     '<div class="controls">' +
-    '<label>Curve</label><div class="onion"><label><input type="checkbox" class="follow"> follow the camera</label><label>smooth over <input type="number" class="smooth" min="1" step="1"> s</label></div><span></span>' +
+    '<label>Curve</label><div class="onion"><label><input type="checkbox" class="follow"> follow the band</label><label>smooth over <input type="number" class="smooth" min="1" step="1"> s</label></div><span></span>' +
     '<label>Onion skin</label><div class="onion"><label><input type="checkbox" class="on"> on</label><label><input type="number" class="len" min="1" step="1"> seconds ahead</label><label><input type="number" class="count" min="2" max="30" step="1"> frames</label></div><span></span>' +
     '<label>Turn</label><input type="range" class="angle" min="-10" max="10" step="0.1"><span class="num deg"></span>' +
     '</div><div class="keys"></div><div class="warn"></div>';
@@ -202,7 +222,7 @@ for (const s of SONGS) {
   const q = (c) => ui.querySelector(c);
   const timeline = q(".timeline"), plot = q(".plot"), now = q(".now"), followEl = q(".follow"), smoothEl = q(".smooth");
   const on = q(".on"), len = q(".len"), count = q(".count"), angle = q(".angle"), deg = q(".deg"), keysEl = q(".keys"), warn = q(".warn");
-  if (!motion) { followEl.disabled = true; followEl.parentElement.title = "no camera motion measured for this song"; }
+  if (!motion || !people) { followEl.disabled = true; followEl.parentElement.title = "this song hasn't been measured"; }
   const boxEl = document.createElement("div"); boxEl.className = "box";
   for (const c of ["tl", "tr", "bl", "br"]) { const h = document.createElement("div"); h.className = "h " + c; h.dataset.c = c; boxEl.append(h); }
   frame.append(boxEl);
@@ -216,6 +236,18 @@ for (const s of SONGS) {
     return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, size: a.size + (b.size - a.size) * u, angle: a.angle + (b.angle - a.angle) * u };
   };
   const knotNear = (t) => st.knots.findIndex((k) => Math.abs(k.at - t) < 0.26);
+  // The people found at the playhead, outlined on the picture.
+  const outlines = document.createElement("div"); outlines.className = "people"; pic.append(outlines);
+  const drawPeople = () => {
+    outlines.innerHTML = "";
+    if (!people) return;
+    for (const b of people[idx(st.t)].boxes) {
+      if (b[4] < 0.4) continue;
+      const o = document.createElement("div"); o.className = "person";
+      Object.assign(o.style, { left: b[0] * 100 + "%", top: b[1] * 100 + "%", width: b[2] * 100 + "%", height: b[3] * 100 + "%" });
+      outlines.append(o);
+    }
+  };
 
   // The onion skin: frames from the playhead forward, laid over each other so each counts equally.
   const sampler = document.createElement("video"); sampler.muted = true; sampler.preload = "auto"; sampler.src = s.video;
@@ -243,7 +275,7 @@ for (const s of SONGS) {
     const X = (t) => ((t - s.start) / (s.end - s.start)) * w;
     const lane = (get, lo, hi, top, color) => {
       const Y = (v) => top + 30 - ((v - lo) / (hi - lo || 1)) * 28;
-      if (raw.length) { g.strokeStyle = color; g.globalAlpha = 0.35; g.lineWidth = 1; g.beginPath(); raw.forEach((b, i) => { const x = X(times[i]), y = Y(get(b)); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
+      if (raw.length) { g.strokeStyle = color; g.globalAlpha = 0.35; g.lineWidth = 1; g.beginPath(); raw.forEach((b, i) => { const x = X(b.t), y = Y(get(b)); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
       g.globalAlpha = 1; g.lineWidth = 2; g.beginPath(); path.forEach((b, i) => { const x = X(b.t), y = Y(get(b)); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
     };
     const sizes = path.map((b) => b.size).concat(raw.map((b) => b.size)), angles = path.map((b) => b.angle).concat(raw.map((b) => b.angle));
@@ -258,20 +290,30 @@ for (const s of SONGS) {
     Object.assign(boxEl.style, { left: shown.x * 100 + "%", top: shown.y * 100 + "%", width: shown.size * 100 + "%", height: shown.size * 100 + "%" });
     boxEl.classList.toggle("pinned", near >= 0);
     pic.style.transform = "rotate(" + shown.angle + "deg)";
-    followEl.checked = st.follow && !!motion; smoothEl.value = st.smooth;
+    followEl.checked = st.follow && !!motion && !!people; smoothEl.value = st.smooth;
     on.checked = st.onion.on; len.value = st.onion.length; count.value = st.onion.count;
     angle.value = shown.angle; deg.textContent = shown.angle.toFixed(1) + "°";
     timeline.innerHTML = "";
     if (st.onion.on) { const o = document.createElement("div"); o.className = "gl"; o.style.background = "var(--box)"; o.style.opacity = ".25"; o.style.left = pct(st.t); o.style.width = "calc(" + pct(Math.min(st.t + st.onion.length, s.end)) + " - " + pct(st.t) + ")"; timeline.append(o); }
-    st.knots.forEach((k) => { const m = document.createElement("div"); m.className = "knot"; m.style.left = pct(k.at); m.title = "knot at " + fmt(k.at); timeline.append(m); });
+    st.knots.forEach((k) => {
+      if (k.width) { const w = document.createElement("div"); w.className = "gl"; w.style.background = "var(--box)"; w.style.opacity = String(0.15 + 0.35 * (k.strength ?? 1)); w.style.left = pct(k.at - k.width / 2); w.style.width = "calc(" + pct(k.at + k.width / 2) + " - " + pct(k.at - k.width / 2) + ")"; timeline.append(w); }
+      const m = document.createElement("div"); m.className = "knot"; m.style.left = pct(k.at); m.style.opacity = String(0.4 + 0.6 * (k.strength ?? 1)); m.title = "knot at " + fmt(k.at); timeline.append(m);
+    });
     const p = document.createElement("div"); p.className = "playhead"; p.style.left = pct(st.t); timeline.append(p);
     now.textContent = fmt(st.t) + " (" + fmt(st.t - s.start) + " into the render) · " + (near >= 0 ? "on a knot: dragging moves it" : "dragging adds a knot here");
     keysEl.innerHTML = "";
     const sp = document.createElement("button"); sp.type = "button"; sp.className = "split"; sp.textContent = "Knot here (S)"; sp.onclick = dropKnot; keysEl.append(sp);
     [...st.knots].sort((a, b) => a.at - b.at).forEach((k) => {
       const chip = document.createElement("span"); chip.className = "key"; chip.setAttribute("aria-selected", String(Math.abs(k.at - st.t) < 0.26));
-      chip.append(fmt(k.at));
-      if (st.knots.length > 1) {
+      chip.append(fmt(k.at), " width ");
+      const wid = document.createElement("input"); wid.type = "number"; wid.min = "0"; wid.step = "1"; wid.value = k.width || 0; wid.title = "seconds the knot holds its box over";
+      wid.onclick = (e) => e.stopPropagation();
+      wid.onchange = () => { k.width = Math.max(0, Number(wid.value) || 0); st.touched = true; refit(); draw(); };
+      const str = document.createElement("input"); str.type = "range"; str.min = "0"; str.max = "1"; str.step = "0.05"; str.value = k.strength ?? 1; str.title = "how hard it pulls: left nudges, right pins"; str.className = "strength";
+      str.onclick = (e) => e.stopPropagation();
+      str.oninput = () => { k.strength = Number(str.value); st.touched = true; refit(); draw(); };
+      chip.append(wid, "s pull ", str);
+      if (st.knots.length > 1 || st.follow) {
         const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.title = "remove this knot";
         del.onclick = (e) => { e.stopPropagation(); st.knots.splice(st.knots.indexOf(k), 1); st.touched = true; refit(); draw(); };
         chip.append(del);
@@ -279,19 +321,19 @@ for (const s of SONGS) {
       chip.onclick = () => seek(k.at);
       keysEl.append(chip);
     });
-    warn.textContent = !motion ? "No camera motion measured for this song, so the curve only runs between your knots." : "";
+    warn.textContent = !motion || !people ? "This song hasn't been measured, so the curve only runs between your knots." : "";
     drawPlot();
     output();
   }
   function seek(t) {
     st.t = Math.min(Math.max(t, s.start), s.end);
     video.currentTime = st.t;
-    draw(); onionLater();
+    draw(); drawPeople(); onionLater();
   }
   /** The knot at the playhead, made from the curve there if there isn't one. */
   function knotHere() {
     let i = knotNear(st.t);
-    if (i < 0) { const t = times[idx(st.t)]; st.knots.push({ at: Number(t.toFixed(2)), ...at(t) }); i = st.knots.length - 1; st.t = t; }
+    if (i < 0) { const t = times[idx(st.t)]; st.knots.push({ at: Number(t.toFixed(2)), ...at(t), width: 0, strength: 1 }); i = st.knots.length - 1; st.t = t; }
     st.touched = true;
     return st.knots[i];
   }

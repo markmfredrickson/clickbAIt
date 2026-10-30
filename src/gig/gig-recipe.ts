@@ -18,8 +18,10 @@
  *             where the band starts and stops playing.
  *   render    a 720p review of the song, cut to its `in` and `out`
  *             (`renders/<nn>-<slug>-16x9-review.mp4`).
- *   motion    how the phone moved over the cut, for a crop that follows the camera
+ *   motion    how the phone moved over the cut, for a crop that follows the band
  *             (`work/<nn>-<slug>.motion.json`).
+ *   people    the people found over the cut, for a crop that follows the band
+ *             (`work/<nn>-<slug>.people.json`).
  *   final     the finished video for upload: full size, cut the same way
  *             (`renders/<nn>-<slug>-16x9.mp4`).
  */
@@ -99,17 +101,14 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
     });
     edges.push(`edges:${key}`);
     const words = `captions/${key}.words.json`;
-    // A crop that follows the camera needs the camera measured first.
-    const motion = s.crop && !Array.isArray(s.crop) && s.crop.follow ? `work/${key}.motion.json` : undefined;
-    if (motion) {
-      add(`motion:${key}`, {
-        command:
-          `${tsx("gig/motion-cli.ts")} "${s.phone}" ${motion}` +
-          (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") +
-          (s.cut.out !== undefined ? ` --out ${s.cut.out}` : ""),
-        files: [s.phone],
-        output: [motion],
-      });
+    // A crop that follows the band needs the camera measured and the people found first.
+    const follows = s.crop && !Array.isArray(s.crop) && s.crop.follow;
+    const motion = follows ? `work/${key}.motion.json` : undefined;
+    const people = follows ? `work/${key}.people.json` : undefined;
+    const span = (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") + (s.cut.out !== undefined ? ` --out ${s.cut.out}` : "");
+    if (motion && people) {
+      add(`motion:${key}`, { command: `${tsx("gig/motion-cli.ts")} "${s.phone}" ${motion}${span}`, files: [s.phone], output: [motion] });
+      add(`people:${key}`, { command: `${tsx("gig/people-cli.ts")} "${s.phone}" ${people}${span}`, files: [s.phone], output: [people] });
     }
     add(`render:${key}`, {
       command:
@@ -129,10 +128,10 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
         (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") +
         (s.cut.out !== undefined ? ` --out ${s.cut.out}` : "") +
         (s.crop ? ` --crop '${JSON.stringify(s.crop)}'` : "") +
-        (motion ? ` --motion ${motion}` : ""),
-      files: [...(fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words]), ...(motion ? [motion] : [])],
+        (motion && people ? ` --motion ${motion} --people ${people}` : ""),
+      files: [...(fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words]), ...(motion && people ? [motion, people] : [])],
       output: [`renders/${key}-16x9.mp4`],
-      dependencies: [`captions:${key}`, ...(motion ? [`motion:${key}`] : [])],
+      dependencies: [`captions:${key}`, ...(motion && people ? [`motion:${key}`, `people:${key}`] : [])],
     });
     finals.push(`final:${key}`);
   }

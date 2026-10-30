@@ -150,8 +150,18 @@ describe("readGig", () => {
     expect(readGig(gig, root).songs.map((s) => s.crop)).toEqual([{ follow: true, smooth: 12, knots }, { follow: false, smooth: 6, knots }]);
   });
 
-  it("needs a curve crop to have a knot", () => {
+  it("needs a knot in a curve that doesn't follow the band, and none in one that does", () => {
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", crop: { follow: false, knots: [] } }] });
+    expect(() => readGig(gig, root)).toThrow(/crop/);
     writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", crop: { follow: true, knots: [] } }] });
+    expect(readGig(gig, root).songs[0].crop).toEqual({ follow: true, smooth: 12, knots: [] });
+  });
+
+  it("reads a knot's width and strength, and rejects a strength outside 0 to 1", () => {
+    const knot = { at: 4, x: 0.05, y: 0.05, size: 0.9, angle: 0, width: 10, strength: 0.5 };
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", crop: { follow: true, knots: [knot] } }] });
+    expect(readGig(gig, root).songs[0].crop).toEqual({ follow: true, smooth: 12, knots: [knot] });
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", crop: { follow: true, knots: [{ ...knot, strength: 2 }] } }] });
     expect(() => readGig(gig, root)).toThrow(/crop/);
   });
 
@@ -339,6 +349,20 @@ describe("gigRecipe", () => {
     expect(wireit["render:02-you-cant-hurry-love"].command).not.toContain("--crop");
   });
 
+  it("finds the people in a song whose crop follows the band, and renders from them", () => {
+    const { scripts, wireit } = recipe({ in: 12.5, out: 190, crop: { follow: true, knots: [] } });
+    expect(scripts["people:02-you-cant-hurry-love"]).toBe("wireit");
+    expect(wireit["people:02-you-cant-hurry-love"]).toEqual({
+      command: `${GIG}/people-cli.ts "media/02.mov" work/02-you-cant-hurry-love.people.json --in 12.5 --out 190`,
+      files: ["media/02.mov"],
+      output: ["work/02-you-cant-hurry-love.people.json"],
+    });
+    const final = wireit["final:02-you-cant-hurry-love"];
+    expect(final.command).toMatch(/ --motion work\/02-you-cant-hurry-love\.motion\.json --people work\/02-you-cant-hurry-love\.people\.json$/);
+    expect(final.files).toContain("work/02-you-cant-hurry-love.people.json");
+    expect(final.dependencies).toEqual(["captions:02-you-cant-hurry-love", "motion:02-you-cant-hurry-love", "people:02-you-cant-hurry-love"]);
+  });
+
   it("measures the camera for a song whose crop follows it, and renders from that", () => {
     const knots = [{ at: 12.5, x: 0.05, y: 0.05, size: 0.9, angle: 0 }];
     const { scripts, wireit } = recipe({ in: 12.5, out: 190, crop: { follow: true, knots } });
@@ -349,14 +373,15 @@ describe("gigRecipe", () => {
       output: ["work/02-you-cant-hurry-love.motion.json"],
     });
     const final = wireit["final:02-you-cant-hurry-love"];
-    expect(final.command).toMatch(/ --motion work\/02-you-cant-hurry-love\.motion\.json$/);
+    expect(final.command).toContain(" --motion work/02-you-cant-hurry-love.motion.json");
     expect(final.files).toContain("work/02-you-cant-hurry-love.motion.json");
-    expect(final.dependencies).toEqual(["captions:02-you-cant-hurry-love", "motion:02-you-cant-hurry-love"]);
+    expect(final.dependencies).toContain("motion:02-you-cant-hurry-love");
   });
 
   it("measures no camera for a crop that doesn't follow it", () => {
     const knots = [{ at: 12.5, x: 0.05, y: 0.05, size: 0.9, angle: 0 }];
     expect(recipe({ crop: { follow: false, knots } }).wireit["motion:02-you-cant-hurry-love"]).toBeUndefined();
+    expect(recipe({ crop: { follow: false, knots } }).wireit["people:02-you-cant-hurry-love"]).toBeUndefined();
     expect(recipe({ crop: { x: 0.1, y: 0.1, size: 0.8 } }).wireit["motion:02-you-cant-hurry-love"]).toBeUndefined();
   });
 

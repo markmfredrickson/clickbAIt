@@ -51,9 +51,15 @@ const Curve = z
   .object({
     follow: z.boolean(),
     smooth: z.number().gt(0).default(DEFAULT_SMOOTH),
-    knots: z.array(z.object({ at: Seconds, ...boxFields, angle: z.number().min(-45).max(45).default(0) }).strict().refine(inFrame, { message: "the box runs off the frame" })).min(1),
+    knots: z.array(
+      z
+        .object({ at: Seconds, ...boxFields, angle: z.number().min(-45).max(45).default(0), width: Seconds.optional(), strength: z.number().min(0).max(1).optional() })
+        .strict()
+        .refine(inFrame, { message: "the box runs off the frame" }),
+    ),
   })
-  .strict();
+  .strict()
+  .refine((c) => c.follow || c.knots.length > 0, { message: "a curve that doesn't follow the band needs a knot" });
 const Keys = z
   .array(Key)
   .min(1)

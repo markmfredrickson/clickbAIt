@@ -22,6 +22,8 @@
  *             (`work/<nn>-<slug>.motion.json`).
  *   people    the people found over the cut, for a crop that follows the band
  *             (`work/<nn>-<slug>.people.json`).
+ *   levels    a graded song's brightness through the cut, inside its crop
+ *             (`work/<nn>-<slug>.levels.json`), when gig.json asks for a grade.
  *   final     the finished video for upload: full size, cut the same way
  *             (`renders/<nn>-<slug>-16x9.mp4`).
  */
@@ -46,6 +48,7 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
   const captions: string[] = [];
   const renders: string[] = [];
   const finals: string[] = [];
+  const levelsTasks: string[] = [];
   const edges: string[] = [];
 
   for (const s of gig.songs) {
@@ -110,6 +113,18 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
       add(`motion:${key}`, { command: `${tsx("gig/motion-cli.ts")} "${s.phone}" ${motion}${span}`, files: [s.phone], output: [motion] });
       add(`people:${key}`, { command: `${tsx("gig/people-cli.ts")} "${s.phone}" ${people}${span}`, files: [s.phone], output: [people] });
     }
+    // A graded song's levels are measured inside its crop, so the match is to what the video shows.
+    const levels = s.grade?.match ? `work/${key}.levels.json` : undefined;
+    const cropArgs = (s.crop ? ` --crop '${JSON.stringify(s.crop)}'` : "") + (motion && people ? ` --motion ${motion} --people ${people}` : "");
+    if (levels) {
+      add(`levels:${key}`, {
+        command: `${tsx("gig/levels-cli.ts")} "${s.phone}" ${levels}${span}${cropArgs}`,
+        files: [s.phone, ...(motion && people ? [motion, people] : [])],
+        output: [levels],
+        ...(motion && people ? { dependencies: [`motion:${key}`, `people:${key}`] } : {}),
+      });
+      levelsTasks.push(`levels:${key}`);
+    }
     add(`render:${key}`, {
       command:
         `${tsx("gig/render-cli.ts")} "${s.phone}" ${words} renders/${key}-16x9-review.mp4` +
@@ -127,11 +142,12 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
         (fromBoard ? ` --board "${gig.board}" --sync ${sync} --mix ${s.mix}` : "") +
         (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") +
         (s.cut.out !== undefined ? ` --out ${s.cut.out}` : "") +
-        (s.crop ? ` --crop '${JSON.stringify(s.crop)}'` : "") +
-        (motion && people ? ` --motion ${motion} --people ${people}` : ""),
-      files: [...(fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words]), ...(motion && people ? [motion, people] : [])],
+        cropArgs +
+        (s.grade ? ` --grade '${JSON.stringify(s.grade)}'` : "") +
+        (levels ? ` --levels ${levels}` : ""),
+      files: [...(fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words]), ...(motion && people ? [motion, people] : []), ...(levels ? [levels] : [])],
       output: [`renders/${key}-16x9.mp4`],
-      dependencies: [`captions:${key}`, ...(motion && people ? [`motion:${key}`, `people:${key}`] : [])],
+      dependencies: [`captions:${key}`, ...(motion && people ? [`motion:${key}`, `people:${key}`] : []), ...(levels ? [`levels:${key}`] : [])],
     });
     finals.push(`final:${key}`);
   }
@@ -139,6 +155,10 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
   wireit.captions = { command: `node -e ""`, dependencies: captions };
   wireit.render = { command: `node -e ""`, dependencies: renders };
   wireit.final = { command: `node -e ""`, dependencies: finals };
+  if (levelsTasks.length) {
+    scripts.levels = "wireit";
+    wireit.levels = { command: `node -e ""`, dependencies: levelsTasks };
+  }
   wireit.edges = { command: `node -e ""`, dependencies: edges };
 
   return { name: "clickbait-gig", private: true, scripts, wireit };

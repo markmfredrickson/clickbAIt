@@ -120,7 +120,8 @@ export function reviewArgs(r: ReviewInput): string[] {
  * crop is a filter (see crop.ts) that fills the whole frame, so the video stays
  * at the phone's size.
  */
-export function finalArgs(r: Omit<ReviewInput, "srt"> & { crop?: string }): string[] {
+export function finalArgs(r: Omit<ReviewInput, "srt"> & { crop?: string; grade?: string }): string[] {
+  const picture = [r.crop, r.grade].filter(Boolean).join(",");
   const seek = [
     ...(r.cut?.in !== undefined ? ["-ss", String(r.cut.in)] : []),
     ...(r.cut?.out !== undefined ? ["-to", String(r.cut.out)] : []),
@@ -129,7 +130,7 @@ export function finalArgs(r: Omit<ReviewInput, "srt"> & { crop?: string }): stri
     "-y", "-v", "error",
     ...seek, "-i", r.phone, ...seek, "-i", r.mix,
     "-map", "0:v:0", "-map", "1:a:0",
-    ...(r.crop ? ["-vf", r.crop] : []),
+    ...(picture ? ["-vf", picture] : []),
     "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
     "-af", `volume=${r.gainDb}dB,alimiter=limit=-1.5dB:level=disabled`,
     "-c:a", "aac", "-b:a", "192k",

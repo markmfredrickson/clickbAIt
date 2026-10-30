@@ -76,7 +76,7 @@ export function corners(b: Box, width: number, height: number): [number, number]
 }
 
 /** A number for an ffmpeg expression: fixed-point, bracketed when negative. */
-function num(v: number): string {
+export function num(v: number): string {
   const s = String(Number(v.toFixed(6)));
   return v < 0 ? `(${s})` : s;
 }
@@ -85,7 +85,7 @@ function num(v: number): string {
  * Terms added up as a balanced tree, ((a+b)+(c+d)), not a+b+c+d: ffmpeg's
  * expression parser nests one level per `+` and gives up past about a hundred.
  */
-function sum(terms: string[]): string {
+export function sum(terms: string[]): string {
   return terms.length === 1 ? terms[0] : `(${sum(terms.slice(0, terms.length >> 1))}+${sum(terms.slice(terms.length >> 1))})`;
 }
 

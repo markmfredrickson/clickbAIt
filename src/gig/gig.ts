@@ -29,6 +29,11 @@
  * by time that glide from one to the next (see crop.ts), or curves pinned by
  * knots that can follow the camera, `{ follow, smooth?, knots }` (see
  * follow.ts). It is per song because the phone moves between songs.
+ *
+ * `grade`, for the gig or a song, asks for the final videos to be graded:
+ * each song's levels matched to a target as the light changes, then a warmer,
+ * more colourful look (see grade.ts). `{}` takes the defaults; a song's grade
+ * changes the gig's, and `"match": false` leaves its levels alone.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -36,6 +41,7 @@ import { basename, join, normalize, resolve } from "node:path";
 import { z } from "zod";
 import { type CropKey, DEFAULT_GLIDE } from "./crop.js";
 import { type CurveCrop, DEFAULT_SMOOTH } from "./follow.js";
+import { DEFAULT_GRADE, type Grade } from "./grade.js";
 
 const DEFAULT_MIX = 0.6;
 const Mix = z.number().min(0).max(1);
@@ -60,6 +66,17 @@ const Curve = z
   })
   .strict()
   .refine((c) => c.follow || c.knots.length > 0, { message: "a curve that doesn't follow the band needs a knot" });
+// The ranges ffmpeg's eq and colortemperature filters accept.
+const gradeFields = {
+  low: z.number().min(0).max(1),
+  mid: z.number().min(0).max(1),
+  high: z.number().min(0).max(1),
+  saturation: z.number().min(0).max(3),
+  temperature: z.number().min(1000).max(40000),
+  smooth: z.number().gt(0),
+};
+const GigGrade = z.object(gradeFields).partial().strict();
+const SongGrade = z.object({ ...gradeFields, match: z.boolean() }).partial().strict();
 const Keys = z
   .array(Key)
   .min(1)
@@ -71,6 +88,7 @@ const GigSchema = z
   .object({
     board: z.string().optional(),
     mix: Mix.optional(),
+    grade: GigGrade.optional(),
     songs: z.array(
       z
         .object({
@@ -81,6 +99,7 @@ const GigSchema = z
           in: Seconds.optional(),
           out: Seconds.optional(),
           crop: z.union([Box, Keys, Curve]).optional(),
+          grade: SongGrade.optional(),
         })
         .strict()
         .refine((s) => s.in === undefined || s.out === undefined || s.in < s.out, { message: "out must come after in", path: ["out"] }),
@@ -111,6 +130,8 @@ export interface GigSong {
   cut: Cut;
   /** The part of the picture to keep in the final video: keyed boxes (see crop.ts) or curves (see follow.ts). */
   crop?: CropKey[] | CurveCrop;
+  /** How the final video is graded (see grade.ts); `match` is whether its levels are matched. Absent when gig.json doesn't ask for a grade. */
+  grade?: Grade & { smooth: number; match: boolean };
 }
 
 export interface Gig {
@@ -128,7 +149,7 @@ export function readGig(dir: string, root: string): Gig {
     const issue = parsed.error.issues[0];
     throw new Error(`${file}: ${issue.path.join(".")}: ${issue.message}`);
   }
-  const { board, songs, mix } = parsed.data;
+  const { board, songs, mix, grade } = parsed.data;
   return {
     dir,
     ...(board !== undefined ? { board: normalize(board) } : {}),
@@ -147,6 +168,14 @@ export function readGig(dir: string, root: string): Gig {
       if (s.audio === "phone" && s.mix !== undefined && s.mix !== 0) {
         throw new Error(`${file}: songs.${i}.mix: ${s.song} takes its audio from the phone, so there is no board to mix in`);
       }
+      let songGrade: GigSong["grade"];
+      if (grade || s.grade) {
+        const { match = true, ...own } = s.grade ?? {};
+        songGrade = { ...DEFAULT_GRADE, ...grade, ...own, match };
+        if (!(songGrade.low < songGrade.mid && songGrade.mid < songGrade.high)) {
+          throw new Error(`${file}: songs.${i}.grade: low, mid and high must each be brighter than the last`);
+        }
+      }
       return {
         n: String(i + 1).padStart(2, "0"),
         slug: basename(songDir),
@@ -157,6 +186,7 @@ export function readGig(dir: string, root: string): Gig {
         mix: s.audio === "phone" ? 0 : (s.mix ?? mix ?? DEFAULT_MIX),
         cut: { ...(s.in !== undefined ? { in: s.in } : {}), ...(s.out !== undefined ? { out: s.out } : {}) },
         ...(s.crop ? { crop: Array.isArray(s.crop) || "knots" in s.crop ? s.crop : [{ at: s.in ?? 0, ...s.crop }] } : {}),
+        ...(songGrade ? { grade: songGrade } : {}),
       };
     }),
   };

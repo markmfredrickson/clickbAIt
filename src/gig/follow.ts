@@ -72,17 +72,17 @@ export function lambdaFor(seconds: number, rate: number): number {
  * A smooth curve through samples `y` (with weights `w`) that passes through
  * each pin: it minimises the weighted misfit plus `lambda` times the squared
  * second differences. Samples far from the curve are down-weighted and it is
- * refitted, so a few bad ones don't pull it. With `floor`, it is instead kept at
- * or above the samples.
+ * refitted, so a few bad ones don't pull it; `robust: false` skips that and fits
+ * once. With `floor`, it is instead kept at or above the samples.
  */
-export function smoothCurve(y: number[], w: number[], pins: { i: number; v: number; w?: number }[], lambda: number, opts: { floor?: boolean } = {}): number[] {
+export function smoothCurve(y: number[], w: number[], pins: { i: number; v: number; w?: number }[], lambda: number, opts: { floor?: boolean; robust?: boolean } = {}): number[] {
   const n = y.length;
   const PIN = 1e6;
   // Where a pin holds the curve, the floor doesn't: there the user has chosen.
   const pinned = new Set(pins.map((p) => p.i));
   let weights = w.slice();
   let z = y.slice();
-  for (let pass = 0; pass < (opts.floor ? 12 : 4); pass++) {
+  for (let pass = 0; pass < (opts.floor ? 12 : opts.robust === false ? 1 : 4); pass++) {
     // The system is symmetric with two bands either side of the diagonal.
     const d0 = new Float64Array(n), d1 = new Float64Array(n), d2 = new Float64Array(n), b = new Float64Array(n);
     for (let i = 0; i < n; i++) { d0[i] = weights[i]; b[i] = weights[i] * y[i]; }

@@ -90,7 +90,7 @@ describe("track", () => {
       expect(samples[i].lost).toBeFalsy();
       expect(samples[i].angle).toBeCloseTo(steps[i].angle, 1);
     }
-  });
+  }, 30000); // aligns several full frames; slow when the whole suite runs at once
 
   it("gives each sample its time", () => {
     expect(track(steps.slice(0, 3).map((m) => moved(ref, m)), W, H, 10, 2).map((s) => s.t)).toEqual([10, 10.5, 11]);

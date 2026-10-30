@@ -154,6 +154,12 @@ describe("finalArgs", () => {
     expect(opt(cropped, "-vf")).toBe("perspective=x0=1");
   });
 
+  it("grades the picture after cropping it", () => {
+    const graded = finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, crop: "perspective=x0=1", grade: "eq=gamma=1.1", out: "f.mp4" });
+    expect(opt(graded, "-vf")).toBe("perspective=x0=1,eq=gamma=1.1");
+    expect(opt(finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, grade: "eq=gamma=1.1", out: "f.mp4" }), "-vf")).toBe("eq=gamma=1.1");
+  });
+
   it("cuts the picture and the mix to the same stretch", () => {
     const before = (file: string) => args.slice(args.indexOf(file) - 5, args.indexOf(file));
     expect(before("p.mov")).toEqual(["-ss", "15", "-to", "170", "-i"]);

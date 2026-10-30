@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readGig } from "../src/gig/gig.js";
 import { gigRecipe } from "../src/gig/gig-recipe.js";
+import { DEFAULT_GRADE } from "../src/gig/grade.js";
 import { stamp } from "../src/gig/stamp.js";
 
 type Task = { command: string; files?: string[]; output?: string[]; dependencies?: string[] };
@@ -187,6 +188,30 @@ describe("readGig", () => {
     expect(() => readGig(gig, root)).toThrow(/crop/);
   });
 
+  it("grades only when gig.json asks, with the defaults unless the gig or the song changes them", () => {
+    writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov" }] });
+    expect(readGig(gig, root).songs[0].grade).toBeUndefined();
+    writeGig(gig, {
+      board: "media/board.m4a",
+      grade: { saturation: 1.2 },
+      songs: [
+        { song: YCHL, phone: "media/02.mov" },
+        { song: SNA, phone: "media/01.mov", audio: "phone", grade: { match: false, temperature: 6000 } },
+      ],
+    });
+    expect(readGig(gig, root).songs.map((s) => s.grade)).toEqual([
+      { ...DEFAULT_GRADE, saturation: 1.2, match: true },
+      { ...DEFAULT_GRADE, saturation: 1.2, temperature: 6000, match: false },
+    ]);
+  });
+
+  it("rejects a grade outside what ffmpeg can do", () => {
+    writeGig(gig, { board: "media/board.m4a", grade: { temperature: 500 }, songs: [{ song: YCHL, phone: "media/02.mov" }] });
+    expect(() => readGig(gig, root)).toThrow(/grade/);
+    writeGig(gig, { board: "media/board.m4a", grade: { low: 0.6, mid: 0.5 }, songs: [{ song: YCHL, phone: "media/02.mov" }] });
+    expect(() => readGig(gig, root)).toThrow(/grade/);
+  });
+
   it("rejects a cut that ends before it starts, or a negative time", () => {
     writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", in: 30, out: 30 }] });
     expect(() => readGig(gig, root)).toThrow(/out/);
@@ -199,9 +224,10 @@ describe("gigRecipe", () => {
   let root: string, gig: string;
   beforeEach(() => ({ root, gig } = layout()));
 
-  function recipe(cut: { in?: number; out?: number; crop?: unknown } = {}): Recipe {
+  function recipe(cut: { in?: number; out?: number; crop?: unknown } = {}, grade?: unknown): Recipe {
     writeGig(gig, {
       board: "media/board.m4a",
+      ...(grade !== undefined ? { grade } : {}),
       songs: [
         { song: SNA, phone: "media/01.mov", audio: "phone" },
         { song: YCHL, phone: "media/02.mov", ...cut },
@@ -383,6 +409,39 @@ describe("gigRecipe", () => {
     expect(recipe({ crop: { follow: false, knots } }).wireit["motion:02-you-cant-hurry-love"]).toBeUndefined();
     expect(recipe({ crop: { follow: false, knots } }).wireit["people:02-you-cant-hurry-love"]).toBeUndefined();
     expect(recipe({ crop: { x: 0.1, y: 0.1, size: 0.8 } }).wireit["motion:02-you-cant-hurry-love"]).toBeUndefined();
+  });
+
+  it("measures a graded song's levels inside its crop, and grades its final video from them", () => {
+    const crop = { follow: true, knots: [] };
+    const { scripts, wireit } = recipe({ in: 12.5, out: 190, crop }, {});
+    expect(scripts["levels:02-you-cant-hurry-love"]).toBe("wireit");
+    expect(wireit["levels:02-you-cant-hurry-love"]).toEqual({
+      command:
+        `${GIG}/levels-cli.ts "media/02.mov" work/02-you-cant-hurry-love.levels.json --in 12.5 --out 190` +
+        ` --crop '{"follow":true,"smooth":12,"knots":[]}' --motion work/02-you-cant-hurry-love.motion.json --people work/02-you-cant-hurry-love.people.json`,
+      files: ["media/02.mov", "work/02-you-cant-hurry-love.motion.json", "work/02-you-cant-hurry-love.people.json"],
+      output: ["work/02-you-cant-hurry-love.levels.json"],
+      dependencies: ["motion:02-you-cant-hurry-love", "people:02-you-cant-hurry-love"],
+    });
+    const final = wireit["final:02-you-cant-hurry-love"];
+    expect(final.command).toContain(` --grade '${JSON.stringify({ ...DEFAULT_GRADE, match: true })}' --levels work/02-you-cant-hurry-love.levels.json`);
+    expect(final.files).toContain("work/02-you-cant-hurry-love.levels.json");
+    expect(final.dependencies).toContain("levels:02-you-cant-hurry-love");
+    expect(wireit.levels.dependencies).toEqual(["levels:01-seven-nation-army", "levels:02-you-cant-hurry-love"]);
+  });
+
+  it("measures no levels for a song left out of the match, but still grades it", () => {
+    writeGig(gig, { board: "media/board.m4a", grade: {}, songs: [{ song: SNA, phone: "media/01.mov", audio: "phone", grade: { match: false } }] });
+    const { wireit } = gigRecipe(readGig(gig, root), "../../..") as Recipe;
+    expect(wireit["levels:01-seven-nation-army"]).toBeUndefined();
+    expect(wireit["final:01-seven-nation-army"].command).toContain(" --grade ");
+    expect(wireit["final:01-seven-nation-army"].command).not.toContain("--levels");
+  });
+
+  it("neither measures nor grades a gig that doesn't ask for it", () => {
+    const { wireit } = recipe({ crop: { follow: true, knots: [] } });
+    expect(wireit["levels:02-you-cant-hurry-love"]).toBeUndefined();
+    expect(wireit["final:02-you-cant-hurry-love"].command).not.toContain("--grade");
   });
 
   it("runs every song's final video from one final task", () => {

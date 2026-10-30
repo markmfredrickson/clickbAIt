@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { perspectiveFilter } from "../src/gig/crop.js";
 import { finalArgs, finalGainDb, mixArgs, mixGains, reviewArgs, TARGET_LUFS } from "../src/gig/render.js";
 
 const db = (gain: number) => 20 * Math.log10(gain);
@@ -149,14 +150,10 @@ describe("finalArgs", () => {
     expect(opt(args, "-crf")).toBe("20");
   });
 
-  it("crops a 16:9 box and scales it back to 1080p, or leaves the picture alone without one", () => {
-    const cropped = finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, crop: { x: 0.1, y: 0.05, size: 0.8 }, out: "f.mp4" });
-    expect(opt(cropped, "-vf")).toBe("crop=w=iw*0.8:h=ih*0.8:x=iw*0.1:y=ih*0.05,scale=1920:1080:flags=lanczos");
-  });
-
-  it("rotates the frame about its centre before cropping, clockwise for a positive angle", () => {
-    const turned = finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 }, out: "f.mp4" });
-    expect(opt(turned, "-vf")).toBe("rotate=a=-2.5*PI/180:ow=iw:oh=ih:c=black,crop=w=iw*0.8:h=ih*0.8:x=iw*0.1:y=ih*0.05,scale=1920:1080:flags=lanczos");
+  it("cuts the keyed boxes out with the perspective filter, counting frames from the cut", () => {
+    const keys = [{ at: 15, x: 0.1, y: 0.05, size: 0.8 }, { at: 60, x: 0.05, y: 0.1, size: 0.7, angle: -2.5 }];
+    const cropped = finalArgs({ phone: "p.mov", mix: "mix.flac", gainDb: 0, cut: { in: 15 }, crop: { keys, fps: 30 }, out: "f.mp4" });
+    expect(opt(cropped, "-vf")).toBe(perspectiveFilter(keys, { start: 15, fps: 30 }));
   });
 
   it("cuts the picture and the mix to the same stretch", () => {

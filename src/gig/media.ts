@@ -34,3 +34,12 @@ export function loudness(file: string, span?: { start: number; seconds: number }
   if (r.status !== 0 || !found) throw new Error(`can't measure the loudness of ${file}`);
   return Number(found[1]);
 }
+
+/** A file's video frame rate, in frames per second. */
+export function frameRate(file: string): number {
+  const rate = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", file], { encoding: "utf8" }).trim();
+  const [num, den] = rate.split("/").map(Number);
+  const fps = num / (den || 1);
+  if (!(fps > 0)) throw new Error(`can't read the frame rate of ${file}`);
+  return fps;
+}

@@ -114,7 +114,7 @@ export function gigRecipe(gig: Gig, rel: string): Record<string, unknown> {
         (fromBoard ? ` --board "${gig.board}" --sync ${sync} --mix ${s.mix}` : "") +
         (s.cut.in !== undefined ? ` --in ${s.cut.in}` : "") +
         (s.cut.out !== undefined ? ` --out ${s.cut.out}` : "") +
-        (s.crop ? ` --crop ${s.crop.x},${s.crop.y},${s.crop.size}` + (s.crop.angle !== undefined ? `,${s.crop.angle}` : "") : ""),
+        (s.crop ? ` --crop '${JSON.stringify(s.crop)}'` : ""),
       files: fromBoard ? [s.phone, words, gig.board!, sync] : [s.phone, words],
       output: [`renders/${key}-16x9.mp4`],
       dependencies: [`captions:${key}`],

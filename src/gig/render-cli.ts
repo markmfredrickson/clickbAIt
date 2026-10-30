@@ -2,7 +2,7 @@
  * A song's 16:9 review render, or with --final its finished video (see render.ts).
  *
  *   npx tsx src/gig/render-cli.ts <phone video> <words.json> <out.mp4> [--final]
- *     [--board <board> --sync <sync.json> --mix <share>] [--in <seconds>] [--out <seconds>] [--crop <x>,<y>,<size>[,<angle>]]
+ *     [--board <board> --sync <sync.json> --mix <share>] [--in <seconds>] [--out <seconds>] [--crop <keys as JSON>]
  *
  * Without --board the sound is the phone's own. The captions come from the
  * words file (see captions-cli.ts), cut to match the video. They are commented
@@ -14,8 +14,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { checkCut } from "./edges.js";
-import type { Crop, Cut } from "./gig.js";
-import { loudness, mediaSeconds } from "./media.js";
+import type { CropKey } from "./crop.js";
+import type { Cut } from "./gig.js";
+import { frameRate, loudness, mediaSeconds } from "./media.js";
 import { finalArgs, finalGainDb, mixArgs, mixGains, reviewArgs } from "./render.js";
 import type { CaptionLine } from "./srt.js";
 import { boardSpan, type Sync } from "./timeline.js";
@@ -31,7 +32,7 @@ const board = option("--board");
 const syncFile = option("--sync");
 if (!out || !board !== !syncFile) {
   console.error(
-    "usage: npx tsx src/gig/render-cli.ts <phone video> <words.json> <out.mp4> [--final] [--board <board> --sync <sync.json> --mix <share>] [--in <seconds>] [--out <seconds>] [--crop <x>,<y>,<size>[,<angle>]]",
+    "usage: npx tsx src/gig/render-cli.ts <phone video> <words.json> <out.mp4> [--final] [--board <board> --sync <sync.json> --mix <share>] [--in <seconds>] [--out <seconds>] [--crop <keys as JSON>]",
   );
   process.exit(1);
 }
@@ -41,10 +42,8 @@ const cut: Cut = {
   ...(option("--in") !== undefined ? { in: Number(option("--in")) } : {}),
   ...(option("--out") !== undefined ? { out: Number(option("--out")) } : {}),
 };
-const cropArg = option("--crop")?.split(",").map(Number);
-const crop: Crop | undefined = cropArg
-  ? { x: cropArg[0], y: cropArg[1], size: cropArg[2], ...(cropArg[3] !== undefined ? { angle: cropArg[3] } : {}) }
-  : undefined;
+const cropArg = option("--crop");
+const crop = cropArg ? { keys: JSON.parse(cropArg) as CropKey[], fps: frameRate(phone) } : undefined;
 const lines: CaptionLine[] = JSON.parse(readFileSync(wordsFile, "utf8")).lines;
 // The live alignment this checks against is not reliable enough to overrule a
 // cut someone chose, so a failed check only warns.

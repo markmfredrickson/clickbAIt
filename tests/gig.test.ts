@@ -122,16 +122,30 @@ describe("readGig", () => {
     expect(readGig(gig, root).songs.map((s) => s.cut)).toEqual([{ in: 12.5, out: 190 }, { in: 4 }, {}]);
   });
 
-  it("reads a song's crop, a 16:9 box given as fractions of the frame", () => {
+  it("reads a song's crop, one box for the whole cut or keyed boxes, as a list of keys", () => {
+    const keys = [
+      { at: 4, x: 0.1, y: 0.05, size: 0.8 },
+      { at: 60, x: 0.05, y: 0.1, size: 0.7, angle: -2.5, glide: 3 },
+    ];
     writeGig(gig, {
       board: "media/board.m4a",
       songs: [
-        { song: YCHL, phone: "media/02.mov", crop: { x: 0.1, y: 0.05, size: 0.8 } },
+        { song: YCHL, phone: "media/02.mov", in: 4.5, crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 } },
         { song: YCHL, phone: "media/03.mov" },
-        { song: YCHL, phone: "media/04.mov", crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 } },
+        { song: YCHL, phone: "media/04.mov", crop: keys },
       ],
     });
-    expect(readGig(gig, root).songs.map((s) => s.crop)).toEqual([{ x: 0.1, y: 0.05, size: 0.8 }, undefined, { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 }]);
+    expect(readGig(gig, root).songs.map((s) => s.crop)).toEqual([[{ at: 4.5, x: 0.1, y: 0.05, size: 0.8, angle: -2.5 }], undefined, keys]);
+  });
+
+  it("rejects keyed boxes out of order, or whose glide starts before the box before it is in place", () => {
+    const keyed = (crop: unknown) => writeGig(gig, { board: "media/board.m4a", songs: [{ song: YCHL, phone: "media/02.mov", crop }] });
+    keyed([{ at: 60, x: 0, y: 0, size: 1 }, { at: 30, x: 0, y: 0, size: 0.8 }]);
+    expect(() => readGig(gig, root)).toThrow(/crop/);
+    keyed([{ at: 30, x: 0, y: 0, size: 1 }, { at: 31, x: 0, y: 0, size: 0.8 }]);
+    expect(() => readGig(gig, root)).toThrow(/crop/);
+    keyed([{ at: 30, x: 0, y: 0, size: 1 }, { at: 31, x: 0, y: 0, size: 0.8, glide: 1 }]);
+    expect(() => readGig(gig, root)).not.toThrow();
   });
 
   it("rejects a crop that runs off the frame or has no size", () => {
@@ -158,7 +172,7 @@ describe("gigRecipe", () => {
   let root: string, gig: string;
   beforeEach(() => ({ root, gig } = layout()));
 
-  function recipe(cut: { in?: number; out?: number; crop?: { x: number; y: number; size: number; angle?: number } } = {}): Recipe {
+  function recipe(cut: { in?: number; out?: number; crop?: unknown } = {}): Recipe {
     writeGig(gig, {
       board: "media/board.m4a",
       songs: [
@@ -303,10 +317,9 @@ describe("gigRecipe", () => {
   });
 
   it("passes a song's crop to its final video", () => {
-    const { wireit } = recipe({ crop: { x: 0.1, y: 0.05, size: 0.8 } });
-    expect(wireit["final:02-you-cant-hurry-love"].command).toMatch(/ --crop 0\.1,0\.05,0\.8$/);
+    const { wireit } = recipe({ crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 } });
+    expect(wireit["final:02-you-cant-hurry-love"].command).toMatch(/ --crop '\[\{"at":0,"x":0\.1,"y":0\.05,"size":0\.8,"angle":-2\.5\}\]'$/);
     expect(wireit["render:02-you-cant-hurry-love"].command).not.toContain("--crop");
-    expect(recipe({ crop: { x: 0.1, y: 0.05, size: 0.8, angle: -2.5 } }).wireit["final:02-you-cant-hurry-love"].command).toMatch(/ --crop 0\.1,0\.05,0\.8,-2\.5$/);
   });
 
   it("runs every song's final video from one final task", () => {

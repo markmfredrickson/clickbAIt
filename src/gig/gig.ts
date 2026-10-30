@@ -24,21 +24,33 @@
  * `in` and `out` cut a song's video to the part worth keeping, in the
  * video's seconds; without them the whole video is used.
  *
- * `crop` keeps part of a song's picture in its final video, as a 16:9 box (see
- * `Crop`). It is per song because the phone moves between songs.
+ * `crop` keeps part of a song's picture in its final video: a 16:9 box given
+ * as fractions of the frame, `{ x, y, size, angle? }`, or a list of boxes keyed
+ * by time that glide from one to the next (see crop.ts). It is per song
+ * because the phone moves between songs.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, normalize, resolve } from "node:path";
 import { z } from "zod";
+import { type CropKey, DEFAULT_GLIDE } from "./crop.js";
 
 const DEFAULT_MIX = 0.6;
 const Mix = z.number().min(0).max(1);
 const Seconds = z.number().min(0);
-const Crop = z
-  .object({ x: z.number().min(0), y: z.number().min(0), size: z.number().gt(0).max(1), angle: z.number().min(-45).max(45).optional() })
+const boxFields = { x: z.number().min(0), y: z.number().min(0), size: z.number().gt(0).max(1), angle: z.number().min(-45).max(45).optional() };
+const inFrame = (c: { x: number; y: number; size: number }) => c.x + c.size <= 1 && c.y + c.size <= 1;
+const Box = z.object(boxFields).strict().refine(inFrame, { message: "the box runs off the frame" });
+const Key = z
+  .object({ at: Seconds, ...boxFields, glide: z.number().gt(0).optional() })
   .strict()
-  .refine((c) => c.x + c.size <= 1 && c.y + c.size <= 1, { message: "the box runs off the frame" });
+  .refine(inFrame, { message: "the box runs off the frame" });
+const Keys = z
+  .array(Key)
+  .min(1)
+  .refine((keys) => keys.every((k, i) => i === 0 || k.at - (k.glide ?? DEFAULT_GLIDE) >= keys[i - 1].at), {
+    message: "each box must come after the one before it, with its glide starting once that box is in place",
+  });
 
 const GigSchema = z
   .object({
@@ -53,26 +65,13 @@ const GigSchema = z
           mix: Mix.optional(),
           in: Seconds.optional(),
           out: Seconds.optional(),
-          crop: Crop.optional(),
+          crop: z.union([Box, Keys]).optional(),
         })
         .strict()
         .refine((s) => s.in === undefined || s.out === undefined || s.in < s.out, { message: "out must come after in", path: ["out"] }),
     ),
   })
   .strict();
-
-/**
- * A 16:9 box inside a 16:9 frame: its top-left corner and its size, all as
- * fractions of the frame (a size of 0.8 is 80% of the width and of the height).
- * `angle` turns the picture under the box first, in degrees about the frame's
- * centre, clockwise when positive, for a phone that sat crooked.
- */
-export interface Crop {
-  x: number;
-  y: number;
-  size: number;
-  angle?: number;
-}
 
 export interface Cut {
   in?: number;
@@ -95,8 +94,8 @@ export interface GigSong {
   mix: number;
   /** Where the video is cut, in its own seconds; either end may be left open. */
   cut: Cut;
-  /** The part of the picture to keep in the final video. */
-  crop?: Crop;
+  /** The part of the picture to keep in the final video, as keyed boxes (see crop.ts). */
+  crop?: CropKey[];
 }
 
 export interface Gig {
@@ -142,7 +141,7 @@ export function readGig(dir: string, root: string): Gig {
         audio: s.audio,
         mix: s.audio === "phone" ? 0 : (s.mix ?? mix ?? DEFAULT_MIX),
         cut: { ...(s.in !== undefined ? { in: s.in } : {}), ...(s.out !== undefined ? { out: s.out } : {}) },
-        ...(s.crop ? { crop: s.crop } : {}),
+        ...(s.crop ? { crop: Array.isArray(s.crop) ? s.crop : [{ at: s.in ?? 0, ...s.crop }] } : {}),
       };
     }),
   };

@@ -141,6 +141,3 @@ export function perspectiveFilter(keys: CropKey[], v: { start: number; fps: numb
   };
   return perspective([point(x, y), point(`${x}+${size}`, y), point(x, `${y}+${size}`), point(`${x}+${size}`, `${y}+${size}`)], keys.length > 1);
 }
-
-/** `boxAt` as JavaScript source, so the picker page previews glides with the same code. */
-export const boxAtSource = (): string => `const DEFAULT_GLIDE = ${DEFAULT_GLIDE};\nconst smooth = ${smooth};\nconst box = ${box};\n${boxAt}`;

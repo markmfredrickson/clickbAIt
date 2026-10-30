@@ -29,7 +29,7 @@ const dir = resolve(dirArg);
 
 try {
   if (task === "crop-page") {
-    console.log(`wrote ${relative(root, writeCropPage(readGig(dir, root)))}`);
+    console.log(`wrote ${relative(root, await writeCropPage(readGig(dir, root)))}`);
   } else   if (task === "stamp") {
     const flag = (name: string) => {
       const i = rest.indexOf(`--${name}`);

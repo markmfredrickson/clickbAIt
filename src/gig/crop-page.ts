@@ -1,26 +1,41 @@
 /**
- * The crop picker: a page in `renders/crop/` for fitting each song's 16:9
- * boxes (see crop.ts). Each song has a timeline over its cut, coloured by
- * which box is in use and hatched where one glides into the next. Scrubbing it
- * shows the video at the playhead with the box as the render will cut it, and
- * selects that box for editing; "Split here" starts a new box at the playhead.
- * The onion skin lays frames from the playhead forward over each other, so the
- * phone's wander shows. Copy the crops out for gig.json; the page writes
- * nothing back itself. A video that isn't 16:9, such as one shot
- * upright, is shown at its own shape with no box.
+ * The crop picker: a page in `renders/crop/` for shaping each song's crop
+ * curve (see follow.ts). Scrubbing the timeline shows the video with the box
+ * the render will cut there; dragging, resizing or turning the box pins the
+ * curve with a knot at that moment, and the curve is refitted around it. With
+ * "follow the camera" on, the curve starts from the camera's measured motion
+ * (see motion.ts), which the page measures for any song that lacks it. Plots
+ * under the timeline show zoom and turn, raw and smoothed. Copy the crops out
+ * for gig.json; the page writes nothing back itself. A video that isn't 16:9,
+ * such as one shot upright, is shown at its own shape with no box.
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { boxAtSource, DEFAULT_GLIDE } from "./crop.js";
+import { buildSync } from "esbuild";
+import { DEFAULT_SMOOTH } from "./follow.js";
 import type { Gig } from "./gig.js";
 import { mediaSeconds } from "./media.js";
+import { measureMotion, type MotionSample } from "./motion.js";
 
-export function writeCropPage(gig: Gig): string {
+/**
+ * follow.ts bundled for the browser, defining a global `Follow` with the
+ * functions the page draws the curve with: the render's own code, not a copy.
+ */
+export function followBundle(): string {
+  const { outputFiles } = buildSync({
+    stdin: { contents: `export { cropPath, fitOnPicture, frameToScene, sceneToFrame } from "./follow.ts";`, resolveDir: import.meta.dirname, loader: "ts" },
+    bundle: true, format: "iife", globalName: "Follow", platform: "browser", target: "es2020", write: false,
+  });
+  return outputFiles[0].text + "\nconst { cropPath, fitOnPicture, frameToScene, sceneToFrame } = Follow;";
+}
+
+export async function writeCropPage(gig: Gig): Promise<string> {
   const out = join(gig.dir, "renders/crop");
   mkdirSync(out, { recursive: true });
-  const songs = gig.songs.map((s) => {
+  const songs: unknown[] = [];
+  for (const s of gig.songs) {
     const key = `${s.n}-${s.slug}`;
     const phone = join(gig.dir, s.phone);
     const start = s.cut.in ?? 0;
@@ -29,11 +44,33 @@ export function writeCropPage(gig: Gig): string {
       .trim()
       .split(",")
       .map(Number);
-    // The page sits two folders below the gig.
-    return { key, start, end, width, height, video: `../../${s.phone}`, keys: s.crop ?? [{ at: start, x: 0, y: 0, size: 1 }] };
-  });
+    const wide = Math.abs(width / height - 16 / 9) < 0.01;
+    // The same file and format as the song's motion task writes.
+    const motionFile = join(gig.dir, `work/${key}.motion.json`);
+    let motion: MotionSample[] | null = null;
+    if (wide) {
+      if (existsSync(motionFile)) motion = JSON.parse(readFileSync(motionFile, "utf8")).samples;
+      else {
+        console.log(`measuring ${key}`);
+        motion = await measureMotion(phone, start, end, 2);
+        mkdirSync(join(gig.dir, "work"), { recursive: true });
+        writeFileSync(motionFile, JSON.stringify({ rate: 2, samples: motion }) + "\n");
+      }
+    }
+    // Keyed boxes from before curves become knots on a curve that doesn't follow.
+    const crop = !s.crop
+      ? { follow: true, smooth: DEFAULT_SMOOTH, knots: [{ at: start, x: 0.05, y: 0.05, size: 0.9, angle: 0 }] }
+      : Array.isArray(s.crop)
+        ? { follow: false, smooth: DEFAULT_SMOOTH, knots: s.crop.map((k, i) => ({ at: i === 0 ? start : k.at, x: k.x, y: k.y, size: k.size, angle: k.angle ?? 0 })) }
+        : s.crop;
+    songs.push({
+      key, start, end, width, height, wide, video: `../../${s.phone}`, crop, hasCrop: !!s.crop, defaultSmooth: DEFAULT_SMOOTH,
+      // Compact: [t, angle, scale, dx, dy].
+      motion: motion && motion.map((m) => [m.t, +m.angle.toFixed(4), +m.scale.toFixed(5), +m.dx.toFixed(5), +m.dy.toFixed(5)]),
+    });
+  }
   const page = join(out, "index.html");
-  writeFileSync(page, PAGE.replace("/*SONGS*/[]", JSON.stringify(songs)).replace("/*BOXAT*/", boxAtSource()));
+  writeFileSync(page, PAGE.replace("/*SONGS*/[]", () => JSON.stringify(songs)).replace("/*FOLLOW*/", () => followBundle()));
   return page;
 }
 
@@ -63,10 +100,10 @@ const PAGE = `<!doctype html>
   .h.tl { left: -9px; top: -9px; cursor: nwse-resize; } .h.br { right: -9px; bottom: -9px; cursor: nwse-resize; }
   .h.tr { right: -9px; top: -9px; cursor: nesw-resize; } .h.bl { left: -9px; bottom: -9px; cursor: nesw-resize; }
   .timeline { position: relative; height: 34px; margin-top: 10px; border-radius: 4px; overflow: hidden; cursor: pointer; touch-action: none; background: var(--line); }
-  .region { position: absolute; top: 0; bottom: 0; }
-  .region.sel { box-shadow: inset 0 0 0 2px var(--fg); }
-  .region span { position: absolute; left: 6px; top: 8px; font-size: 12px; white-space: nowrap; pointer-events: none; }
   .gl { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, var(--card) 0 4px, transparent 4px 8px); opacity: .8; }
+  .knot { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--box); }
+  .plot { display: block; width: 100%; height: 70px; margin-top: 4px; }
+  .box.pinned { border-width: 3px; }
   .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--box); pointer-events: none; }
   .now { font-size: 13px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; min-height: 1.4em; }
   .controls { display: grid; grid-template-columns: 90px 1fr auto; gap: 6px 10px; align-items: center; margin-top: 8px; font-size: 13px; }
@@ -92,12 +129,12 @@ const PAGE = `<!doctype html>
 <body>
 <main>
   <h1>Crop picker</h1>
-  <p class="lead">The coloured bar under each picture is the song's timeline: one colour per box, hatched where one box glides into the next. Scrub it to see the video with the box as the render will cut it; the box in use at the playhead is the one you edit. Drag the box or any corner, and turn the picture if the phone sat crooked. When the phone has moved and the box no longer fits, click Split here (or press S) to start a new box at the playhead; it glides in over the seconds before. The onion skin lays frames from the playhead forward over each other, so you can see how far the phone wanders before the next split. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p>
+  <p class="lead">The box follows a smooth curve over the song. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (red tick), and the curve bends to pass through it. Press S to pin the curve where it is. With "follow the camera" on, the curve starts from how the phone moved, so the box stays over the band; "smooth over" sets how slowly it changes. The plots show zoom and turn, faint for the camera's raw motion and bold for the curve. The onion skin lays frames from the playhead forward over each other. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p>
   <div id="songs"></div>
 </main>
 <div class="out"><div><textarea id="json" readonly></textarea><button class="copy" id="copy" type="button">Copy crops</button></div></div>
 <script>
-/*BOXAT*/
+/*FOLLOW*/
 const SONGS = /*SONGS*/[];
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 const r3 = (v) => Math.round(v * 1000) / 1000;
@@ -108,24 +145,15 @@ function output() {
   const out = {};
   for (const s of SONGS) {
     const st = state[s.key];
-    if (!st) continue;
-    const keys = st.keys.map((k, i) => {
-      const o = { at: i === 0 ? s.start : k.at, x: k.x, y: k.y, size: k.size };
-      if (k.angle) o.angle = k.angle;
-      if (i > 0 && k.glide !== DEFAULT_GLIDE) o.glide = k.glide;
-      return o;
-    });
-    if (keys.length === 1) {
-      const { at, ...one } = keys[0];
-      if (one.size < 1 || one.angle) out[s.key] = one;
-    } else out[s.key] = keys;
+    if (!st || !st.touched) continue;
+    out[s.key] = { follow: st.follow, ...(st.smooth !== s.defaultSmooth ? { smooth: st.smooth } : {}), knots: st.knots.map((k) => ({ at: k.at, x: r3(k.x), y: r3(k.y), size: r3(k.size), angle: Math.round(k.angle * 10) / 10 })) };
   }
   document.getElementById("json").value = JSON.stringify(out, null, 1);
-  store.set("crop-state-v3", state);
+  store.set("crop-curves-v1", state);
 }
 
-const saved = store.get("crop-state-v3") || {};
-/** The song whose split S makes: the last one touched. */
+const saved = store.get("crop-curves-v1") || {};
+/** The song whose knot S drops: the last one touched. */
 let active = null;
 for (const s of SONGS) {
   const el = document.createElement("section");
@@ -136,8 +164,7 @@ for (const s of SONGS) {
   frame.style.aspectRatio = s.width + " / " + s.height;
   const video = document.createElement("video"); video.muted = true; video.preload = "auto"; video.src = s.video; pic.append(video);
   document.getElementById("songs").append(el);
-  const wide = Math.abs(s.width / s.height - 16 / 9) < 0.01;
-  if (!wide) {
+  if (!s.wide) {
     frame.style.maxWidth = Math.round(560 * s.width / s.height) + "px";
     video.currentTime = (s.start + s.end) / 2;
     const note = document.createElement("div"); note.className = "warn"; note.textContent = s.width + "×" + s.height + ": not 16:9, so there is no crop box."; el.append(note);
@@ -145,52 +172,58 @@ for (const s of SONGS) {
   }
   const canvas = document.createElement("canvas"); canvas.width = 960; canvas.height = 540; canvas.style.display = "none"; pic.append(canvas);
   const st = (state[s.key] = saved[s.key] || {
-    keys: s.keys.map((k) => ({ at: k.at, x: k.x, y: k.y, size: k.size, angle: k.angle || 0, glide: k.glide || DEFAULT_GLIDE })),
-    sel: 0, t: s.start, onion: { on: false, length: 10, count: 8 },
+    follow: s.crop.follow, smooth: s.crop.smooth, knots: s.crop.knots.map((k) => ({ ...k, angle: k.angle || 0 })),
+    t: s.start, onion: { on: false, length: 10, count: 8 }, touched: s.hasCrop,
   });
+  const times = s.motion ? s.motion.map((m) => m[0]) : Array.from({ length: Math.floor((s.end - s.start) * 2) + 1 }, (_, i) => s.start + i / 2);
+  const motion = s.motion ? s.motion.map(([, angle, scale, dx, dy]) => ({ angle, scale, dx, dy })) : null;
+  let path = [], raw = [];
+  const refit = () => {
+    path = cropPath(times, motion, st, 1920, 1080);
+    // The unsmoothed follow, for the plots: the first knot carried through the camera motion.
+    if (st.follow && motion) {
+      const k0 = [...st.knots].sort((a, b) => a.at - b.at)[0];
+      const i0 = Math.min(times.length - 1, Math.max(0, Math.round((k0.at - times[0]) * 2)));
+      const scene = frameToScene(k0, motion[i0], 1920, 1080);
+      raw = motion.map((m) => fitOnPicture(sceneToFrame(scene, m, 1920, 1080), 1920, 1080));
+    } else raw = [];
+  };
+  refit();
+
   const ui = document.createElement("div");
   ui.innerHTML =
-    '<div class="timeline"></div><div class="now"></div>' +
+    '<div class="timeline"></div><canvas class="plot" width="1000" height="70"></canvas><div class="now"></div>' +
     '<div class="controls">' +
+    '<label>Curve</label><div class="onion"><label><input type="checkbox" class="follow"> follow the camera</label><label>smooth over <input type="number" class="smooth" min="1" step="1"> s</label></div><span></span>' +
     '<label>Onion skin</label><div class="onion"><label><input type="checkbox" class="on"> on</label><label><input type="number" class="len" min="1" step="1"> seconds ahead</label><label><input type="number" class="count" min="2" max="30" step="1"> frames</label></div><span></span>' +
     '<label>Turn</label><input type="range" class="angle" min="-10" max="10" step="0.1"><span class="num deg"></span>' +
     '</div><div class="keys"></div><div class="warn"></div>';
   el.append(ui);
   const q = (c) => ui.querySelector(c);
-  const timeline = q(".timeline"), now = q(".now"), on = q(".on"), len = q(".len"), count = q(".count");
-  const angle = q(".angle"), deg = q(".deg"), keysEl = q(".keys"), warn = q(".warn");
+  const timeline = q(".timeline"), plot = q(".plot"), now = q(".now"), followEl = q(".follow"), smoothEl = q(".smooth");
+  const on = q(".on"), len = q(".len"), count = q(".count"), angle = q(".angle"), deg = q(".deg"), keysEl = q(".keys"), warn = q(".warn");
+  if (!motion) { followEl.disabled = true; followEl.parentElement.title = "no camera motion measured for this song"; }
   const boxEl = document.createElement("div"); boxEl.className = "box";
   for (const c of ["tl", "tr", "bl", "br"]) { const h = document.createElement("div"); h.className = "h " + c; h.dataset.c = c; boxEl.append(h); }
   frame.append(boxEl);
-  el.addEventListener("pointerdown", () => (active = split));
-
-  const at = (i) => (i === 0 ? s.start : st.keys[i].at);
-  /** Where each box holds still, and where the glide into it runs. */
-  const spans = () => st.keys.map((k, i) => ({
-    from: at(i),
-    to: i + 1 < st.keys.length ? st.keys[i + 1].at - st.keys[i + 1].glide : s.end,
-    glide: i > 0 ? [k.at - k.glide, k.at] : null,
-  }));
-  /** The key in use at time t, and whether the box is gliding into it then. */
-  const keyAt = (t) => {
-    for (let i = st.keys.length - 1; i >= 0; i--) {
-      if (i > 0 && t >= st.keys[i].at - st.keys[i].glide && t < st.keys[i].at) return { i, gliding: true };
-      if (t >= at(i)) return { i, gliding: false };
-    }
-    return { i: 0, gliding: false };
-  };
+  el.addEventListener("pointerdown", () => (active = dropKnot));
   const pct = (t) => ((t - s.start) / (s.end - s.start)) * 100 + "%";
+  const idx = (t) => Math.min(times.length - 1, Math.max(0, Math.round((t - times[0]) * 2)));
+  /** The curve at time t, as the render moves between samples. */
+  const at = (t) => {
+    const f = (t - times[0]) * 2, i = Math.min(times.length - 2, Math.max(0, Math.floor(f))), u = Math.min(1, Math.max(0, f - i));
+    const a = path[i], b = path[i + 1] || a;
+    return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, size: a.size + (b.size - a.size) * u, angle: a.angle + (b.angle - a.angle) * u };
+  };
+  const knotNear = (t) => st.knots.findIndex((k) => Math.abs(k.at - t) < 0.26);
 
-  // The onion skin: frames from the playhead forward, drawn over each other at
-  // 1, 1/2, 1/3 ... opacity so each counts equally. A second video does the
-  // seeking so the first stays on the playhead.
+  // The onion skin: frames from the playhead forward, laid over each other so each counts equally.
   const sampler = document.createElement("video"); sampler.muted = true; sampler.preload = "auto"; sampler.src = s.video;
   const ctx = canvas.getContext("2d");
   let onionRun = 0, onionTimer = 0;
   const seekTo = (v, t) => new Promise((res) => { v.addEventListener("seeked", res, { once: true }); v.currentTime = t; });
   async function drawOnion() {
-    const run = ++onionRun, o = st.onion;
-    const end = Math.min(st.t + o.length, s.end), n = Math.max(2, Math.min(30, o.count));
+    const run = ++onionRun, o = st.onion, end = Math.min(st.t + o.length, s.end), n = Math.max(2, Math.min(30, o.count));
     for (let i = 0; i < n; i++) {
       await seekTo(sampler, st.t + ((end - st.t) * i) / (n - 1));
       if (run !== onionRun) return;
@@ -204,90 +237,85 @@ for (const s of SONGS) {
     if (st.onion.on) onionTimer = setTimeout(drawOnion, 250);
   }
 
+  function drawPlot() {
+    const g = plot.getContext("2d"), w = plot.width, h = plot.height, css = getComputedStyle(document.body);
+    g.clearRect(0, 0, w, h);
+    const X = (t) => ((t - s.start) / (s.end - s.start)) * w;
+    const lane = (get, lo, hi, top, color) => {
+      const Y = (v) => top + 30 - ((v - lo) / (hi - lo || 1)) * 28;
+      if (raw.length) { g.strokeStyle = color; g.globalAlpha = 0.35; g.lineWidth = 1; g.beginPath(); raw.forEach((b, i) => { const x = X(times[i]), y = Y(get(b)); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); }
+      g.globalAlpha = 1; g.lineWidth = 2; g.beginPath(); path.forEach((b, i) => { const x = X(b.t), y = Y(get(b)); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+    };
+    const sizes = path.map((b) => b.size).concat(raw.map((b) => b.size)), angles = path.map((b) => b.angle).concat(raw.map((b) => b.angle));
+    lane((b) => b.size, Math.min(...sizes), Math.max(...sizes), 2, css.getPropertyValue("--fg"));
+    lane((b) => b.angle, Math.min(...angles), Math.max(...angles), 36, css.getPropertyValue("--box"));
+    g.fillStyle = css.getPropertyValue("--muted"); g.font = "11px system-ui"; g.fillText("zoom", 4, 12); g.fillText("turn", 4, 46);
+    g.strokeStyle = css.getPropertyValue("--box"); g.lineWidth = 2; g.beginPath(); g.moveTo(X(st.t), 0); g.lineTo(X(st.t), h); g.stroke();
+  }
+
   function draw() {
-    const { gliding } = keyAt(st.t);
-    const k = st.keys[st.sel];
-    const shown = gliding ? boxAt(st.keys.map((kk, i) => ({ ...kk, at: at(i) })), st.t) : k;
+    const shown = at(st.t), near = knotNear(st.t);
     Object.assign(boxEl.style, { left: shown.x * 100 + "%", top: shown.y * 100 + "%", width: shown.size * 100 + "%", height: shown.size * 100 + "%" });
-    boxEl.classList.toggle("locked", gliding);
+    boxEl.classList.toggle("pinned", near >= 0);
     pic.style.transform = "rotate(" + shown.angle + "deg)";
+    followEl.checked = st.follow && !!motion; smoothEl.value = st.smooth;
     on.checked = st.onion.on; len.value = st.onion.length; count.value = st.onion.count;
-    angle.value = shown.angle; angle.disabled = gliding; deg.textContent = shown.angle.toFixed(1) + "°";
+    angle.value = shown.angle; deg.textContent = shown.angle.toFixed(1) + "°";
     timeline.innerHTML = "";
-    spans().forEach((sp, i) => {
-      const r = document.createElement("div"); r.className = "region" + (i === st.sel ? " sel" : "");
-      r.style.left = pct(sp.from); r.style.width = "calc(" + pct(sp.to) + " - " + pct(sp.from) + ")";
-      r.style.background = "var(--r" + (i % 3) + ")";
-      const label = document.createElement("span"); label.textContent = "Box " + (i + 1); r.append(label);
-      timeline.append(r);
-      if (sp.glide) { const g = document.createElement("div"); g.className = "gl"; g.style.left = pct(sp.glide[0]); g.style.width = "calc(" + pct(sp.glide[1]) + " - " + pct(sp.glide[0]) + ")"; timeline.append(g); }
-    });
     if (st.onion.on) { const o = document.createElement("div"); o.className = "gl"; o.style.background = "var(--box)"; o.style.opacity = ".25"; o.style.left = pct(st.t); o.style.width = "calc(" + pct(Math.min(st.t + st.onion.length, s.end)) + " - " + pct(st.t) + ")"; timeline.append(o); }
+    st.knots.forEach((k) => { const m = document.createElement("div"); m.className = "knot"; m.style.left = pct(k.at); m.title = "knot at " + fmt(k.at); timeline.append(m); });
     const p = document.createElement("div"); p.className = "playhead"; p.style.left = pct(st.t); timeline.append(p);
-    now.textContent = fmt(st.t) + " (" + fmt(st.t - s.start) + " into the render) · " +
-      (gliding ? "gliding into box " + (st.sel + 1) + "; move off the glide to edit" : "editing box " + (st.sel + 1));
+    now.textContent = fmt(st.t) + " (" + fmt(st.t - s.start) + " into the render) · " + (near >= 0 ? "on a knot: dragging moves it" : "dragging adds a knot here");
     keysEl.innerHTML = "";
-    const sp = document.createElement("button"); sp.type = "button"; sp.className = "split"; sp.textContent = "Split here (S)"; sp.onclick = split;
-    keysEl.append(sp);
-    st.keys.forEach((kk, i) => {
-      const chip = document.createElement("span"); chip.className = "key"; chip.setAttribute("aria-selected", String(i === st.sel));
-      chip.append("Box " + (i + 1) + (i === 0 ? " from the start" : " from "));
-      if (i > 0) {
-        const t = document.createElement("input"); t.type = "number"; t.step = "0.1"; t.value = kk.at; t.title = "seconds into the phone video";
-        const g = document.createElement("input"); g.type = "number"; g.min = "0.2"; g.step = "0.5"; g.value = kk.glide; g.title = "glide, seconds";
-        for (const inp of [t, g]) inp.onclick = (e) => e.stopPropagation();
-        t.onchange = () => { kk.at = Math.min(Math.max(Number(t.value) || kk.at, s.start + 0.1), s.end); st.keys.sort((a, b) => a.at - b.at); seek(kk.at); };
-        g.onchange = () => { kk.glide = Math.max(0.2, Number(g.value) || DEFAULT_GLIDE); draw(); };
-        const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.title = "remove this split";
-        del.onclick = (e) => { e.stopPropagation(); st.keys.splice(i, 1); seek(st.t); };
-        chip.append(t, "s, glide ", g, "s", del);
+    const sp = document.createElement("button"); sp.type = "button"; sp.className = "split"; sp.textContent = "Knot here (S)"; sp.onclick = dropKnot; keysEl.append(sp);
+    [...st.knots].sort((a, b) => a.at - b.at).forEach((k) => {
+      const chip = document.createElement("span"); chip.className = "key"; chip.setAttribute("aria-selected", String(Math.abs(k.at - st.t) < 0.26));
+      chip.append(fmt(k.at));
+      if (st.knots.length > 1) {
+        const del = document.createElement("button"); del.type = "button"; del.textContent = "×"; del.title = "remove this knot";
+        del.onclick = (e) => { e.stopPropagation(); st.knots.splice(st.knots.indexOf(k), 1); st.touched = true; refit(); draw(); };
+        chip.append(del);
       }
-      chip.onclick = () => seek(at(i));
+      chip.onclick = () => seek(k.at);
       keysEl.append(chip);
     });
-    const reset = document.createElement("button"); reset.type = "button"; reset.className = "reset"; reset.textContent = "Full frame";
-    reset.onclick = () => { if (!keyAt(st.t).gliding) { Object.assign(st.keys[st.sel], { x: 0, y: 0, size: 1, angle: 0 }); draw(); } };
-    keysEl.append(reset);
-    const bad = st.keys.findIndex((kk, i) => i > 0 && kk.at - kk.glide < at(i - 1));
-    warn.textContent = bad > 0 ? "The glide into box " + (bad + 1) + " starts before box " + bad + " is in place; shorten the glide or move the split later." : "";
+    warn.textContent = !motion ? "No camera motion measured for this song, so the curve only runs between your knots." : "";
+    drawPlot();
     output();
   }
   function seek(t) {
     st.t = Math.min(Math.max(t, s.start), s.end);
-    st.sel = keyAt(st.t).i;
     video.currentTime = st.t;
-    draw();
-    onionLater();
+    draw(); onionLater();
   }
-  function split() {
-    active = split;
-    const t = Number(st.t.toFixed(1));
-    if (t <= s.start + 0.1 || st.keys.some((kk, i) => Math.abs(at(i) - t) < 0.1)) return;
-    const shown = boxAt(st.keys.map((kk, i) => ({ ...kk, at: at(i) })), t);
-    const nk = { at: t, x: shown.x, y: shown.y, size: shown.size, angle: shown.angle, glide: DEFAULT_GLIDE };
-    st.keys.push(nk); st.keys.sort((a, b) => a.at - b.at);
-    // Step just past the new split, so its box is the one being edited.
-    seek(t);
+  /** The knot at the playhead, made from the curve there if there isn't one. */
+  function knotHere() {
+    let i = knotNear(st.t);
+    if (i < 0) { const t = times[idx(st.t)]; st.knots.push({ at: Number(t.toFixed(2)), ...at(t) }); i = st.knots.length - 1; st.t = t; }
+    st.touched = true;
+    return st.knots[i];
   }
+  function dropKnot() { active = dropKnot; knotHere(); refit(); draw(); }
+
   timeline.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    active = split;
+    e.preventDefault(); active = dropKnot;
     const r = timeline.getBoundingClientRect();
     const go = (ev) => seek(s.start + ((ev.clientX - r.left) / r.width) * (s.end - s.start));
     go(e);
     const up = () => { removeEventListener("pointermove", go); removeEventListener("pointerup", up); };
     addEventListener("pointermove", go); addEventListener("pointerup", up);
   });
+  followEl.onchange = () => { st.follow = followEl.checked; st.touched = true; refit(); draw(); };
+  smoothEl.onchange = () => { st.smooth = Math.max(1, Number(smoothEl.value) || s.defaultSmooth); st.touched = true; refit(); draw(); };
   on.onchange = () => { st.onion.on = on.checked; draw(); onionLater(); };
   len.onchange = () => { st.onion.length = Math.max(1, Number(len.value) || 10); draw(); onionLater(); };
   count.onchange = () => { st.onion.count = Math.min(30, Math.max(2, Math.round(Number(count.value)) || 8)); draw(); onionLater(); };
-  angle.oninput = () => { if (!keyAt(st.t).gliding) { st.keys[st.sel].angle = Number(angle.value); draw(); } };
+  angle.oninput = () => { const k = knotHere(); k.angle = Number(angle.value); refit(); draw(); };
 
   boxEl.addEventListener("pointerdown", (e) => {
-    if (boxEl.classList.contains("locked")) return;
-    e.preventDefault(); e.stopPropagation();
-    active = split;
-    const corner = e.target.dataset.c, r = frame.getBoundingClientRect(), k = st.keys[st.sel], k0 = { ...k }, x0 = e.clientX, y0 = e.clientY;
+    e.preventDefault(); e.stopPropagation(); active = dropKnot;
+    const k = knotHere(); refit(); draw();
+    const corner = e.target.dataset.c, r = frame.getBoundingClientRect(), k0 = { ...k }, x0 = e.clientX, y0 = e.clientY;
     const move = (ev) => {
       const dx = (ev.clientX - x0) / r.width, dy = (ev.clientY - y0) / r.height;
       if (!corner) {
@@ -301,17 +329,17 @@ for (const s of SONGS) {
         const size = r3(Math.min(Math.max(k0.size + grow, 0.2), Math.min(left ? ax : 1 - ax, top ? ay : 1 - ay)));
         k.size = size; k.x = r3(left ? ax - size : ax); k.y = r3(top ? ay - size : ay);
       }
-      draw();
+      refit(); draw();
     };
     const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); };
     addEventListener("pointermove", move); addEventListener("pointerup", up);
   });
   seek(st.t);
 }
+output();
 addEventListener("keydown", (e) => {
   if ((e.key === "s" || e.key === "S") && active && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "")) active();
 });
-output();
 document.getElementById("copy").onclick = async () => {
   const b = document.getElementById("copy");
   try { await navigator.clipboard.writeText(document.getElementById("json").value); b.textContent = "Copied"; }

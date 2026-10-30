@@ -6,8 +6,8 @@
  * motion (see motion.ts) so it stays over the same part of the scene, kept on
  * the picture where that would run it off; the curves are then smoothed over
  * `smooth` seconds, passing through every knot. Without it, the curves just run
- * smoothly from knot to knot. The page previews with these same functions
- * (`followSource`), so what you see there is what the render cuts.
+ * smoothly from knot to knot. The picker page runs these same functions, bundled
+ * for the browser, so what you see there is what the render cuts.
  */
 
 import { corners } from "./crop.js";
@@ -135,7 +135,3 @@ export function cropPath(times: number[], motion: Similarity[] | null, crop: Cur
   const cx = curve((b) => b.x + b.size / 2), cy = curve((b) => b.y + b.size / 2), size = curve((b) => b.size), angle = curve((b) => b.angle);
   return times.map((t, i) => ({ t, ...fitOnPicture({ x: cx[i] - size[i] / 2, y: cy[i] - size[i] / 2, size: size[i], angle: angle[i] }, width, height) }));
 }
-
-/** These functions as JavaScript source, so the picker page draws the same curves the render cuts. */
-export const followSource = (): string =>
-  [corners, lambdaFor, smoothCurve, sceneToFrame, frameToScene, fitOnPicture, cropPath].map(String).join("\n");

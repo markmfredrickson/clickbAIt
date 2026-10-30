@@ -153,7 +153,7 @@ const PAGE = `<!doctype html>
 </head>
 <body>
 <main>
-  <div class="bar"><h1>Crop picker</h1><select id="pick" aria-label="Song"></select><span class="grow"></span><details class="help"><summary>?</summary><p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (amber tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. On a trackpad, pinch on the picture to zoom the box and scroll with two fingers to move it. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p></details><button class="copy" id="copy" type="button">Copy crops</button></div>
+  <div class="bar"><h1>Crop picker</h1><select id="pick" aria-label="Song"></select><span class="grow"></span><details class="help"><summary>?</summary><p class="lead">The box follows a smooth curve over the song. With "follow the band" on, the curve frames everyone found (thin green outlines), never tighter than the band needs, and turns with the camera so the picture stays level. Scrub the timeline to see the video with the box the render will cut there. Where it's wrong, drag the box or a corner, or turn it: that pins the curve with a knot at that moment (amber tick). Each knot also shows in the lane under the timeline as a bell curve: drag it up to pull harder or down to only nudge, and sideways to make it reach over more of the song. On a trackpad, pinch on the picture to zoom the box, and scroll with two fingers to scrub. Press S to pin the curve where it is. "Smooth over" sets how slowly the curve changes. The plots show zoom and turn: faint for what the band and camera ask for, bold for the curve. Times are seconds into the phone's video. When you're done, copy the crops at the bottom.</p></details><button class="copy" id="copy" type="button">Copy crops</button></div>
   <div id="songs"></div>
 </main>
 <textarea id="json" readonly></textarea>
@@ -406,17 +406,20 @@ for (const s of SONGS) {
   angle.oninput = () => { const k = knotHere(); k.angle = Number(angle.value); refit(); draw(); };
 
   // Trackpad gestures on the picture: pinching (which the browser sends as a
-  // wheel with ctrl held) zooms the box about its centre, and two-finger
-  // scrolling moves it.
+  // wheel with ctrl held) zooms the box about its centre, pinning a knot;
+  // two-finger scrolling scrubs, about two picture-widths for the whole song.
   frame.addEventListener("wheel", (e) => {
     e.preventDefault(); active = dropKnot;
+    if (!e.ctrlKey) {
+      const d = Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      seek(st.t + (d * (s.end - s.start)) / (2 * frame.getBoundingClientRect().width));
+      return;
+    }
     const k = knotHere();
     const cx = k.x + k.size / 2, cy = k.y + k.size / 2;
-    if (e.ctrlKey) k.size = r3(Math.min(1, Math.max(0.2, k.size * Math.exp(e.deltaY * 0.01))));
-    const r = frame.getBoundingClientRect();
-    const nx = e.ctrlKey ? cx : cx + e.deltaX / r.width, ny = e.ctrlKey ? cy : cy + e.deltaY / r.height;
-    k.x = r3(Math.min(Math.max(nx - k.size / 2, 0), 1 - k.size));
-    k.y = r3(Math.min(Math.max(ny - k.size / 2, 0), 1 - k.size));
+    k.size = r3(Math.min(1, Math.max(0.2, k.size * Math.exp(e.deltaY * 0.01))));
+    k.x = r3(Math.min(Math.max(cx - k.size / 2, 0), 1 - k.size));
+    k.y = r3(Math.min(Math.max(cy - k.size / 2, 0), 1 - k.size));
     refit(); draw();
   }, { passive: false });
 

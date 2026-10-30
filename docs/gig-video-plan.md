@@ -12,6 +12,14 @@ As of 2026-10-27. Branch `feature/gig-sync`, worktree `~/Code/clickbAIt-gig-sync
 - **Final videos (2026-10-30):** the `final` task renders each song at the phone's 1080p with the gig.json cuts and no captions. No stabilization: Mark tried vidstab with no zoom (smoothing 60 to 600, and tripod mode) and `deshake`, and rejected them all; vidstab at 300 left artifacts. That version is in commit b82815e.
 - **TODO:** the live beat map ("Plan, revised 2026-10-27 late" and "Beat map progress" below, `src/gig/beatmap.ts`) is on hold. Review it after the `feature/beat-model` branch is worked out.
 
+## Highlight reel and verticals, 2026-10-30
+
+- **Highlight reel:** one reel of about 60 s (a soft limit) from 4 songs chosen to show the band's range. Each cut is one whole phrase, about 8 bars or 15 s, starting and ending on a downbeat. A bandmate's earlier reel had cuts too short and ran too long overall. Picture cuts are hard; the audio crossfades for well under a second. Open on the most recognizable hook and end on the biggest moment.
+- **Cards:** an opening card reading "Live, August 2026", and a card with the song title and original artist between cuts. Proposed: each song card plays over the first beats of the next cut's audio, so the music never stops. Who the reel is for (booking or fans) is still open.
+- **Branding:** copied from the website (`~/Documents/Hobbies/Band/website/src/assets/site.css`) into an authored `songs/brand.json`, with the font files beside it in `songs/brand/`. Fonts: Young Serif for titles, Karla for text. Colors: espresso #241812 background, gold #E9C77F titles, cream #F3E9D6 text, clay #C8662F accent. Logo: `brand/deermouse-profile.png`.
+- **Verticals (9:16):** one per song, on the chorus, with the manifest lyrics on screen and effects. The crop is tight on the singer, which Mark requires; it is soft at 1080p until the 4K cameras arrive. 01 Seven Nation Army was shot vertically and needs no crop. What "effects" means (kinetic lyrics, beat-driven, a look) is still open.
+- **Chorus picks:** Mark picks them by watching the final renders and gives rough times. Each pick is snapped to the phrase and checked to sit inside one steady stretch of the click. Prefer songs the band played tightly to the click. From the Oct 27 word pairing: 04 and 11 were on it throughout; 01, 02, 03, 09 and 12 were on it in steady stretches; 10 held only at the start; 06 and 08 were patchy; on 05, 07 and 13 the click was killed. The reel takes its 4 cuts from these same picks.
+
 ## Where things stand
 
 All 13 songs from the 2026-08-08 garage show have a 720p 16:9 review render with captions. The board audio is synced correctly on all 12 board songs. 01 Seven Nation Army uses the phone's own audio, so it has no sync.

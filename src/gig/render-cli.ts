@@ -15,8 +15,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { checkCut } from "./edges.js";
 import type { Cut } from "./gig.js";
-import { loudness, mediaSeconds, vidstabFfmpeg } from "./media.js";
-import { finalArgs, finalGainDb, mixArgs, mixGains, reviewArgs, stabilizeArgs } from "./render.js";
+import { loudness, mediaSeconds } from "./media.js";
+import { finalArgs, finalGainDb, mixArgs, mixGains, reviewArgs } from "./render.js";
 import type { CaptionLine } from "./srt.js";
 import { boardSpan, type Sync } from "./timeline.js";
 
@@ -66,14 +66,8 @@ try {
   const kept = { start: cut.in ?? 0, seconds: (cut.out ?? videoSeconds) - (cut.in ?? 0) };
   mkdirSync(dirname(out), { recursive: true });
   const gainDb = finalGainDb(loudness(mixed, kept));
-  if (final) {
-    const ffmpeg = vidstabFfmpeg();
-    const trf = join(tmp, "shake.trf");
-    execFileSync(ffmpeg, stabilizeArgs({ phone, trf, cut }), { stdio: "inherit" });
-    execFileSync(ffmpeg, finalArgs({ phone, mix: mixed, trf, gainDb, cut, out }), { stdio: "inherit" });
-  } else {
-    execFileSync("ffmpeg", reviewArgs({ phone, mix: mixed, gainDb, cut, out }), { stdio: "inherit" });
-  }
+  const ffmpegArgs = final ? finalArgs({ phone, mix: mixed, gainDb, cut, out }) : reviewArgs({ phone, mix: mixed, gainDb, cut, out });
+  execFileSync("ffmpeg", ffmpegArgs, { stdio: "inherit" });
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

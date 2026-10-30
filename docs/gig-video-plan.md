@@ -9,6 +9,7 @@ As of 2026-10-27. Branch `feature/gig-sync`, worktree `~/Code/clickbAIt-gig-sync
 - **Choosing 9:16 clips:** the best chorus of every song. A verse also gets a clip when the singer does something especially fun in it.
 - **Caption source for 9:16:** the official lyrics from the manifest, placed by aligning each song as closely as we can to its show-track (manifest) timing.
 - **Captions in renders:** commented out of `reviewArgs` and `render-cli.ts` until their timing is fixed. The `captions` task still writes the SRT files.
+- **Final videos (2026-10-30):** the `final` task renders each song at the phone's 1080p with the gig.json cuts and no captions. No stabilization: Mark tried vidstab with no zoom (smoothing 60 to 600, and tripod mode) and `deshake`, and rejected them all; vidstab at 300 left artifacts. That version is in commit b82815e.
 - **TODO:** the live beat map ("Plan, revised 2026-10-27 late" and "Beat map progress" below, `src/gig/beatmap.ts`) is on hold. Review it after the `feature/beat-model` branch is worked out.
 
 ## Where things stand

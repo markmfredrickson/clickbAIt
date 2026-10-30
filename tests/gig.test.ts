@@ -265,7 +265,7 @@ describe("gigRecipe", () => {
     });
   });
 
-  it("renders a song's final video, stabilized and at full size, beside its review", () => {
+  it("renders a song's final video at full size, beside its review", () => {
     const { scripts, wireit } = recipe({ in: 12.5, out: 190 });
     expect(scripts["final:02-you-cant-hurry-love"]).toBe("wireit");
     expect(wireit["final:02-you-cant-hurry-love"]).toEqual({

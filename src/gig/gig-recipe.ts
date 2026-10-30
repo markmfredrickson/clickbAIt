@@ -18,7 +18,7 @@
  *             where the band starts and stops playing.
  *   render    a 720p review of the song, cut to its `in` and `out`
  *             (`renders/<nn>-<slug>-16x9-review.mp4`).
- *   final     the finished video for upload: stabilized, full size, cut the same way
+ *   final     the finished video for upload: full size, cut the same way
  *             (`renders/<nn>-<slug>-16x9.mp4`).
  */
 

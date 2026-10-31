@@ -48,7 +48,7 @@ export interface Grade extends Levels {
  * songs typically were, for less haze and more sun, then a touch warmer and
  * more colourful. `smooth` is how many seconds the levels change over.
  */
-export const DEFAULT_GRADE: Grade & { smooth: number } = { low: 0.2, mid: 0.47, high: 0.72, saturation: 1.08, temperature: 5900, smooth: 20 };
+export const DEFAULT_GRADE: Grade & { smooth: number } = { low: 0.24, mid: 0.49, high: 0.75, saturation: 1.08, temperature: 5900, smooth: 20 };
 
 /** What `eq` does to a brightness from 0 to 1, as ffmpeg computes it (vf_eq.c, before rounding to a code). */
 export function eqCurve(e: Eq, x: number): number {

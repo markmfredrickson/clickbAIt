@@ -1,0 +1,13 @@
+{
+  "artnet": { "host": "127.0.0.1", "port": 6454, "universe": 0 },
+  "patch": [
+    { "name": "a", "address": 1, "mode": "skybox5-7ch" },
+    { "name": "b", "address": 11, "mode": "skybox5-7ch" },
+    { "name": "c", "address": 21, "mode": "skybox5-7ch" },
+    { "name": "d", "address": 31, "mode": "skybox5-7ch" },
+    { "name": "L", "address": 41, "mode": "skyboxexa-8ch" },
+    { "name": "kit", "address": 51, "mode": "skyboxexa-8ch" },
+    { "name": "R", "address": 61, "mode": "skyboxexa-8ch" }
+  ],
+  "looks": { "halted": "halted.dmx.json", "standby": "standby.dmx.json", "busk": "busk.dmx.json" }
+}

@@ -28,6 +28,7 @@ import { toSlug } from "../core/dsongl/index.js";
 import { Curve, type Anchor } from "../core/curve.js";
 import { encode, asFloat, type OscArg } from "../core/osc.js";
 import { reaperDriver } from "./reaper-driver.js";
+import { relayMode, runModule, type RelayModule } from "./relay-module.js";
 import { stemsSend, repeatToggle } from "./stems-hold.js";
 import { playbackTracks, type PlaybackTrack } from "./rpp-tracks.js";
 import { afterReport, firstAttempt, parseSongIntent, targetSong, type SongIntent } from "./song-select.js";
@@ -71,6 +72,8 @@ export interface RelayOptions {
   einkCacheDir?: string;
   /** Song slugs in playing order — REAPER's project tabs, opened from the same set list. */
   setlist?: string[];
+  /** Things that follow the show (the lights), driven every tick from the relay mode. */
+  modules?: RelayModule[];
 }
 
 function escapeHtml(s: string): string {
@@ -304,7 +307,11 @@ export function startRelay(opts: RelayOptions) {
   // the relay's extra job is turning a transition's effects into OSC.
   let showState: ShowState = initialShowState;
   let lastBeat = 0;
+  /** When REAPER's last position report arrived (ms), for carrying the beat forward and noticing it go quiet. */
+  let lastBeatAt = 0;
   let playing = false;
+  /** A gig or practice session is running. It starts with the first play; until then the relay is halted. */
+  let session = false;
   const control = createSocket("udp4");
 
   function toReaper(address: string, args: OscArg[] = []): void {
@@ -394,6 +401,7 @@ export function startRelay(opts: RelayOptions) {
    */
   function onPosition(beat: number): void {
     lastBeat = beat;
+    lastBeatAt = Date.now();
     broadcast(JSON.stringify({ type: "position", beat }));
     const { state, effect } = advanceShow(showState, showSections(currentSong), beat);
     if (state === showState) return;
@@ -467,6 +475,7 @@ export function startRelay(opts: RelayOptions) {
     trackMuted.clear();
     stemsHeld = undefined;
     void loadTracks(entry.filePath);
+    tellModulesSong();
     console.log(`  Switched to: ${entry.payload.title}${entry.payload.artist ? ` — ${entry.payload.artist}` : ""}`);
     // A new song never inherits a vamp's repeat from the last one.
     if (showState.mode === "following" || showState.mode === "stopped") setRepeat(false);
@@ -569,6 +578,37 @@ export function startRelay(opts: RelayOptions) {
   function currentSongDir(): string {
     return currentCacheEntry?.filePath ? dirname(currentCacheEntry.filePath) : songsDirs[0];
   }
+
+  // ── Relay modules (the lights) ──
+  // One mode per tick, from the transport, the session and the show state; every module
+  // handles every mode. A module that throws is reported once and kept running.
+  const modules = opts.modules ?? [];
+  const moduleFailed = new Set<string>();
+  function guarded(m: RelayModule, f: () => void): void {
+    try {
+      f();
+      moduleFailed.delete(m.name);
+    } catch (err) {
+      if (!moduleFailed.has(m.name)) console.error(`  ✗ ${m.name}: ${(err as Error).message}`);
+      moduleFailed.add(m.name);
+    }
+  }
+  function tellModulesSong(): void {
+    const dir = currentCacheEntry ? currentSongDir() : null;
+    for (const m of modules) guarded(m, () => m.song?.(currentSlug || null, dir));
+  }
+  const moduleTimer = setInterval(() => {
+    if (modules.length === 0) return;
+    const now = Date.now();
+    const mode = relayMode({ session, playing, show: showState, lastReportMs: lastBeatAt, nowMs: now });
+    const snap = {
+      mode, beat: lastBeat, beatAt: lastBeatAt, show: showState,
+      slug: currentSlug || null, songDir: currentCacheEntry ? currentSongDir() : null,
+    };
+    for (const m of modules) guarded(m, () => runModule(m, snap, now));
+  }, 25);
+  moduleTimer.unref();
+  tellModulesSong();
 
   /** The current song's charts file, or null when it has none. */
   function currentChartsFile(): ChartsFile | null {
@@ -986,6 +1026,8 @@ export function startRelay(opts: RelayOptions) {
           broadcast(JSON.stringify({ type: isPlaying ? "play" : "stop" }));
           if (isPlaying && !playing) {
             playing = true;
+            session = true;
+            lastBeatAt = Date.now(); // the first position report is on its way; don't call REAPER lost yet
             pushShowState();
             console.log(`\n  ▶ Playing${currentSong ? `: ${currentSong.title}` : ""}`);
           } else if (!isPlaying && playing) {
@@ -1046,6 +1088,8 @@ export function startRelay(opts: RelayOptions) {
     udp,
     close() {
       clearInterval(pollTimer);
+      clearInterval(moduleTimer);
+      for (const m of modules) guarded(m, () => m.close?.());
       if (openWait) clearInterval(openWait);
       udp.close();
       wss.close();

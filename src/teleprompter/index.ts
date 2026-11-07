@@ -12,6 +12,10 @@ import { songSlugOf } from "./catalog.js";
 import { buildClient } from "./build-client.js";
 import { exportSongPayload } from "./export.js";
 import type { Song } from "../core/dsongl/index.js";
+import { createSocket } from "node:dgram";
+import { loadLightsRig } from "../lights/output.js";
+import { lightsModule } from "../lights/module.js";
+import type { RelayModule } from "./relay-module.js";
 import QRCode from "qrcode";
 
 export interface TeleprompterOptions {
@@ -25,6 +29,21 @@ export interface TeleprompterOptions {
   setlist?: string[];
   httpPort?: number;
   oscPort?: number;
+  /** A lights rig file (patch, Art-Net target, fixed looks); the relay drives the lights when given. */
+  lights?: string;
+}
+
+/** The lights module, sending Art-Net to the rig's node. */
+function lightsFromRig(path: string): RelayModule {
+  const rig = loadLightsRig(path);
+  const sock = createSocket("udp4");
+  const m = lightsModule(rig, (packet) => {
+    sock.send(packet, rig.artnet.port, rig.artnet.host, (err) => {
+      if (err) console.error(`  ✗ Art-Net → ${rig.artnet.host} failed: ${err.message}`);
+    });
+  });
+  console.log(`  Lights: Art-Net universe ${rig.artnet.universe} → ${rig.artnet.host}:${rig.artnet.port}`);
+  return { ...m, close: () => sock.close() };
 }
 
 function getLocalIP(): string {
@@ -59,6 +78,7 @@ export async function startTeleprompter(opts: TeleprompterOptions) {
     song: payload,
     songsDirs,
     setlist,
+    modules: opts.lights ? [lightsFromRig(opts.lights)] : [],
   });
 
   const ip = getLocalIP();

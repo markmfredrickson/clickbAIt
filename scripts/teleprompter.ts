@@ -8,6 +8,7 @@
  *   npx tsx scripts/teleprompter.ts <song.ts> --songs-dir ./dir        # both
  *   npx tsx scripts/teleprompter.ts                                    # the songs and set list in .clickbait.json
  *   npx tsx scripts/teleprompter.ts --songs-dir ./a --setlist set.txt  # named songs, in a set list's order
+ *   npx tsx scripts/teleprompter.ts --lights lights/rig.json           # also drive the lights over Art-Net
  */
 
 import { resolve } from "node:path";
@@ -18,12 +19,15 @@ const args = process.argv.slice(2);
 let songPath: string | undefined;
 const songsDirs: string[] = [];
 let setlistFile: string | undefined;
+let lights: string | undefined;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--songs-dir" && args[i + 1]) {
     songsDirs.push(resolve(args[++i]));
   } else if (args[i] === "--setlist" && args[i + 1]) {
     setlistFile = resolve(args[++i]);
+  } else if (args[i] === "--lights" && args[i + 1]) {
+    lights = resolve(args[++i]);
   } else if (!args[i].startsWith("-")) {
     songPath = args[i];
   }
@@ -46,4 +50,4 @@ const song = songPath
   ? (await import(resolve(songPath))).default
   : undefined;
 
-await startTeleprompter({ song, songsDirs, setlist });
+await startTeleprompter({ song, songsDirs, setlist, lights });

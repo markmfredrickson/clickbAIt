@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lightsAt, type LightsFile } from "../../src/lights/events.js";
+import { lightsAt, parseLights, LIGHTS_SCHEMA, type LightsFile } from "../../src/lights/events.js";
 
 /**
  * lights(beat): a song's lights are looks (static states) plus beat-keyed events.
@@ -10,6 +10,7 @@ const BLUE: [number, number, number] = [0, 0, 1];
 const GOLD: [number, number, number] = [1, 0.72, 0.38];
 
 const song = (events: LightsFile["events"]): LightsFile => ({
+  schema: LIGHTS_SCHEMA,
   fixtures: ["a", "b"],
   looks: {
     warm: { a: GOLD, b: GOLD },
@@ -80,6 +81,7 @@ describe("lightsAt", () => {
 describe("lightsAt UV", () => {
   const UV: [number, number, number, number] = [0, 0, 0, 1];
   const uvSong = (events: LightsFile["events"]): LightsFile => ({
+    schema: LIGHTS_SCHEMA,
     fixtures: ["a"],
     looks: { warm: { a: GOLD }, glow: { a: [1, 0.72, 0.38, 0.4] } },
     events,
@@ -115,5 +117,85 @@ describe("lightsAt blackout", () => {
 
   it("lets the lights back when it ends", () => {
     close(lightsAt(s, 10).b, GOLD);
+  });
+});
+
+/**
+ * A dimmer event scales some lights' look to a fraction, fading there from wherever the level
+ * stands, and holds until the next dimmer event on that light. Flashes and tints ride on top.
+ */
+describe("lightsAt dimmer", () => {
+  it("scales the named lights' look and leaves the others alone", () => {
+    const s = song([{ beat: 0, look: "warm" }, { beat: 4, dimmer: ["a"], to: 0.5 }]);
+    close(lightsAt(s, 4).a, GOLD.map((x) => x * 0.5));
+    close(lightsAt(s, 4).b, GOLD);
+    close(lightsAt(s, 3).a, GOLD); // full before it
+  });
+
+  it("fades from wherever the level stands, so a change mid-fade doesn't jump", () => {
+    const s = song([{ beat: 0, look: "cool" }, { beat: 0, dimmer: ["a"], to: 0, fade: 4 }, { beat: 2, dimmer: ["a"], to: 1, fade: 2 }]);
+    expect(lightsAt(s, 1).a[2]).toBeCloseTo(0.75, 5);
+    expect(lightsAt(s, 2).a[2]).toBeCloseTo(0.5, 5); // the second fade starts where the first had got to
+    expect(lightsAt(s, 3).a[2]).toBeCloseTo(0.75, 5);
+    expect(lightsAt(s, 4).a[2]).toBeCloseTo(1, 5);
+  });
+
+  it("runs alongside a look fade without restarting it", () => {
+    const s = song([{ beat: 0, look: "warm" }, { beat: 8, look: "cool", fade: 4 }, { beat: 10, dimmer: ["a"], to: 0.5 }]);
+    close(lightsAt(s, 10).a, [0.25, 0.18, 0.345]); // halfway through the look fade, at half level
+    close(lightsAt(s, 12).a, BLUE.map((x) => x * 0.5));
+  });
+
+  it("holds until the next dimmer event on that light", () => {
+    const s = song([
+      { beat: 0, look: "warm" },
+      { beat: 1, dimmer: ["a"], to: 0.2 },
+      { beat: 2, look: "cool" },
+      { beat: 3, dimmer: ["b"], to: 0.5 },
+    ]);
+    close(lightsAt(s, 20).a, BLUE.map((x) => x * 0.2)); // through a look cut and another light's dimmer
+  });
+
+  it("puts flashes on top at full strength, and a blackout still wins", () => {
+    const s = song([
+      { beat: 0, look: "cool" },
+      { beat: 0, dimmer: ["a"], to: 0 },
+      { beat: 4, flash: ["a"], color: RED, level: 1, decay: 1 },
+      { beat: 8, flash: ["a"], color: RED, level: 1, decay: 1 },
+      { beat: 8, blackout: 1 },
+    ]);
+    close(lightsAt(s, 4).a, RED);
+    expect(lightsAt(s, 8).a).toEqual([0, 0, 0, 0]);
+  });
+
+  it("lands a jump into the middle of a fade where playing through it would", () => {
+    const s = song([{ beat: 0, look: "warm" }, { beat: 0, dimmer: ["a", "b"], to: 0, fade: 8 }, { beat: 6, dimmer: ["a"], to: 1, fade: 4 }]);
+    const direct = lightsAt(s, 7);
+    for (let b = 0; b <= 7; b += 0.25) lightsAt(s, b);
+    expect(lightsAt(s, 7)).toEqual(direct);
+  });
+});
+
+/** Reading a light file: the schema version is checked and every event must be one the reader knows. */
+describe("parseLights", () => {
+  const good = { schema: LIGHTS_SCHEMA, fixtures: ["a"], looks: { r: { a: [1, 0, 0] } }, events: [{ beat: 0, look: "r" }, { beat: 1, dimmer: ["a"], to: 0.5, fade: 1 }] };
+
+  it("reads a valid file", () => {
+    expect(parseLights(good)).toEqual(good);
+  });
+
+  it("refuses a file with no schema or another version, naming what it found", () => {
+    const { schema: _, ...none } = good;
+    expect(() => parseLights(none)).toThrow(/schema/);
+    expect(() => parseLights({ ...good, schema: "clickbait/lights@9" })).toThrow(/lights@9/);
+  });
+
+  it("refuses an event it doesn't know rather than reading it as a tint", () => {
+    expect(() => parseLights({ ...good, events: [{ beat: 2, strobe: ["a"], rate: 8 }] })).toThrow(/event/);
+  });
+
+  it("refuses an event that names a look or light the file doesn't have", () => {
+    expect(() => parseLights({ ...good, events: [{ beat: 0, look: "nope" }] })).toThrow(/nope/);
+    expect(() => parseLights({ ...good, events: [{ beat: 0, dimmer: ["zz"], to: 1 }] })).toThrow(/zz/);
   });
 });

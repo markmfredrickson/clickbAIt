@@ -5,6 +5,11 @@
  *   flash  add a color to some lights, decaying exponentially
  *   tint   swing some lights to a color at their current brightness, decaying back
  *   blackout  knock every light out for `blackout` beats, flashes still decaying included
+ *   dimmer scale some lights' look to a fraction (`to`), fading there over `fade` beats from wherever
+ *          the level stands; it holds until the next dimmer event on that light. Flashes and tints
+ *          ride on top of it at full strength.
+ *
+ * The file carries its format version in `schema`; `parseLights` checks it and every event.
  *
  * A color is [r, g, b] or [r, g, b, uv], each 0..1. The state comes back with four channels on
  * every light, UV last (0 unless something sets it).
@@ -21,13 +26,18 @@ export type Look = Record<string, Color>;
 /** Four channels, UV last: what lightsAt returns for every light. */
 export type RGBU = [number, number, number, number];
 
+/** The light file format this code reads and writes. */
+export const LIGHTS_SCHEMA = "clickbait/lights@1";
+
 export type LightEvent =
   | { beat: number; look: string; fade?: number }
   | { beat: number; flash: string[]; color: Color | "white"; level: number; decay: number }
   | { beat: number; tint: string[]; color: Color; level?: number; decay: number }
-  | { beat: number; blackout: number };
+  | { beat: number; blackout: number }
+  | { beat: number; dimmer: string[]; to: number; fade?: number };
 
 export interface LightsFile {
+  schema: typeof LIGHTS_SCHEMA;
   fixtures: string[];
   looks: Record<string, Look>;
   events: LightEvent[];
@@ -81,10 +91,14 @@ export function lightsAt(file: LightsFile, beat: number): Record<string, RGBU> {
     const from = lookState(file, prev), t = (beat - cur.beat) / cur.fade;
     for (const f of file.fixtures) out[f] = lerp(from[f], out[f], t);
   }
+  for (const f of file.fixtures) {
+    const lvl = dimmerAt(events, f, beat);
+    if (lvl !== 1) out[f] = out[f].map((x) => x * lvl) as RGBU;
+  }
   // decaying events on top, in time order
   for (const e of events) {
     if (e.beat > beat) break;
-    if ("look" in e || "blackout" in e) continue;
+    if ("look" in e || "blackout" in e || "dimmer" in e) continue;
     const age = beat - e.beat;
     if (age >= e.decay * DECAY_SPAN) continue;
     const v = Math.exp(-age / e.decay);
@@ -105,4 +119,85 @@ export function lightsAt(file: LightsFile, beat: number): Record<string, RGBU> {
     }
   }
   return out;
+}
+
+/** A light's dimmer level at a beat: 1 until a dimmer event names it, each fade starting from the level then. */
+function dimmerAt(events: LightEvent[], fixture: string, beat: number): number {
+  let from = 1, to = 1, start = -Infinity, fade = 0;
+  const at = (b: number) => (fade > 0 && b < start + fade ? from + (to - from) * ((b - start) / fade) : to);
+  for (const e of events) {
+    if (e.beat > beat) break;
+    if (!("dimmer" in e) || !e.dimmer.includes(fixture)) continue;
+    from = at(e.beat);
+    to = e.to;
+    start = e.beat;
+    fade = e.fade ?? 0;
+  }
+  return at(beat);
+}
+
+/**
+ * A light file from parsed JSON, checked: the schema version, and every event a known kind naming
+ * looks and lights the file has. Throws with a message saying what is wrong.
+ */
+export function parseLights(raw: unknown): LightsFile {
+  const fail = (msg: string): never => {
+    throw new Error(`lights: ${msg}`);
+  };
+  const isNum = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+  const isColor = (x: unknown) => Array.isArray(x) && (x.length === 3 || x.length === 4) && x.every(isNum);
+  if (!raw || typeof raw !== "object") fail("the file is not a JSON object");
+  const file = raw as Record<string, unknown>;
+  if (file.schema !== LIGHTS_SCHEMA) {
+    fail(file.schema === undefined ? `the file has no schema; this reader reads "${LIGHTS_SCHEMA}"` : `the file's schema is "${String(file.schema)}"; this reader reads "${LIGHTS_SCHEMA}"`);
+  }
+  const fixtures = file.fixtures as string[];
+  if (!Array.isArray(fixtures) || !fixtures.every((f) => typeof f === "string")) fail("fixtures must be a list of light names");
+  const looks = file.looks as Record<string, unknown>;
+  if (!looks || typeof looks !== "object") fail("looks must be an object");
+  for (const [name, look] of Object.entries(looks)) {
+    if (!look || typeof look !== "object") fail(`look "${name}" must be an object`);
+    for (const [f, c] of Object.entries(look as object)) {
+      if (!fixtures.includes(f)) fail(`look "${name}" names a light "${f}" the file doesn't have`);
+      if (!isColor(c)) fail(`look "${name}" gives "${f}" a color that isn't [r, g, b] or [r, g, b, uv]`);
+    }
+  }
+  if (!Array.isArray(file.events)) fail("events must be a list");
+  const lights = (e: Record<string, unknown>, key: string) => {
+    const xs = e[key];
+    if (!Array.isArray(xs)) fail(`event at beat ${e.beat}: ${key} must be a list of lights`);
+    for (const f of xs as unknown[]) if (!fixtures.includes(f as string)) fail(`event at beat ${e.beat} names a light "${String(f)}" the file doesn't have`);
+  };
+  const kinds = ["look", "flash", "tint", "blackout", "dimmer"];
+  for (const e of file.events as Record<string, unknown>[]) {
+    if (!e || typeof e !== "object" || !isNum(e.beat)) fail(`every event needs a numeric beat (got ${JSON.stringify(e)})`);
+    const kind = kinds.filter((k) => k in e);
+    if (kind.length !== 1) fail(`event at beat ${e.beat} is not one this reader knows: ${JSON.stringify(e)}`);
+    const bad = (what: string): never => fail(`event at beat ${e.beat}: ${what}`);
+    switch (kind[0]) {
+      case "look":
+        if (typeof e.look !== "string" || !(e.look in looks)) bad(`it names a look "${String(e.look)}" the file doesn't have`);
+        if (e.fade !== undefined && !isNum(e.fade)) bad("fade must be a number of beats");
+        break;
+      case "flash":
+        lights(e, "flash");
+        if (e.color !== "white" && !isColor(e.color)) bad("a flash color must be \"white\" or [r, g, b(, uv)]");
+        if (!isNum(e.level) || !isNum(e.decay)) bad("a flash needs a level and a decay");
+        break;
+      case "tint":
+        lights(e, "tint");
+        if (!isColor(e.color) || !isNum(e.decay)) bad("a tint needs a color and a decay");
+        if (e.level !== undefined && !isNum(e.level)) bad("level must be a number");
+        break;
+      case "blackout":
+        if (!isNum(e.blackout)) bad("blackout must be a number of beats");
+        break;
+      case "dimmer":
+        lights(e, "dimmer");
+        if (!isNum(e.to)) bad("a dimmer needs a level to go to");
+        if (e.fade !== undefined && !isNum(e.fade)) bad("fade must be a number of beats");
+        break;
+    }
+  }
+  return raw as LightsFile;
 }

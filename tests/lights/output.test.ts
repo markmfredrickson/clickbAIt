@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { LightsOutput, loadLightsRig } from "../../src/lights/output.js";
-import type { LightsFile } from "../../src/lights/events.js";
+import { LIGHTS_SCHEMA, type LightsFile } from "../../src/lights/events.js";
 import type { Patch } from "../../src/lights/artnet.js";
 
 /**
@@ -13,7 +13,7 @@ import type { Patch } from "../../src/lights/artnet.js";
 const patch: Patch = [{ name: "a", address: 1, mode: "skybox5-7ch" }];
 const gold = { a: [1, 0.72, 0.38] as [number, number, number] };
 // a light that fades from black to white over beats 0..8, so every beat looks different
-const fading: LightsFile = { fixtures: ["a"], looks: { off: {}, on: { a: [1, 1, 1] } }, events: [{ beat: 0, look: "off" }, { beat: 0, look: "on", fade: 8 }] };
+const fading: LightsFile = { schema: LIGHTS_SCHEMA, fixtures: ["a"], looks: { off: {}, on: { a: [1, 1, 1] } }, events: [{ beat: 0, look: "off" }, { beat: 0, look: "on", fade: 8 }] };
 
 function rig() {
   const sent: Buffer[] = [];
@@ -64,7 +64,7 @@ describe("LightsOutput", () => {
 
   it("switches to a new song's lights", () => {
     const { out, dmx } = rig();
-    out.setSong({ fixtures: ["a"], looks: { red: { a: [1, 0, 0] } }, events: [{ beat: 0, look: "red" }] });
+    out.setSong({ schema: LIGHTS_SCHEMA, fixtures: ["a"], looks: { red: { a: [1, 0, 0] } }, events: [{ beat: 0, look: "red" }] });
     out.play(1, 0, 0);
     expect([...dmx().subarray(1, 4)]).toEqual([255, 0, 0]);
   });

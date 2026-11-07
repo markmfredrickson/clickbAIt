@@ -16,7 +16,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { RelayModule } from "../teleprompter/relay-module.js";
 import { LightsOutput, type LightsRig } from "./output.js";
-import type { LightsFile } from "./events.js";
+import { parseLights, type LightsFile } from "./events.js";
 
 const RECHECK_MS = 1000;
 
@@ -71,10 +71,10 @@ function mtimeOf(path: string): number {
   }
 }
 
-/** A song's light file. A broken file is reported and treated as missing. */
+/** A song's light file. A broken file, or one in another format version, is reported and treated as missing. */
 function readLights(path: string): LightsFile | null {
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as LightsFile;
+    return parseLights(JSON.parse(readFileSync(path, "utf8")));
   } catch (err) {
     console.error(`  ✗ lights: could not read ${path}: ${(err as Error).message}`);
     return null;

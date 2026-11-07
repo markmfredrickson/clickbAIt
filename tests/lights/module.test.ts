@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { lightsModule } from "../../src/lights/module.js";
+import { LIGHTS_SCHEMA } from "../../src/lights/events.js";
 import { runModule, type RelayMode, type RelaySnapshot } from "../../src/teleprompter/relay-module.js";
 import type { LightsRig } from "../../src/lights/output.js";
 
@@ -21,7 +22,7 @@ function setup() {
   const sent: Buffer[] = [];
   const m = lightsModule(rig, (b) => sent.push(b));
   const dir = mkdtempSync(join(tmpdir(), "lights-song-"));
-  writeFileSync(join(dir, "blue.lights.json"), JSON.stringify({ fixtures: ["a"], looks: { b: { a: [0, 0, 1] } }, events: [{ beat: 0, look: "b" }] }));
+  writeFileSync(join(dir, "blue.lights.json"), JSON.stringify({ schema: LIGHTS_SCHEMA, fixtures: ["a"], looks: { b: { a: [0, 0, 1] } }, events: [{ beat: 0, look: "b" }] }));
   let now = 0;
   const show = (mode: RelayMode) => {
     const snap: RelaySnapshot = { mode, beat: 4, beatAt: now, show: { mode: "following", at: 0 }, slug: "blue", songDir: dir };
@@ -51,6 +52,13 @@ describe("lightsModule", () => {
     expect(show("playing")[4]).toBeGreaterThan(0); // amber: the gold standby look
   });
 
+  it("plays the standby look when the song's light file has the wrong schema", () => {
+    const { m, dir, show } = setup();
+    writeFileSync(join(dir, "old.lights.json"), JSON.stringify({ fixtures: ["a"], looks: { b: { a: [0, 0, 1] } }, events: [{ beat: 0, look: "b" }] }));
+    m.song?.("old", dir);
+    expect(show("playing")[4]).toBeGreaterThan(0); // amber: the gold standby look, not the file's blue
+  });
+
   it("shows the busk look while bailed and the song again after", () => {
     const { m, dir, show } = setup();
     m.song?.("blue", dir);
@@ -75,7 +83,7 @@ describe("lightsModule", () => {
     m.song?.("blue", dir);
     expect([...show("playing").subarray(1, 4)]).toEqual([0, 0, 255]);
     const file = join(dir, "blue.lights.json");
-    writeFileSync(file, JSON.stringify({ fixtures: ["a"], looks: { r: { a: [1, 0, 0] } }, events: [{ beat: 0, look: "r" }] }));
+    writeFileSync(file, JSON.stringify({ schema: LIGHTS_SCHEMA, fixtures: ["a"], looks: { r: { a: [1, 0, 0] } }, events: [{ beat: 0, look: "r" }] }));
     utimesSync(file, new Date(), new Date(Date.now() + 5000)); // a newer modification time
     expect([...show("playing").subarray(1, 4)]).toEqual([255, 0, 0]);
   });
